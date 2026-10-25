@@ -33,17 +33,27 @@ type testApprover struct {
 	allow bool
 	ttl   time.Duration
 	n     int
+	last  approve.ApprovalRequest
 }
 
 func (a *testApprover) Tier() presence.PresenceTier { return presence.TierNone }
-func (a *testApprover) Ask(context.Context, approve.ApprovalRequest) (approve.Decision, error) {
+func (a *testApprover) Ask(_ context.Context, req approve.ApprovalRequest) (approve.Decision, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.n++
+	a.last = req
 	if !a.allow {
 		return approve.Decision{Reason: "test denied"}, nil
 	}
+	if req.Kind == approve.KindStandingGrant {
+		return approve.Decision{Allow: true, TTL: req.RequestedTTL}, nil
+	}
 	return approve.Decision{Allow: true, TTL: a.ttl}, nil
+}
+func (a *testApprover) lastReq() approve.ApprovalRequest {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.last
 }
 func (a *testApprover) asked() int { a.mu.Lock(); defer a.mu.Unlock(); return a.n }
 
