@@ -297,16 +297,22 @@ func TestRunBadRequests(t *testing.T) {
 		return r
 	}
 	for name, r := range map[string]*proto.Request{
-		"relative cwd":   mut(func(r *proto.Request) { r.Cwd = "rel/dir" }),
-		"missing cwd":    mut(func(r *proto.Request) { r.Cwd = filepath.Join(e.cwd, "nope") }),
-		"cwd is file":    mut(func(r *proto.Request) { r.Cwd = file }),
-		"no argv":        mut(func(r *proto.Request) { r.Argv = nil }),
-		"empty argv0":    mut(func(r *proto.Request) { r.Argv = []string{""} }),
-		"no secrets":     mut(func(r *proto.Request) { r.Secrets = nil }),
-		"empty secret":   mut(func(r *proto.Request) { r.Secrets = []string{""} }),
-		"bad caller":     mut(func(r *proto.Request) { r.Caller = "evil\nAllow?" }),
-		"long caller":    mut(func(r *proto.Request) { r.Caller = strings.Repeat("a", 100) }),
-		"bad env prefix": mut(func(r *proto.Request) { r.EnvPrefix = "bad-prefix" }),
+		"relative cwd":      mut(func(r *proto.Request) { r.Cwd = "rel/dir" }),
+		"missing cwd":       mut(func(r *proto.Request) { r.Cwd = filepath.Join(e.cwd, "nope") }),
+		"cwd is file":       mut(func(r *proto.Request) { r.Cwd = file }),
+		"no argv":           mut(func(r *proto.Request) { r.Argv = nil }),
+		"empty argv0":       mut(func(r *proto.Request) { r.Argv = []string{""} }),
+		"no secrets":        mut(func(r *proto.Request) { r.Secrets = nil }),
+		"empty secret":      mut(func(r *proto.Request) { r.Secrets = []string{""} }),
+		"bad caller":        mut(func(r *proto.Request) { r.Caller = "evil\nAllow?" }),
+		"long caller":       mut(func(r *proto.Request) { r.Caller = strings.Repeat("a", 100) }),
+		"bad env prefix":    mut(func(r *proto.Request) { r.EnvPrefix = "bad-prefix" }),
+		"newline in argv":   mut(func(r *proto.Request) { r.Argv = []string{"sh", "-c", "a\nb"} }),
+		"escape in argv":    mut(func(r *proto.Request) { r.Argv = []string{"echo", "\x1b[2J"} }),
+		"nul in argv":       mut(func(r *proto.Request) { r.Argv = []string{"echo", "a\x00b"} }),
+		"control in cwd":    mut(func(r *proto.Request) { r.Cwd = e.cwd + "/x\ry" }),
+		"control in caller": mut(func(r *proto.Request) { r.Caller = "a\x01b" }),
+		"huge argv":         mut(func(r *proto.Request) { r.Argv = []string{"echo", strings.Repeat("a", maxArgvBytes)} }),
 	} {
 		before := e.auditCount()
 		w := &recWriter{}
@@ -321,6 +327,12 @@ func TestRunBadRequests(t *testing.T) {
 	if e.ap.calls() != 0 {
 		t.Fatal("approver asked")
 	}
+}
+
+// A tab is the one control character argv may carry.
+func TestRunArgvMayContainTabs(t *testing.T) {
+	e := newEnv(t)
+	wantOK(t, e.do(e.run([]string{"API_KEY"}, "sh", "-c", "true\t# comment")))
 }
 
 func TestRunEnvCollision(t *testing.T) {
@@ -888,7 +900,7 @@ func TestRunAuditRowsRecordExpandedNames(t *testing.T) {
 		t.Errorf("denied row = %+v", a)
 	}
 	// It reaches `audit list` and the CSV export.
-	list := decode[[]proto.AuditInfo](t, e.do(&proto.Request{Op: proto.OpAudit, Limit: 1}))
+	list := decode[proto.AuditListResult](t, e.do(&proto.Request{Op: proto.OpAudit, Limit: 1})).Entries
 	if !slices.Equal(list[0].Expanded, []string{"aws/a", "aws/b"}) {
 		t.Errorf("list = %+v", list[0])
 	}

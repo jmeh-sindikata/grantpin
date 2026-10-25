@@ -2,6 +2,7 @@ package broker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -30,12 +31,17 @@ const (
 	maxCallerLen  = 64
 	maxSecrets    = 256
 	maxArgv       = 4096
+	maxArgvBytes  = 256 << 10 // total bytes of argv; keeps one audit row far below a protocol line
 	maxValueBytes = 1 << 20
+	maxURLBytes   = 2 << 10 // stored secret url and notes, each
+	maxNotesBytes = 2 << 10
 	maxAuditList  = 1000
-	// maxExportBytes keeps an audit export inside proto.MaxLineBytes once
-	// JSON-escaped (worst case is a few x for quotes and newlines).
-	maxExportBytes = 1 << 20
-	auditTimeout   = 10 * time.Second
+	auditTimeout  = 10 * time.Second
+
+	// maxResultBytes is the largest Response.Result the broker will send: one
+	// protocol line (proto.MaxLineBytes) minus room for the rest of the
+	// response. It is measured on the JSON-encoded result, so escaping counts.
+	maxResultBytes = proto.MaxLineBytes - 64<<10
 )
 
 // Deps are the broker's collaborators.
@@ -176,6 +182,16 @@ func ok(w daemon.ResponseWriter, result any) {
 	raw, err := proto.NewResult(result)
 	if err != nil {
 		fail(w, proto.ErrFailed, proto.ReasonInternal, "internal error")
+		return
+	}
+	okRaw(w, raw)
+}
+
+// okRaw sends an already-encoded result, or a clean failure if it would not
+// fit in one protocol line (the daemon would otherwise have to drop it).
+func okRaw(w daemon.ResponseWriter, raw json.RawMessage) {
+	if len(raw) > maxResultBytes {
+		fail(w, proto.ErrFailed, proto.ReasonResponseTooLarge, "response too large")
 		return
 	}
 	_ = w.Finish(&proto.Response{OK: true, Result: raw})

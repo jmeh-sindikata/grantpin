@@ -65,7 +65,7 @@ type GrantInfo struct {
 	Tampered bool `json:"tampered,omitempty"`
 }
 
-// AuditInfo is one row of an OpAudit list/export result (Result is []AuditInfo).
+// AuditInfo is one row of an OpAudit list result (AuditListResult.Entries).
 type AuditInfo struct {
 	ID      string    `json:"id"`
 	TS      time.Time `json:"ts"`
@@ -82,6 +82,14 @@ type AuditInfo struct {
 	ExitCode   *int     `json:"exit_code,omitempty"`
 	DurationMS int64    `json:"duration_ms,omitempty"`
 	Reason     string   `json:"reason,omitempty"`
+}
+
+// AuditListResult is the OpAudit list result. Truncated is true when the
+// daemon returned fewer rows than asked for because the encoded page would not
+// fit in one protocol line; ask for a smaller limit.
+type AuditListResult struct {
+	Entries   []AuditInfo `json:"entries"`
+	Truncated bool        `json:"truncated,omitempty"`
 }
 
 // AuditExportResult is the OpAudit export result: the whole log as CSV text.

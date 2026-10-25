@@ -11,16 +11,31 @@ import (
 // MaxLineBytes bounds a single protocol line (request, frame or response).
 const MaxLineBytes = 4 << 20
 
-// Write encodes v as one JSON line (compact, '\n'-terminated) to w. v is
-// normally a Request, StreamFrame or Response.
-func Write(w io.Writer, v any) error {
+// ErrLineTooLong is wrapped by Encode and Write when a message does not fit in
+// MaxLineBytes.
+var ErrLineTooLong = errors.New("proto: line exceeds limit")
+
+// Encode returns v as one JSON line (compact, '\n'-terminated). It fails, before
+// anything is written, if v cannot be encoded or the line would exceed
+// MaxLineBytes (the error then wraps ErrLineTooLong).
+func Encode(v any) ([]byte, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return fmt.Errorf("proto: encode: %w", err)
+		return nil, fmt.Errorf("proto: encode: %w", err)
 	}
 	b = append(b, '\n')
 	if len(b) > MaxLineBytes {
-		return fmt.Errorf("proto: line of %d bytes exceeds limit %d", len(b), MaxLineBytes)
+		return nil, fmt.Errorf("%w: %d bytes, limit %d", ErrLineTooLong, len(b), MaxLineBytes)
+	}
+	return b, nil
+}
+
+// Write encodes v as one JSON line (see Encode) to w. v is normally a Request,
+// StreamFrame or Response.
+func Write(w io.Writer, v any) error {
+	b, err := Encode(v)
+	if err != nil {
+		return err
 	}
 	_, err = w.Write(b)
 	return err

@@ -3,6 +3,7 @@ package proto
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -173,8 +174,18 @@ func TestReaderEdgeCases(t *testing.T) {
 		t.Fatal("expected unknown-message error")
 	}
 	huge := strings.Repeat("a", MaxLineBytes+10)
-	if err := Write(&bytes.Buffer{}, StreamFrame{StreamStdout, huge}); err == nil {
-		t.Fatal("expected oversize write error")
+	var sink bytes.Buffer
+	if err := Write(&sink, StreamFrame{StreamStdout, huge}); !errors.Is(err, ErrLineTooLong) || sink.Len() != 0 {
+		t.Fatalf("oversize write: err=%v, wrote %d bytes", err, sink.Len())
+	}
+	if _, err := Encode(StreamFrame{StreamStdout, huge}); !errors.Is(err, ErrLineTooLong) {
+		t.Fatalf("Encode oversize: %v", err)
+	}
+	if _, err := Encode(make(chan int)); err == nil || errors.Is(err, ErrLineTooLong) {
+		t.Fatalf("an unencodable value is not a size error: %v", err)
+	}
+	if b, err := Encode(Response{OK: true}); err != nil || b[len(b)-1] != '\n' {
+		t.Fatalf("Encode: %q %v", b, err)
 	}
 	if _, err := NewReader(strings.NewReader(huge + "\n")).ReadRequest(); err == nil {
 		t.Fatal("expected oversize read error")

@@ -236,7 +236,7 @@ func wantErr(t *testing.T, rep reply, category, reason string) {
 
 func lastAudit(t *testing.T, r *rig) proto.AuditInfo {
 	t.Helper()
-	l := result[[]proto.AuditInfo](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 1}))
+	l := result[proto.AuditListResult](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 1})).Entries
 	if len(l) != 1 {
 		t.Fatalf("audit list = %+v", l)
 	}
@@ -246,7 +246,7 @@ func lastAudit(t *testing.T, r *rig) proto.AuditInfo {
 // lastPair returns the released and completed rows of the newest run.
 func lastPair(t *testing.T, r *rig) (released, completed proto.AuditInfo) {
 	t.Helper()
-	l := result[[]proto.AuditInfo](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 2}))
+	l := result[proto.AuditListResult](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 2})).Entries
 	if len(l) != 2 {
 		t.Fatalf("audit list = %+v", l)
 	}
@@ -297,7 +297,7 @@ func TestRunRedactsBothStreamsAndNeverLeaksOnTheWire(t *testing.T) {
 		r.noLeak(r.call(req))
 	}
 	// The audit log never holds it either (argv containing the value was scrubbed).
-	for _, e := range result[[]proto.AuditInfo](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 100})) {
+	for _, e := range result[proto.AuditListResult](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 100})).Entries {
 		// Every row, the released one included, is written after decryption
 		// and scrubbed with the redactor.
 		if strings.Contains(strings.Join(e.Argv, " ")+e.Reason+e.Cwd+e.Caller, apiKey) {
@@ -532,7 +532,7 @@ func TestClientDisconnectKillsTheChild(t *testing.T) {
 	}
 	// The cancelled run is still in the audit log.
 	var found bool
-	for _, e := range result[[]proto.AuditInfo](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 10})) {
+	for _, e := range result[proto.AuditListResult](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 10})).Entries {
 		if e.Reason == "canceled" {
 			found = true
 		}

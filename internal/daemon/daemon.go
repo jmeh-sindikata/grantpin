@@ -236,9 +236,20 @@ type connWriter struct {
 	err      error // sticky write error
 }
 
+// write encodes v and sends it. An encode or size error (the message is bad,
+// the connection is fine) is returned without poisoning the writer; only a
+// failed network write is sticky.
 func (w *connWriter) write(v any) error {
+	b, err := proto.Encode(v)
+	if err != nil {
+		return err
+	}
+	return w.writeLine(b)
+}
+
+func (w *connWriter) writeLine(b []byte) error {
 	_ = w.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	if err := proto.Write(w.conn, v); err != nil {
+	if _, err := w.conn.Write(b); err != nil {
 		w.err = err
 		return err
 	}
@@ -274,11 +285,28 @@ func (w *connWriter) Finish(resp *proto.Response) error {
 		return ErrFinished
 	}
 	w.finished = true
+	line, encErr := proto.Encode(resp)
+	if encErr != nil {
+		// The response cannot be sent (typically a result larger than
+		// MaxLineBytes). Do not leave the client with a bare EOF that looks
+		// like success: send a small failure that always fits, and record
+		// that as the outcome.
+		msg := "response could not be encoded"
+		if errors.Is(encErr, proto.ErrLineTooLong) {
+			msg = "response too large"
+		}
+		resp = Failure(proto.ErrFailed, proto.ReasonInternal)
+		resp.Message = msg
+		line, _ = proto.Encode(resp)
+	}
 	w.final = resp
 	if w.err != nil {
 		return w.err
 	}
-	return w.write(resp)
+	if err := w.writeLine(line); err != nil {
+		return err
+	}
+	return encErr
 }
 
 // finishIfOpen sends resp unless the handler already finished.
@@ -464,6 +492,8 @@ func (s *Server) logRequest(req *proto.Request, w *connWriter, start time.Time) 
 		if resp.ExitCode != nil {
 			attrs = append(attrs, "exit_code", *resp.ExitCode)
 		}
+	case resp.Error == proto.ErrFailed:
+		attrs = append(attrs, "outcome", "failed", "error", resp.Error, "reason", resp.Reason)
 	default:
 		attrs = append(attrs, "outcome", "error", "error", resp.Error, "reason", resp.Reason)
 	}

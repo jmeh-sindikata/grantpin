@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"strconv"
@@ -26,8 +27,8 @@ func newAuditCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		var es []proto.AuditInfo
-		if err := decodeResult(resp, &es); err != nil {
+		es, truncated, err := decodeAuditList(resp)
+		if err != nil {
 			return err
 		}
 		tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
@@ -45,9 +46,15 @@ func newAuditCmd() *cobra.Command {
 				grant = e.GrantID[:min(8, len(e.GrantID))]
 			}
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.ID, e.TS.Local().Format("2006-01-02 15:04:05"),
-				e.Decision, e.Caller, strings.Join(e.Argv, " "), secretsCell(e), grant, exit, took, dash(e.Reason))
+				printable(e.Decision), printable(e.Caller), printable(strings.Join(e.Argv, " ")), printable(secretsCell(e)), grant, exit, took, printable(dash(e.Reason)))
 		}
-		return tw.Flush()
+		if err := tw.Flush(); err != nil {
+			return err
+		}
+		if truncated {
+			fmt.Fprintf(cmd.ErrOrStderr(), "grantd: only the %d newest entries fit in one reply; use --limit with a smaller number to see them without this cut-off\n", len(es))
+		}
+		return nil
 	}
 	c := &cobra.Command{
 		Use:   "audit",
@@ -109,4 +116,32 @@ func secretsCell(e proto.AuditInfo) string {
 		return req
 	}
 	return req + " → " + strings.Join(e.Expanded, ", ")
+}
+
+// decodeAuditList reads an audit list result: an object with entries and an
+// optional truncated flag (an older daemon sends a bare array).
+func decodeAuditList(resp *proto.Response) (entries []proto.AuditInfo, truncated bool, err error) {
+	if t := bytes.TrimSpace(resp.Result); len(t) > 0 && t[0] == '[' {
+		err = decodeResult(resp, &entries)
+		return entries, false, err
+	}
+	var r proto.AuditListResult
+	if err := decodeResult(resp, &r); err != nil {
+		return nil, false, err
+	}
+	return r.Entries, r.Truncated, nil
+}
+
+// printable replaces control characters, so a row written by an untrusted
+// request cannot drive the terminal that lists it.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\t':
+			return ' ' // a tab would start a new table column
+		case r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0):
+			return '?'
+		}
+		return r
+	}, s)
 }

@@ -724,6 +724,31 @@ func TestLogsNeverContainArgv(t *testing.T) {
 	}
 }
 
+// A response that cannot be encoded within MaxLineBytes used to be dropped
+// silently: the client saw EOF and the log said ok. It must become a small
+// failure the client can read, and the log must say failed.
+func TestOversizedResponseBecomesAFailure(t *testing.T) {
+	logs := &syncBuf{}
+	var finishErr error
+	rt := routerWith(proto.OpList, func(_ context.Context, _ *proto.Request, w ResponseWriter) {
+		huge, _ := json.Marshal(strings.Repeat("x", proto.MaxLineBytes))
+		finishErr = w.Finish(&proto.Response{OK: true, Result: huge})
+	})
+	r := start(t, Config{Router: rt, Logger: slog.New(slog.NewTextHandler(logs, nil))})
+	_, resp := call(t, r.path, proto.Request{Op: proto.OpList})
+	if resp.OK || resp.Error != proto.ErrFailed || resp.Reason != proto.ReasonInternal || resp.Message != "response too large" {
+		t.Fatalf("resp = %+v", resp)
+	}
+	_ = r.stop(t)
+	if !errors.Is(finishErr, proto.ErrLineTooLong) {
+		t.Errorf("Finish returned %v, want the handler told the response did not fit", finishErr)
+	}
+	out := logs.String()
+	if !strings.Contains(out, "outcome=failed") || strings.Contains(out, "outcome=ok") {
+		t.Errorf("log should say failed:\n%s", out)
+	}
+}
+
 func TestRouter(t *testing.T) {
 	r := NewRouter()
 	h := HandlerFunc(func(context.Context, *proto.Request, ResponseWriter) {})

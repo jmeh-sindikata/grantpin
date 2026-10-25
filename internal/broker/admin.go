@@ -3,6 +3,7 @@ package broker
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 
 	"grantd/internal/daemon"
@@ -65,16 +66,28 @@ func (b *Broker) handleAudit(ctx context.Context, req *proto.Request, w daemon.R
 			b.internal(w, req.Op, err)
 			return
 		}
-		out := make([]proto.AuditInfo, 0, len(es))
+		// Rows are free-form enough (argv, reason) that a page can outgrow one
+		// protocol line. Return as many newest rows as fit and say so.
+		res := proto.AuditListResult{Entries: make([]proto.AuditInfo, 0, len(es))}
+		size := len(`{"entries":[],"truncated":true}`)
 		for _, e := range es {
 			info := proto.AuditInfo{
 				ID: e.ID, TS: e.TS, Caller: e.Caller, Cwd: e.Cwd, Argv: e.Argv, Secrets: e.Secrets, Expanded: e.Expanded,
 				Decision: e.Decision, GrantID: e.GrantID, ExitCode: e.ExitCode,
 				DurationMS: e.Duration.Milliseconds(), Reason: e.Reason,
 			}
-			out = append(out, info)
+			enc, err := json.Marshal(info)
+			if err != nil {
+				b.internal(w, req.Op, err)
+				return
+			}
+			if size += len(enc) + 1; size > maxResultBytes {
+				res.Truncated = true
+				break
+			}
+			res.Entries = append(res.Entries, info)
 		}
-		ok(w, out)
+		ok(w, res)
 	case proto.ActionVerify:
 		res, err := b.d.Audit.Verify(ctx)
 		if err != nil {
@@ -83,17 +96,47 @@ func (b *Broker) handleAudit(ctx context.Context, req *proto.Request, w daemon.R
 		}
 		ok(w, proto.AuditVerifyResult{OK: res.OK, Entries: res.Entries, FirstBadID: res.FirstBadID})
 	case proto.ActionExport:
-		var buf bytes.Buffer
-		if err := b.d.Audit.ExportCSV(ctx, &buf); err != nil {
+		// The CSV travels as a JSON string, so what must fit is its encoded
+		// length (quotes and newlines escape to two bytes). Raw bytes already
+		// over the limit cannot fit once encoded, so stop collecting there.
+		buf := &cappedBuffer{limit: maxResultBytes}
+		err := b.d.Audit.ExportCSV(ctx, buf)
+		tooBig := buf.over || errors.Is(err, errCapExceeded)
+		if err != nil && !tooBig {
 			b.internal(w, req.Op, err)
 			return
 		}
-		if buf.Len() > maxExportBytes {
-			fail(w, proto.ErrFailed, proto.ReasonInternal, "audit log too large to export over the socket; use `audit list --limit`")
+		var raw json.RawMessage
+		if !tooBig {
+			if raw, err = proto.NewResult(proto.AuditExportResult{CSV: buf.String()}); err != nil {
+				b.internal(w, req.Op, err)
+				return
+			}
+			tooBig = len(raw) > maxResultBytes
+		}
+		if tooBig {
+			fail(w, proto.ErrFailed, proto.ReasonResponseTooLarge, "audit log too large to export over the socket; use `audit list --limit`")
 			return
 		}
-		ok(w, proto.AuditExportResult{CSV: buf.String()})
+		okRaw(w, raw)
 	default:
 		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, "unknown audit action")
 	}
+}
+
+var errCapExceeded = errors.New("broker: output exceeds the response limit")
+
+// cappedBuffer collects up to limit bytes and then refuses more.
+type cappedBuffer struct {
+	bytes.Buffer
+	limit int
+	over  bool
+}
+
+func (c *cappedBuffer) Write(p []byte) (int, error) {
+	if c.Len()+len(p) > c.limit {
+		c.over = true
+		return 0, errCapExceeded
+	}
+	return c.Buffer.Write(p)
 }

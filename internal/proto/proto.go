@@ -77,6 +77,7 @@ const (
 	ReasonTimeout             = "timeout"               // (failed) command exceeded timeout_s
 	ReasonCanceled            = "canceled"              // (failed) client went away / daemon shutting down
 	ReasonInternal            = "internal"              // (failed) message must not contain secret values
+	ReasonResponseTooLarge    = "response_too_large"    // (failed) the result would not fit in one protocol line
 )
 
 // Request is the single request line a client sends per connection. Only the

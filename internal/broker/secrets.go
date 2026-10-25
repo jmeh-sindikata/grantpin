@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"grantd/internal/approve"
@@ -116,6 +117,12 @@ func (b *Broker) handleSet(ctx context.Context, req *proto.Request, w daemon.Res
 		return
 	case len(req.Value) > maxValueBytes:
 		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, "value too large")
+		return
+	case len(req.URL) > maxURLBytes:
+		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, fmt.Sprintf("url too long (max %d bytes)", maxURLBytes))
+		return
+	case len(req.Notes) > maxNotesBytes:
+		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, fmt.Sprintf("notes too long (max %d bytes)", maxNotesBytes))
 		return
 	case req.MinTier != nil && !req.MinTier.Valid():
 		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, "invalid min_tier")
@@ -243,6 +250,10 @@ func (b *Broker) handleShow(ctx context.Context, req *proto.Request, w daemon.Re
 	raw, err := proto.NewResult(proto.ShowResult{Value: string(v)})
 	if err != nil {
 		fail(w, proto.ErrFailed, proto.ReasonInternal, "internal error")
+		return
+	}
+	if len(raw) > maxResultBytes { // a 1 MiB value of control characters escapes to ~6 MiB
+		fail(w, proto.ErrFailed, proto.ReasonResponseTooLarge, "value too large to show over the socket")
 		return
 	}
 	_ = w.Finish(&proto.Response{OK: true, AuditID: id, Result: raw})

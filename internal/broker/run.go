@@ -160,6 +160,12 @@ func validateRun(req *proto.Request, callerOK bool) (cwd, msg string) {
 		return "", "argv must not be empty"
 	case len(req.Argv) > maxArgv:
 		return "", "argv too long"
+	case argvBytes(req.Argv) > maxArgvBytes:
+		return "", "argv too large"
+	case hasControl(req.Argv...):
+		return "", "argv must not contain control characters"
+	case hasControl(req.Cwd, req.Caller):
+		return "", "cwd and caller must not contain control characters"
 	case len(req.Secrets) == 0:
 		return "", "secrets must not be empty"
 	case len(req.Secrets) > maxSecrets:
@@ -182,6 +188,28 @@ func validateRun(req *proto.Request, callerOK bool) (cwd, msg string) {
 		return "", "cwd is not a directory"
 	}
 	return real, ""
+}
+
+// hasControl reports whether any string contains a byte below 0x20 other than
+// a tab. Such bytes can forge lines in the approval prompt, the audit listing
+// and the logs, and have no place in a command line the human is asked to read.
+func hasControl(ss ...string) bool {
+	for _, s := range ss {
+		for i := 0; i < len(s); i++ {
+			if s[i] < 0x20 && s[i] != '\t' {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func argvBytes(argv []string) int {
+	n := 0
+	for _, a := range argv {
+		n += len(a)
+	}
+	return n
 }
 
 // policyItem names what a policy refused, never a value.

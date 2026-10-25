@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"strings"
@@ -113,6 +114,8 @@ func TestSetValidation(t *testing.T) {
 		"empty name":   {Op: proto.OpSet, Name: "", Value: "value-1234"},
 		"empty value":  {Op: proto.OpSet, Name: "X"},
 		"huge value":   {Op: proto.OpSet, Name: "X", Value: strings.Repeat("a", maxValueBytes+1)},
+		"long url":     {Op: proto.OpSet, Name: "X", Value: "value-1234", URL: strings.Repeat("u", maxURLBytes+1)},
+		"long notes":   {Op: proto.OpSet, Name: "X", Value: "value-1234", Notes: strings.Repeat("n", maxNotesBytes+1)},
 		"bad tier":     {Op: proto.OpSet, Name: "X", Value: "value-1234", MinTier: &bad},
 		"past expires": {Op: proto.OpSet, Name: "X", Value: "value-1234", Expires: &past},
 		"exists name":  {Op: proto.OpExists, Name: "../x"},
@@ -122,6 +125,18 @@ func TestSetValidation(t *testing.T) {
 	} {
 		wantFail(t, e.do(r), proto.ErrBadRequest, proto.ReasonBadRequest)
 		_ = name
+	}
+}
+
+func TestSetURLAndNotesAtTheLimitAreAccepted(t *testing.T) {
+	e := newEnv(t)
+	wantOK(t, e.do(&proto.Request{Op: proto.OpSet, Name: "X", Value: "value-1234",
+		URL: strings.Repeat("u", maxURLBytes), Notes: strings.Repeat("n", maxNotesBytes)}))
+	l := decode[[]proto.SecretInfo](t, e.do(&proto.Request{Op: proto.OpList}))
+	for _, s := range l {
+		if s.Name == "X" && (len(s.URL) != maxURLBytes || len(s.Notes) != maxNotesBytes) {
+			t.Fatalf("stored %d/%d", len(s.URL), len(s.Notes))
+		}
 	}
 }
 
@@ -264,12 +279,12 @@ func TestAuditOps(t *testing.T) {
 	for range 3 {
 		e.do(e.run([]string{"API_KEY"}, "true"))
 	}
-	l := decode[[]proto.AuditInfo](t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 2}))
+	l := decode[proto.AuditListResult](t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 2})).Entries
 	if len(l) != 2 || l[0].Decision != audit.DecisionCompleted || l[0].ExitCode == nil ||
 		l[1].Decision != audit.DecisionAllowedOnce || l[1].Reason != ReasonReleased || l[1].ExitCode != nil {
 		t.Fatalf("audit list = %+v", l)
 	}
-	if l := decode[[]proto.AuditInfo](t, e.do(&proto.Request{Op: proto.OpAudit})); len(l) != 6 {
+	if l := decode[proto.AuditListResult](t, e.do(&proto.Request{Op: proto.OpAudit})).Entries; len(l) != 6 {
 		t.Fatalf("bare list = %d", len(l))
 	}
 	v := decode[proto.AuditVerifyResult](t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionVerify}))
@@ -381,4 +396,66 @@ func TestForgedGrantRowIsIgnoredFlaggedAndCounted(t *testing.T) {
 		t.Errorf("status = %+v", st)
 	}
 	wantOK(t, e.do(&proto.Request{Op: proto.OpGrants, Action: proto.ActionRevoke, GrantID: "forged"}))
+}
+
+// bigRow appends audit rows with a large reason so a listing or export has to
+// give up rows to fit one protocol line.
+func (e *env) bigRows(n int, reason string) {
+	e.t.Helper()
+	for range n {
+		if _, err := e.a.Append(context.Background(), audit.Entry{Decision: audit.DecisionError, Reason: reason}); err != nil {
+			e.t.Fatal(err)
+		}
+	}
+}
+
+func TestOkRefusesAResultThatCannotFitOneLine(t *testing.T) {
+	w := &recWriter{}
+	ok(w, strings.Repeat("x", maxResultBytes))
+	wantFail(t, w, proto.ErrFailed, proto.ReasonResponseTooLarge)
+	w = &recWriter{}
+	ok(w, strings.Repeat("x", maxResultBytes-1024))
+	wantOK(t, w)
+}
+
+func TestAuditListTruncatesInsteadOfOverflowing(t *testing.T) {
+	e := newEnv(t)
+	e.bigRows(5, strings.Repeat("r", 1<<20+512<<10)) // 1.5 MiB each
+	w := e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 10})
+	wantOK(t, w)
+	res := decode[proto.AuditListResult](t, w)
+	if !res.Truncated || len(res.Entries) == 0 || len(res.Entries) >= 5 {
+		t.Fatalf("entries=%d truncated=%v", len(res.Entries), res.Truncated)
+	}
+	if res.Entries[0].ID != "5" { // newest first
+		t.Errorf("first = %s", res.Entries[0].ID)
+	}
+	if len(w.final.Result) > maxResultBytes {
+		t.Errorf("result is %d bytes", len(w.final.Result))
+	}
+	// A page that fits is not flagged.
+	small := decode[proto.AuditListResult](t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 2}))
+	if small.Truncated || len(small.Entries) != 2 {
+		t.Fatalf("small page: %+v", small)
+	}
+}
+
+func TestAuditExportLimitIsOnTheEncodedLength(t *testing.T) {
+	// Raw CSV well under the limit, but every quote becomes "" in CSV and \"\"
+	// in the JSON string: only the encoded length is too big.
+	e := newEnv(t)
+	e.bigRows(3, strings.Repeat(`"`, 600<<10))
+	var raw bytes.Buffer
+	if err := e.a.ExportCSV(context.Background(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw.Len() > maxResultBytes {
+		t.Fatalf("setup: raw CSV is already %d bytes", raw.Len())
+	}
+	wantFail(t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionExport}), proto.ErrFailed, proto.ReasonResponseTooLarge)
+
+	// A raw CSV beyond the limit is refused without being collected whole.
+	e2 := newEnv(t)
+	e2.bigRows(4, strings.Repeat("r", 1<<20+256<<10))
+	wantFail(t, e2.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionExport}), proto.ErrFailed, proto.ReasonResponseTooLarge)
 }
