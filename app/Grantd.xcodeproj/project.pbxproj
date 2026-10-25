@@ -1,0 +1,373 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		3861D158F505B6C7F57F3141 /* GrantdKit in Frameworks */ = {isa = PBXBuildFile; productRef = 942135EB8A9FB7E7BD15EFA8 /* GrantdKit */; };
+		5C085FAC8FEB67B623B54642 /* GrantdApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B24A03269C1DC5E93C541E /* GrantdApp.swift */; };
+		BDAB9A3C91F258F1FAD86513 /* StatusModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7F908C984349C612F0B0E10 /* StatusModel.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		02EECEE92C8D6E312059344F /* Grantd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Grantd.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		07ECEF67C18251606441847E /* GrantdKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GrantdKit; path = GrantdKit; sourceTree = SOURCE_ROOT; };
+		52B24A03269C1DC5E93C541E /* GrantdApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrantdApp.swift; sourceTree = "<group>"; };
+		E7F908C984349C612F0B0E10 /* StatusModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusModel.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		91FC69D2EF6E3528B6E69971 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3861D158F505B6C7F57F3141 /* GrantdKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		60DD8F1843CB9FCF777C3C0B = {
+			isa = PBXGroup;
+			children = (
+				DC62B163EC0CBE5AF426A2FE /* Grantd */,
+				A01360F8FDCA5234BA31A17C /* Packages */,
+				C4948404802887E856D31B1C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A01360F8FDCA5234BA31A17C /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				07ECEF67C18251606441847E /* GrantdKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		C4948404802887E856D31B1C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				02EECEE92C8D6E312059344F /* Grantd.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		DC62B163EC0CBE5AF426A2FE /* Grantd */ = {
+			isa = PBXGroup;
+			children = (
+				52B24A03269C1DC5E93C541E /* GrantdApp.swift */,
+				E7F908C984349C612F0B0E10 /* StatusModel.swift */,
+			);
+			path = Grantd;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9C81DDEDC2A261600EED386B /* Grantd */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 458A683EAA657537A53765CA /* Build configuration list for PBXNativeTarget "Grantd" */;
+			buildPhases = (
+				DF3386C99873EC712D27AE4E /* Sources */,
+				91FC69D2EF6E3528B6E69971 /* Frameworks */,
+				689EADE2CDF0C517A39E4555 /* Embed grantd helper */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Grantd;
+			packageProductDependencies = (
+				942135EB8A9FB7E7BD15EFA8 /* GrantdKit */,
+			);
+			productName = Grantd;
+			productReference = 02EECEE92C8D6E312059344F /* Grantd.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		37F8EF46878A65B35BA15482 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2710;
+				TargetAttributes = {
+					9C81DDEDC2A261600EED386B = {
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = BB8FD5AD7D517262F413C8D7 /* Build configuration list for PBXProject "Grantd" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 60DD8F1843CB9FCF777C3C0B;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				886C146D85AF7323A0DE33DE /* XCLocalSwiftPackageReference "GrantdKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = C4948404802887E856D31B1C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9C81DDEDC2A261600EED386B /* Grantd */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		689EADE2CDF0C517A39E4555 /* Embed grantd helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../bin/grantd",
+				"$(SRCROOT)/../build/bundle/helper-Info.plist",
+				"$(SRCROOT)/Grantd/embed-helper.sh",
+			);
+			name = "Embed grantd helper";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/grantd-daemon.app/Contents/MacOS/grantd",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/grantd-daemon.app/Contents/Info.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/Grantd/embed-helper.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		DF3386C99873EC712D27AE4E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5C085FAC8FEB67B623B54642 /* GrantdApp.swift in Sources */,
+				BDAB9A3C91F258F1FAD86513 /* StatusModel.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		04534C45CA0F50AF0ECCE7D6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DAEMON_BUNDLE_ID = dev.grantd.app.daemon;
+				DAEMON_MIN_MACOS = 14.0;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.2.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		3B67054C7FCAEF4EC6555A3A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Grantd/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.grantd.app;
+				PRODUCT_NAME = "grantd-app";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		9C6566169935DDD8D3C5EC01 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Grantd/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.grantd.app;
+				PRODUCT_NAME = "grantd-app";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		9C9414595282CEB6E05842E0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DAEMON_BUNDLE_ID = dev.grantd.app.daemon;
+				DAEMON_MIN_MACOS = 14.0;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.2.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		458A683EAA657537A53765CA /* Build configuration list for PBXNativeTarget "Grantd" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3B67054C7FCAEF4EC6555A3A /* Debug */,
+				9C6566169935DDD8D3C5EC01 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BB8FD5AD7D517262F413C8D7 /* Build configuration list for PBXProject "Grantd" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9C9414595282CEB6E05842E0 /* Debug */,
+				04534C45CA0F50AF0ECCE7D6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		886C146D85AF7323A0DE33DE /* XCLocalSwiftPackageReference "GrantdKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = GrantdKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		942135EB8A9FB7E7BD15EFA8 /* GrantdKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GrantdKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 37F8EF46878A65B35BA15482 /* Project object */;
+}

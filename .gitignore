@@ -30,3 +30,10 @@ go.work
 go.work.sum
 /vendor/
 /VERSION
+
+# App build products (make app, make app-test)
+/build/xcode/
+/build/grantd-dev
+app/**/xcuserdata/
+app/GrantdKit/.build/
+app/GrantdKit/.swiftpm/
