@@ -63,6 +63,7 @@ func (a *Approver) Ask(ctx context.Context, req approve.ApprovalRequest) (approv
 	cp := req
 	cp.Argv = append([]string(nil), req.Argv...)
 	cp.Secrets = append([]string(nil), req.Secrets...)
+	cp.Expanded = append([]string(nil), req.Expanded...)
 	a.seen = append(a.seen, cp)
 	if a.Err != nil {
 		return approve.Decision{}, a.Err

@@ -1,11 +1,14 @@
 package darwin
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/bmatcuk/doublestar/v4"
 
 	"grantd/internal/approve"
 )
@@ -38,14 +41,7 @@ func BuildReason(req approve.ApprovalRequest, grantTTL time.Duration) string {
 	if cwd == "" {
 		cwd = "unknown directory"
 	}
-	secrets := "no secrets"
-	if len(req.Secrets) > 0 {
-		names := make([]string, len(req.Secrets))
-		for i, s := range req.Secrets {
-			names[i] = clean(s)
-		}
-		secrets = strings.Join(names, ", ")
-	}
+	secrets := renderSecrets(req.Secrets, req.Expanded)
 	args := make([]string, len(req.Argv))
 	for i, a := range req.Argv {
 		args[i] = strings.ReplaceAll(clean(a), "`", "'")
@@ -84,6 +80,34 @@ func BuildReason(req approve.ApprovalRequest, grantTTL time.Duration) string {
 	cwdLen := utf8.RuneCountInString(cwd)
 	cwd = truncateMiddle(cwd, max(cwdLen-over, minCwdRunes))
 	return assemble(argv, cwd)
+}
+
+// renderSecrets lists the requested secrets. A glob that expanded to concrete
+// names is followed by them: `aws/* (aws/access_key, aws/secret_key)`. When
+// Expanded is empty or identical to Secrets only the requested names are shown.
+// Names are never shortened or dropped.
+func renderSecrets(secrets, expanded []string) string {
+	if len(secrets) == 0 {
+		return "no secrets"
+	}
+	show := len(expanded) > 0 && !slices.Equal(secrets, expanded)
+	out := make([]string, len(secrets))
+	for i, s := range secrets {
+		out[i] = clean(s)
+		if !show || !strings.ContainsAny(s, "*?[{") {
+			continue
+		}
+		var matched []string
+		for _, e := range expanded {
+			if ok, _ := doublestar.Match(s, e); ok {
+				matched = append(matched, clean(e))
+			}
+		}
+		if len(matched) > 0 {
+			out[i] += " (" + strings.Join(matched, ", ") + ")"
+		}
+	}
+	return strings.Join(out, ", ")
 }
 
 // clean makes untrusted text safe to embed in a single-line prompt: invalid

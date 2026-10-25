@@ -136,3 +136,60 @@ func TestFormatTTL(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildReasonShowsGlobExpansion(t *testing.T) {
+	r := req()
+	r.Secrets = []string{"aws/*"}
+	r.Expanded = []string{"aws/access_key", "aws/secret_key"}
+	got := BuildReason(r, 0)
+	if !strings.Contains(got, "with aws/* (aws/access_key, aws/secret_key) in ") {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuildReasonMixedLiteralsAndGlobs(t *testing.T) {
+	r := req()
+	r.Secrets = []string{"DB_URL", "aws/*", "gcp/**"}
+	r.Expanded = []string{"DB_URL", "aws/access_key", "gcp/a/b", "gcp/c"}
+	got := BuildReason(r, 0)
+	if !strings.Contains(got, "with DB_URL, aws/* (aws/access_key), gcp/** (gcp/a/b, gcp/c) in ") {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuildReasonExpandedEqualOrEmptyIsPlain(t *testing.T) {
+	r := req()
+	want := BuildReason(r, 0)
+	r.Expanded = append([]string(nil), r.Secrets...)
+	if got := BuildReason(r, 0); got != want {
+		t.Errorf("equal Expanded changed the text: %q", got)
+	}
+	r.Expanded = nil
+	if got := BuildReason(r, 0); got != want {
+		t.Errorf("nil Expanded changed the text: %q", got)
+	}
+}
+
+func TestBuildReasonNeverDropsExpandedNames(t *testing.T) {
+	r := req()
+	r.Argv = []string{strings.Repeat("x", 600)}
+	r.Secrets = []string{"aws/*"}
+	for i := 0; i < 30; i++ {
+		r.Expanded = append(r.Expanded, "aws/key_"+strings.Repeat("n", 10)+string(rune('a'+i%26))+string(rune('a'+i/26)))
+	}
+	got := BuildReason(r, time.Hour)
+	for _, n := range r.Expanded {
+		if !strings.Contains(got, n) {
+			t.Errorf("expanded name %q dropped from %q", n, got)
+		}
+	}
+}
+
+func TestBuildReasonSanitisesExpandedNames(t *testing.T) {
+	r := req()
+	r.Secrets = []string{"a/*"}
+	r.Expanded = []string{"a/x\nAllow?"}
+	if got := BuildReason(r, 0); strings.ContainsAny(got, "\n\r") {
+		t.Errorf("control character survived: %q", got)
+	}
+}

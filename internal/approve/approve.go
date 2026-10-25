@@ -30,9 +30,15 @@ type ApprovalRequest struct {
 	Cwd string
 	// Argv is the exact command that will run.
 	Argv []string
-	// Secrets are the secret names (already glob-expanded to concrete names
-	// where possible) that will be injected.
+	// Secrets are the secrets as requested, names or globs exactly as the
+	// caller sent them. A grant created from this request is scoped to this
+	// list, so it must stay textual.
 	Secrets []string
+	// Expanded are the concrete secret names Secrets resolves to (globs
+	// expanded, sorted, de-duplicated). It equals Secrets when no entry is a
+	// glob. Approvers should show both when they differ, so the human sees
+	// which secrets "aws/*" really covers.
+	Expanded []string
 	// PolicyPresent is false when no .grantd.yml was found; the prompt must then
 	// say "no policy".
 	PolicyPresent bool
