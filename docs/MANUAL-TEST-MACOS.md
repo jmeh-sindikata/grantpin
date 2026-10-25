@@ -13,7 +13,8 @@ logged-in desktop session (not over SSH, not inside tmux started from SSH).
 
 - The **keystore** never prompts (the SE key has no user-presence flag by
   design; presence is the Approver's job). If it prompts, that is a bug.
-- The **approver** prompts exactly once per `Ask`.
+- The **approver** shows the `osascript` dialog, then (only after an Allow
+  button) exactly one Touch ID / password prompt per `Ask`.
 - The manual tests use throwaway keys named `dev.grantd.test.<random>` and
   delete them afterwards. They never touch the real vault key
   (`dev.grantd.vault-kek`).
@@ -43,20 +44,79 @@ GRANTD_MANUAL_TEST=1 go test -race -count=1 -v ./internal/keystore/darwin -run '
 | `TestManualSecureEnclaveRoundTrip` | creates an SE key, wraps and unwraps a 32-byte key, a second store finds the existing key, a flipped bit makes unwrap fail |
 | `TestManualFallbackRoundTrip` | forces the Keychain fallback path (random KEK in a generic-password item), round-trip and tamper check |
 
-### 2a. If `TestManualSecureEnclaveRoundTrip` fails with `OSStatus -34018`
+### 2a. Decision tree: does the Secure Enclave work from this binary?
 
-`errSecMissingEntitlement`. A permanent Secure Enclave key lives in the
-data-protection keychain, which macOS only opens to binaries carrying a
-`keychain-access-groups` / `application-identifier` entitlement (a signed
-binary plus provisioning profile). A plain `go build` / `go test` binary is
-unsigned and usually does not have it. This is the single biggest open risk of
-step 7: record the exact error in your report. Options, in order:
+A permanent Secure Enclave key lives in the data-protection keychain, which
+macOS opens only to code that carries a keychain access group. A plain
+`go test` / `go build` binary is unsigned (the Go linker only adds a bare
+ad-hoc signature) and usually fails with `OSStatus -34018`
+(`errSecMissingEntitlement`). Work through these steps in order and stop at the
+first one that passes.
 
-1. Sign the real `grantd` binary with a Developer ID or Apple Development
-   identity and an entitlements plist containing the keychain access group, then
-   re-run the checks against that binary (the `go test` binary can be signed the
-   same way: `go test -c` then `codesign`).
-2. Use the fallback (section 6) knowing it is weaker.
+**Step 1: run unsigned.** Section 2's command as written.
+- Passes (`mode secure-enclave`, no errors): done. Report outcome **A**.
+- Fails with `-34018` (or `-4` / `-25291`): go to step 2.
+- Fails with anything else: copy the exact error text, report outcome **E**.
+
+**Step 2: sign ad-hoc with the entitlements plist and retry.**
+
+```sh
+make sign                      # ad-hoc signs bin/grantd (does not run it)
+# the keystore tests run inside the test binary, so sign that one too:
+T=$(mktemp -d)
+go test -c -o "$T/keystore.test" ./internal/keystore/darwin
+codesign --force --sign - --identifier dev.grantd.grantd \
+  --entitlements build/grantd.entitlements "$T/keystore.test"
+GRANTD_MANUAL_TEST=1 "$T/keystore.test" -test.v -test.count=1 \
+  -test.run 'TestManual(SecureEnclave|Fallback)'
+```
+
+- Passes: report outcome **B**.
+- Process is killed immediately (`Killed: 9`, exit 137): the entitlement was
+  rejected at launch; report outcome **C**.
+- Still `-34018`: go to step 3 (report outcome **D** if you stop here).
+
+What the plist contains and what is and is not known (macOS 27, Apple silicon):
+- `build/grantd.entitlements` holds only `com.apple.application-identifier =
+  dev.grantd.grantd`. **Verified:** a binary ad-hoc signed with this entitlement
+  launches normally.
+- `keychain-access-groups` is deliberately left out. **Verified:** an ad-hoc
+  binary carrying it is SIGKILLed at launch (exit 137), because it is a
+  restricted entitlement that needs a provisioning profile.
+- **Not verified:** whether the keychain daemon accepts
+  `com.apple.application-identifier` on an ad-hoc binary with no team ID as an
+  access group for data-protection-keychain and Secure Enclave items. I could
+  not test it without touching the Keychain. It may well still return -34018;
+  that is exactly what this step finds out. If it does, the likely real fix is
+  a proper Apple Development / Developer ID identity plus a provisioning
+  profile (which needs an app-bundle style package), and we should decide
+  whether that is in scope for v0.1.
+
+**Step 3: use the Keychain fallback and accept the tier consequence.**
+
+```sh
+GRANTD_MANUAL_TEST=1 go test -count=1 -v ./internal/keystore/darwin -run TestManualFallbackRoundTrip
+```
+
+- Passes: report outcome **F**.
+- Daemon-side, this is `keystoredarwin.New(keystoredarwin.WithAllowKeychainFallback(true))`.
+- Tier consequence: the keystore then reports `TierDialog`, not `TierHardware`.
+  Secrets with `min_tier = hardware` (the macOS default) are **refused**, not
+  downgraded, unless their min tier is lowered to `dialog` on purpose. The KEK
+  is readable by anything running as you with login-keychain access, so
+  protection is only your login session plus the Approver prompt.
+
+**What to report back** (so we can decide on tiers): the outcome letter and the
+exact `OSStatus` line from the failing run.
+
+| Outcome | Meaning | Tier decision it drives |
+|---|---|---|
+| A | works unsigned | `TierHardware` as designed |
+| B | works after `make sign` | `TierHardware`, `make sign` becomes part of install |
+| C | signed binary killed at launch | signing as tried is a dead end |
+| D | signed, still -34018 | need real identity + profile, or fallback |
+| E | some other error (paste it) | investigate |
+| F | only the fallback works | `TierDialog` on this Mac |
 
 ### 2b. Verify the key exists
 
@@ -81,38 +141,66 @@ Fallback item only, via CLI: `security delete-generic-password -s dev.grantd -a 
 
 ## 3. Approver manual tests
 
+The default approver is two steps: an `osascript` dialog (Deny / Allow once /
+Allow for 1h), then, for either Allow button, the Touch ID / password prompt.
+Deny stops after step one.
+
 ```sh
+# 3a. Dialog only, no Touch ID:
+GRANTD_MANUAL_TEST=1 go test -count=1 -v ./internal/approve/darwin -run TestManualChooserOnly
+```
+
+Expected: a caution-icon dialog titled "grantd" reading *An agent is asking
+grantd to release secrets: grantd-manual-test wants to run `echo hello` with
+MANUAL_TEST_SECRET in /tmp/grantd-manual-test (no policy)*, buttons **Deny**
+(default, also Esc) / **Allow once** / **Allow for 1h**. Check:
+
+1. Click each button in three runs; the log shows `choice=0` (Deny, also for
+   Esc and Return since Deny is the default), `choice=1` (once), `choice=2` (for 1h).
+2. Leave it alone for 2 minutes: it closes by itself and logs `choice=0`.
+3. If no dialog appears or the test errors with `choice dialog failed`, record the
+   `osascript` message (an Automation / permission message would be news).
+
+```sh
+# 3b. Full chain (dialog, then Touch ID for Allow):
 GRANTD_MANUAL_TEST=1 go test -count=1 -v ./internal/approve/darwin -run TestManualPromptsOnce
 ```
 
-Expected: one system sheet with Touch ID, reading roughly
-*grantd-manual-test wants to run `echo hello` with MANUAL_TEST_SECRET in
-/tmp/grantd-manual-test (no policy)*, a **Deny** button (the cancel label) and
-a "Use Password..." button. Check:
+1. **Allow once** then touch the sensor: `decision={Allow:true TTL:0s ...}`.
+2. **Allow for 1h** then touch the sensor: `Allow:true TTL:1h0m0s`. The Touch ID
+   text then also says "(approval lasts 1h)".
+3. **Deny**: `Allow:false Reason:user denied`, and **no Touch ID prompt appears**.
+4. **Allow once**, then cancel the Touch ID sheet: deny, `user denied`.
+5. **Allow once**, "Use Password...", wrong password: the sheet retries; after the
+   system gives up: deny, `authentication failed`. Right password: Allow.
 
-1. Touch the sensor -> test logs `decision={Allow:true TTL:0s ...}`.
-2. Re-run, click **Deny** -> `decision={Allow:false ... Reason:user denied}`, `err=<nil>`.
-3. Re-run, choose "Use Password...", type a **wrong** password -> macOS keeps
-   the sheet open for retries; after it gives up the test logs
-   `Allow:false Reason:authentication failed`. Typing the right password -> Allow.
-4. Re-run and check the wording. LocalAuthentication frames the text as
-   `"<app>" is trying to <reason>`; if it reads badly we will reword
-   `BuildReason` in `internal/approve/darwin/reason.go` (note this in the report).
+```sh
+# 3c. LocalAuthentication alone (chooser off, WithChooser(false)):
+GRANTD_MANUAL_TEST=1 go test -count=1 -v ./internal/approve/darwin -run TestManualLAOnly
+```
 
-To assert instead of eyeball: `GRANTD_MANUAL_EXPECT=allow` or `=deny`.
+Expected: one system sheet with Touch ID and a **Deny** button (the cancel
+label) plus "Use Password...". LocalAuthentication frames the text as
+`"<app>" is trying to <reason>`; if the wording reads badly, reword `BuildReason`
+in `internal/approve/darwin/reason.go` (record it in your report).
 
 ```sh
 GRANTD_MANUAL_TEST=1 go test -count=1 -v ./internal/approve/darwin -run TestManualCancelViaContext
 ```
 
-Expected: the prompt appears, then disappears by itself after about 3 seconds
-and the test passes (`context.DeadlineExceeded`, never an allow).
+Expected: the Touch ID sheet appears, disappears by itself after about 3
+seconds and the test passes (`context.DeadlineExceeded`, never an allow).
+
+To assert instead of eyeball in `TestManualPromptsOnce`: `GRANTD_MANUAL_EXPECT=allow` or `=deny`.
 
 ## 4. Expected behaviour on edge cases
 
 | Situation | Expected |
 |---|---|
-| Cancel / Deny / Esc | `Decision{Allow:false, Reason:"user denied"}`, no error |
+| Deny / Esc / close the dialog, or cancel the Touch ID sheet | `Decision{Allow:false, Reason:"user denied"}`, no error |
+| Nobody answers the dialog for 120s | dialog closes itself, deny |
+| `osascript` cannot show the dialog | `errors.Is(err, ErrChooserFailed)`, never an allow (use `WithChooser(false)` to skip it) |
+| Agent clicks the dialog via Accessibility scripting | still needs Touch ID / password afterwards (the reason LA always follows an Allow button) |
 | Wrong password | sheet retries; after the system gives up: deny, reason `authentication failed` |
 | Touch ID locked out (too many failures) | sheet asks for the password directly (policy is DeviceOwnerAuthentication) |
 | Lid closed, clamshell with external display, or Mac without Touch ID | the password sheet is used; this still counts as TierHardware per HANDOFF §5 table |
@@ -124,10 +212,12 @@ and the test passes (`context.DeadlineExceeded`, never an allow).
 
 ## 5. Known limits to confirm or record
 
-- **Allow once only.** LocalAuthentication has no three-button UI, so v0.1 is
-  Allow-once on success and Deny otherwise. `WithDefaultTTL(d)` lets the daemon
-  opt into "Allow for N" (the prompt then states the duration), but a real
-  Allow once / Allow for N / Deny chooser is not implemented.
+- **Chooser is an `osascript` dialog.** It is ordinary UI, so a process on
+  this account with Accessibility permission could script it; the
+  LocalAuthentication prompt that follows an Allow button is what stops that.
+  `WithChooser(false)` skips the dialog (LA-only, allow-once, or the
+  `WithDefaultTTL` duration). The "Allow for N" button is offered only when the
+  request's `SuggestedTTL` is non-zero.
 - **First-prompt app name.** The prompt shows the process that called
   LocalAuthentication (`grantd`, or `go` test binary during these tests).
 - **Key access after lock.** SE key protection class is

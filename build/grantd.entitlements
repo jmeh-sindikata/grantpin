@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements for ad-hoc signing bin/grantd (make sign).
+
+  com.apple.application-identifier gives the data-protection keychain (and thus
+  Secure Enclave keys) a default access group for this binary.
+
+  DELIBERATELY ABSENT: keychain-access-groups. It is a restricted entitlement;
+  an ad-hoc signed binary carrying it is SIGKILLed by AMFI at launch (verified
+  on macOS 27: exit 137) because there is no provisioning profile to authorise
+  it. Use a real Apple Development / Developer ID identity plus a profile if a
+  distinct group is ever needed.
+
+  Whether macOS honours this entitlement for the keychain on an ad-hoc binary
+  is NOT verified; see docs/MANUAL-TEST-MACOS.md section 2a.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.application-identifier</key>
+	<string>dev.grantd.grantd</string>
+</dict>
+</plist>

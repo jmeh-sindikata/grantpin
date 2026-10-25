@@ -5,10 +5,14 @@ DEV_TAG   := grantd_dev
 VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS   := -X main.version=$(VERSION)
 
-.PHONY: build test vet lint cover dev-test tools-check ci clean
+.PHONY: build sign test vet lint cover dev-test tools-check ci clean
 
 build: ## Build bin/grantd (production tags: no dev backends)
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/grantd ./cmd/grantd
+
+sign: build ## Ad-hoc codesign bin/grantd with build/grantd.entitlements (macOS; see docs/MANUAL-TEST-MACOS.md 2a)
+	codesign --force --sign - --identifier dev.grantd.grantd --entitlements build/grantd.entitlements bin/grantd
+	codesign -d --entitlements - bin/grantd
 
 test: ## Unit tests with the race detector
 	$(GO) test -race ./...

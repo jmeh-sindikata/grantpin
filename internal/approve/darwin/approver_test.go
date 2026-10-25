@@ -96,6 +96,7 @@ func TestManualPromptsOnce(t *testing.T) {
 		Argv:          []string{"echo", "hello"},
 		Secrets:       []string{"MANUAL_TEST_SECRET"},
 		PolicyPresent: false,
+		SuggestedTTL:  time.Hour,
 	})
 	t.Logf("decision=%+v err=%v", d, err)
 	if err != nil {
