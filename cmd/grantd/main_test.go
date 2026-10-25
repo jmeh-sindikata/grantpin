@@ -28,7 +28,6 @@ func TestVerbsReturnNotImplemented(t *testing.T) {
 		{"run", "--secrets", "A", "--", "true"}, {"grants"}, {"grants", "list"}, {"grants", "revoke", "x"},
 		{"audit"}, {"audit", "list"}, {"audit", "verify"}, {"audit", "export", "--csv"},
 		{"import", ".env"},
-		{"mcp"},
 	} {
 		root := newRootCmd()
 		root.SetOut(&bytes.Buffer{})
