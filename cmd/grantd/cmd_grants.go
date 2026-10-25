@@ -119,10 +119,10 @@ command prefix, so "php artisan" covers "php artisan migrate" but not "php x".
 current directory. --uses N ends the grant after N releases.
 
 You approve it once, in a dialog that says "standing grant" and states the
-duration, followed by Touch ID. Only the dialog's own "Allow for N" is limited
-by the repo policy's max_grant_ttl; a standing grant is limited to 90 days and
-by the policy's max_standing_grant_ttl if it has one. A longer --ttl is
-refused, not shortened. Revoke it with "grantd grants revoke ID".
+duration, followed by Touch ID. The repo policy's max_grant_ttl limits only
+the "Allow for N" button of a normal prompt, not this. A standing grant lasts
+at most 90 days, or less if the policy sets max_standing_grant_ttl; a longer
+--ttl is refused, not shortened. Revoke it with "grantd grants revoke ID".
 
 Any program that can reach the daemon socket can send this request, so only
 approve a standing-grant dialog that you started yourself.
