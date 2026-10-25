@@ -1,4 +1,4 @@
-//go:build !grantd_dev
+//go:build !grantd_dev && !(darwin && cgo)
 
 package main
 
@@ -10,21 +10,20 @@ import (
 	"grantd/internal/keystore"
 )
 
-// openKeyStore selects the platform KeyStore for production builds. The real
-// backends land in later milestone steps (§11 step 7 for macOS).
-func openKeyStore() (keystore.KeyStore, error) {
+// openKeyStore has no production backend on this platform/build: macOS needs
+// cgo (see backends_darwin.go); Linux and Windows land in later milestones.
+func openKeyStore(backendConfig) (keystore.KeyStore, error) {
 	if runtime.GOOS == "darwin" {
-		return nil, fmt.Errorf("macOS keystore not yet implemented")
+		return nil, fmt.Errorf("the macOS keystore needs a cgo build (CGO_ENABLED=1)")
 	}
 	return nil, fmt.Errorf("no keystore backend for %s yet", runtime.GOOS)
 }
 
-// openApprover selects the platform Approver for production builds. Until the
-// real backend is wired in, the daemon refuses to start rather than run
-// without a human in the loop.
-func openApprover() (approve.Approver, error) {
+// openApprover has no production backend on this platform/build. The daemon
+// refuses to start rather than run without a human in the loop.
+func openApprover(backendConfig) (approve.Approver, error) {
 	if runtime.GOOS == "darwin" {
-		return nil, fmt.Errorf("macOS approver not yet implemented")
+		return nil, fmt.Errorf("the macOS approver needs a cgo build (CGO_ENABLED=1)")
 	}
 	return nil, fmt.Errorf("no approver backend for %s yet", runtime.GOOS)
 }

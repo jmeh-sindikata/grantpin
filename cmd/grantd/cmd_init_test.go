@@ -1,4 +1,4 @@
-//go:build !grantd_dev
+//go:build !grantd_dev && !(darwin && cgo)
 
 package main
 

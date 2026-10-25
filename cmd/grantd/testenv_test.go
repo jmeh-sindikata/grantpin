@@ -54,7 +54,7 @@ func useFakeBackends(t *testing.T) *testApprover {
 	t.Setenv("GRANTD_HOME", filepath.Join(t.TempDir(), "g"))
 	ap := &testApprover{allow: true}
 	old := openBackends
-	openBackends = func() (backends, error) { return backends{ks: testKS{}, ap: ap}, nil }
+	openBackends = func(backendConfig) (backends, error) { return backends{ks: testKS{}, ap: ap}, nil }
 	t.Cleanup(func() { openBackends = old })
 	return ap
 }
@@ -78,7 +78,7 @@ func startTestDaemon(t *testing.T, initVault bool) *testDaemon {
 	t.Setenv("GRANTD_SOCKET", sock)
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &testDaemon{t: t, sock: sock, ap: ap, cancel: cancel, done: make(chan error, 1)}
-	go func() { d.done <- runDaemon(ctx, sock, nil) }()
+	go func() { d.done <- runDaemon(ctx, sock, nil, backendConfig{}) }()
 	for range 200 {
 		if _, err := client.Status(ctx, sock); err == nil {
 			t.Cleanup(d.stop)

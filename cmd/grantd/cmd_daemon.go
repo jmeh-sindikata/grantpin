@@ -16,6 +16,7 @@ import (
 
 func newDaemonCmd() *cobra.Command {
 	var socket string
+	var bcfg backendConfig
 	cmd := &cobra.Command{
 		Use:   "daemon",
 		Short: "Run the grantd daemon in the foreground",
@@ -27,16 +28,17 @@ func newDaemonCmd() *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			return runDaemon(ctx, path, slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil)))
+			return runDaemon(ctx, path, slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil)), bcfg)
 		},
 	}
+	addBackendFlags(cmd, &bcfg)
 	cmd.Flags().StringVar(&socket, "socket", "", "socket path (default: $GRANTD_SOCKET or the platform default)")
 	return cmd
 }
 
 // runDaemon opens the build's backends and serves until ctx is cancelled.
-func runDaemon(ctx context.Context, socket string, logger *slog.Logger) error {
-	be, err := openBackends()
+func runDaemon(ctx context.Context, socket string, logger *slog.Logger, cfg backendConfig) error {
+	be, err := openBackends(cfg)
 	if err != nil {
 		return fmt.Errorf("start daemon: %w", err)
 	}

@@ -17,10 +17,10 @@ const devApproveEnv = "GRANTD_DEV_APPROVE"
 
 // openKeyStore returns the INSECURE TierNone dev keystore. It only exists in
 // grantd_dev builds (tests); never ship such a binary.
-func openKeyStore() (keystore.KeyStore, error) { return devks.Open() }
+func openKeyStore(backendConfig) (keystore.KeyStore, error) { return devks.Open() }
 
 // openApprover returns the INSECURE TierNone dev approver: auto-deny unless
 // GRANTD_DEV_APPROVE=allow. It only exists in grantd_dev builds.
-func openApprover() (approve.Approver, error) {
+func openApprover(backendConfig) (approve.Approver, error) {
 	return devap.New(os.Getenv(devApproveEnv) == "allow"), nil
 }

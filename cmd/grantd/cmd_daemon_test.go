@@ -94,14 +94,14 @@ func TestDaemonRefusesSecondInstance(t *testing.T) {
 	sock := shortSocket(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- runDaemon(ctx, sock, nil) }()
+	go func() { done <- runDaemon(ctx, sock, nil, backendConfig{}) }()
 	for range 100 {
 		if _, err := client.Status(ctx, sock); err == nil {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if err := runDaemon(ctx, sock, nil); err == nil {
+	if err := runDaemon(ctx, sock, nil, backendConfig{}); err == nil {
 		t.Error("second daemon started on a live socket")
 	}
 	cancel()
@@ -115,5 +115,36 @@ func TestResolveSocket(t *testing.T) {
 	t.Setenv("GRANTD_SOCKET", "/env/z.sock")
 	if p, err := resolveSocket(""); err != nil || p != "/env/z.sock" {
 		t.Errorf("env: %q %v", p, err)
+	}
+}
+
+func TestDaemonKeychainFallbackFlagReachesBackends(t *testing.T) {
+	useFakeBackends(t)
+	var got []backendConfig
+	inner := openBackends
+	openBackends = func(cfg backendConfig) (backends, error) {
+		got = append(got, cfg)
+		return inner(cfg)
+	}
+	for _, args := range [][]string{{"daemon", "--socket", shortSocket(t)}, {"daemon", "--keychain-fallback", "--socket", shortSocket(t)}} {
+		ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+		root := newRootCmd()
+		root.SetOut(&bytes.Buffer{})
+		root.SetErr(&bytes.Buffer{})
+		root.SetArgs(args)
+		if err := root.ExecuteContext(ctx); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		cancel()
+	}
+	if len(got) != 2 || got[0].KeychainFallback || !got[1].KeychainFallback {
+		t.Errorf("configs seen by openBackends = %+v", got)
+	}
+}
+
+func TestInitHasKeychainFallbackFlag(t *testing.T) {
+	c, _, err := newRootCmd().Find([]string{"init"})
+	if err != nil || c.Flags().Lookup("keychain-fallback") == nil {
+		t.Fatalf("init lacks --keychain-fallback: %v", err)
 	}
 }

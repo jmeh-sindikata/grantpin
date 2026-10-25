@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"grantd/internal/approve"
 	"grantd/internal/audit"
 	"grantd/internal/broker"
@@ -24,14 +26,27 @@ type backends struct {
 	ap approve.Approver
 }
 
+// backendConfig carries the user-facing backend options from the command line.
+type backendConfig struct {
+	// KeychainFallback lets the macOS keystore fall back to a Keychain-resident
+	// key (TierDialog) when the Secure Enclave is unusable. Default false.
+	KeychainFallback bool
+}
+
+// addBackendFlags adds the flags that configure the backends to c.
+func addBackendFlags(c *cobra.Command, cfg *backendConfig) {
+	c.Flags().BoolVar(&cfg.KeychainFallback, "keychain-fallback", false,
+		"macOS: allow a Keychain-resident key (dialog tier) when the Secure Enclave is unavailable; the vault must be opened with the same setting")
+}
+
 // openBackends selects the keystore and approver for this build. Tests replace
 // it to run the daemon with fakes.
-var openBackends = func() (backends, error) {
-	ks, err := openKeyStore()
+var openBackends = func(cfg backendConfig) (backends, error) {
+	ks, err := openKeyStore(cfg)
 	if err != nil {
 		return backends{}, err
 	}
-	ap, err := openApprover()
+	ap, err := openApprover(cfg)
 	if err != nil {
 		return backends{}, err
 	}
