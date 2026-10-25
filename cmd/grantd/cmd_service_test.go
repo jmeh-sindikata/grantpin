@@ -44,11 +44,11 @@ func runService(t *testing.T, m *fakeMgr, mkErr error, args ...string) (string, 
 
 func TestServiceInstallFlags(t *testing.T) {
 	m := &fakeMgr{st: service.Status{Label: "l", Installed: true, Loaded: true, Running: true, PID: 7, PlistPath: "/p", ExePath: "/e"}}
-	out, _, err := runService(t, m, nil, "install", "--exe", "/x/grantd", "--socket", "/s.sock", "--log-dir", "/logs")
+	out, _, err := runService(t, m, nil, "install", "--exe", "/x/grantd", "--socket", "/s.sock", "--path", "/opt/homebrew/bin:/usr/bin", "--log-dir", "/logs")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.opts.Exe != "/x/grantd" || m.opts.Socket != "/s.sock" || m.opts.LogDir != "/logs" {
+	if m.opts.Exe != "/x/grantd" || m.opts.Socket != "/s.sock" || m.opts.LogDir != "/logs" || m.opts.Path != "/opt/homebrew/bin:/usr/bin" {
 		t.Errorf("opts = %+v", m.opts)
 	}
 	if !strings.Contains(out, "pid 7") || !strings.Contains(out, "installed") {

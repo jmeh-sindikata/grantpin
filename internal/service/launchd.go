@@ -84,6 +84,14 @@ func (l *launchd) bootout(ctx context.Context) error {
 	return nil
 }
 
+// pathFor is the PATH to record: the override, else the installing process's.
+func pathFor(opts Options) string {
+	if opts.Path != "" {
+		return sanitizePath(opts.Path)
+	}
+	return sanitizePath(os.Getenv("PATH"))
+}
+
 func (l *launchd) Install(ctx context.Context, opts Options) error {
 	exe, err := resolveExe(opts.Exe)
 	if err != nil {
@@ -103,7 +111,7 @@ func (l *launchd) Install(ctx context.Context, opts Options) error {
 		return fmt.Errorf("service: log directory %q must be absolute", logDir)
 	}
 	outLog, errLog := logPaths(logDir)
-	data, err := renderPlist(plistSpec{Label: Label, Exe: exe, Socket: opts.Socket, OutLog: outLog, ErrLog: errLog})
+	data, err := renderPlist(plistSpec{Label: Label, Exe: exe, Socket: opts.Socket, Path: pathFor(opts), OutLog: outLog, ErrLog: errLog})
 	if err != nil {
 		return err
 	}

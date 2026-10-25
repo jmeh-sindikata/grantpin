@@ -75,8 +75,14 @@ const wantPlist = `<?xml version="1.0" encoding="UTF-8"?>
 	<string>/logs/daemon.out.log</string>
 	<key>StandardErrorPath</key>
 	<string>/logs/daemon.err.log</string>
+	<!-- PATH is recorded from the shell that ran "grantd service install" (or
+	     taken from its path flag): launchd's own default lacks Homebrew and
+	     friends, and the commands "grantd run" starts inherit the daemon's
+	     environment by design. Nothing else from that shell is copied. -->
 	<key>EnvironmentVariables</key>
 	<dict>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/bin:/bin</string>
 		<key>GRANTD_SOCKET</key>
 		<string>/run/g.sock</string>
 	</dict>
@@ -85,12 +91,81 @@ const wantPlist = `<?xml version="1.0" encoding="UTF-8"?>
 `
 
 func TestPlistGolden(t *testing.T) {
-	got, err := renderPlist(plistSpec{Label: Label, Exe: "/opt/g & co/grantd", Socket: "/run/g.sock", OutLog: "/logs/daemon.out.log", ErrLog: "/logs/daemon.err.log"})
+	got, err := renderPlist(plistSpec{Label: Label, Exe: "/opt/g & co/grantd", Socket: "/run/g.sock", Path: "/opt/homebrew/bin:/usr/bin:/bin", OutLog: "/logs/daemon.out.log", ErrLog: "/logs/daemon.err.log"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(got) != wantPlist {
 		t.Fatalf("plist mismatch:\n%s", got)
+	}
+}
+
+func TestPlistEnvironmentCombinations(t *testing.T) {
+	for _, c := range []struct {
+		sock, path string
+		want       map[string]any
+	}{
+		{"", "", nil},
+		{"", "/usr/bin:/bin", map[string]any{"PATH": "/usr/bin:/bin"}},
+		{"/s.sock", "", map[string]any{"GRANTD_SOCKET": "/s.sock"}},
+		{"/s.sock", "/usr/bin", map[string]any{"PATH": "/usr/bin", "GRANTD_SOCKET": "/s.sock"}},
+	} {
+		data, err := renderPlist(plistSpec{Label: Label, Exe: "/g", Socket: c.sock, Path: c.path, OutLog: "/o", ErrLog: "/e"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := parsePlist(data)
+		if err != nil {
+			t.Fatalf("%+v: %v\n%s", c, err, data)
+		}
+		env, has := m["EnvironmentVariables"]
+		if c.want == nil && has || c.want != nil && !reflect.DeepEqual(env, c.want) {
+			t.Errorf("%+v: env = %v", c, env)
+		}
+		if c.want == nil && strings.Contains(string(data), "PATH is recorded") {
+			t.Errorf("comment without environment: %s", data)
+		}
+	}
+}
+
+func TestSanitizePath(t *testing.T) {
+	for in, want := range map[string]string{
+		"/opt/homebrew/bin:/usr/bin:/bin":   "/opt/homebrew/bin:/usr/bin:/bin",
+		"/usr/bin::.:rel/bin:/usr/bin:/bin": "/usr/bin:/bin",
+		"":                                  "",
+		"relative:.":                        "",
+		"/usr/bin:/bi\nn":                   "",
+		"/usr/bin:/a\x00b":                  "",
+	} {
+		if got := sanitizePath(in); got != want {
+			t.Errorf("sanitizePath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestInstallRecordsPathOnlyFromOptionOrShell(t *testing.T) {
+	t.Setenv("PATH", "/shell/bin:relative:/usr/bin")
+	t.Setenv("SECRET_TOKEN", "must-not-be-copied")
+	for _, c := range []struct{ opt, want string }{
+		{"", "/shell/bin:/usr/bin"},
+		{"/override/bin", "/override/bin"},
+	} {
+		f := &fakeRunner{results: map[string][]Result{"print": {{ExitCode: 113}}}}
+		l, exe := newTest(t, f)
+		if err := l.Install(context.Background(), Options{Exe: exe, Path: c.opt}); err != nil {
+			t.Fatal(err)
+		}
+		data, _ := os.ReadFile(l.plistPath())
+		m, err := parsePlist(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if env, _ := m["EnvironmentVariables"].(map[string]any); !reflect.DeepEqual(env, map[string]any{"PATH": c.want}) {
+			t.Errorf("opt=%q: env = %v", c.opt, env)
+		}
+		if strings.Contains(string(data), "must-not-be-copied") {
+			t.Error("another environment variable leaked into the plist")
+		}
 	}
 }
 

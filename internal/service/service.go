@@ -33,6 +33,29 @@ type Options struct {
 	// LogDir receives daemon.out.log and daemon.err.log. Empty means the
 	// platform default (~/Library/Logs/grantd on macOS).
 	LogDir string
+	// Path is the PATH recorded in the service definition. Empty means the
+	// PATH of the process running Install. Only absolute entries are kept.
+	// PATH is the only variable besides GRANTD_SOCKET the service defines.
+	Path string
+}
+
+// sanitizePath keeps the absolute, non-empty entries of a PATH value, in
+// order and without duplicates. It returns "" if nothing is left or the value
+// contains control characters (which a plist cannot carry).
+func sanitizePath(p string) string {
+	if strings.ContainsFunc(p, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return ""
+	}
+	var keep []string
+	seen := map[string]bool{}
+	for _, e := range filepath.SplitList(p) {
+		if e == "" || !filepath.IsAbs(e) || seen[e] {
+			continue
+		}
+		seen[e] = true
+		keep = append(keep, e)
+	}
+	return strings.Join(keep, string(filepath.ListSeparator))
 }
 
 // Status describes the installed service.

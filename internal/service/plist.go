@@ -19,6 +19,8 @@ type plistSpec struct {
 	Label  string
 	Exe    string
 	Socket string
+	// Path, if set, is exported to the daemon as PATH.
+	Path   string
 	OutLog string
 	ErrLog string
 }
@@ -55,11 +57,21 @@ var plistTmpl = template.Must(template.New("plist").Funcs(template.FuncMap{"x": 
 	<string>{{x .OutLog}}</string>
 	<key>StandardErrorPath</key>
 	<string>{{x .ErrLog}}</string>
-{{- if .Socket}}
+{{- if or .Socket .Path}}
+	<!-- PATH is recorded from the shell that ran "grantd service install" (or
+	     taken from its path flag): launchd's own default lacks Homebrew and
+	     friends, and the commands "grantd run" starts inherit the daemon's
+	     environment by design. Nothing else from that shell is copied. -->
 	<key>EnvironmentVariables</key>
 	<dict>
+{{- if .Path}}
+		<key>PATH</key>
+		<string>{{x .Path}}</string>
+{{- end}}
+{{- if .Socket}}
 		<key>` + socketEnv + `</key>
 		<string>{{x .Socket}}</string>
+{{- end}}
 	</dict>
 {{- end}}
 </dict>
