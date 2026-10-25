@@ -20,6 +20,7 @@ const (
 	DefaultFirstLineTimeout = 5 * time.Second
 	DefaultShutdownGrace    = 10 * time.Second
 	DefaultHandlerGrace     = 5 * time.Second
+	DefaultApprovalGrace    = 10 * time.Minute
 
 	// writeTimeout bounds a single write to a client that stopped reading.
 	writeTimeout = 30 * time.Second
@@ -45,8 +46,18 @@ type Config struct {
 	Version string
 
 	// MaxTimeout caps a request's timeout_s, and is also used when a request
-	// sets none (default 1h).
+	// sets none (default 1h). It bounds the command, not the wait for human
+	// approval (see ApprovalGrace).
 	MaxTimeout time.Duration
+	// ApprovalGrace is added to the command budget to form the per-connection
+	// deadline, so the time a human takes to answer a prompt does not eat the
+	// command's timeout_s:
+	//
+	//	deadline = min(timeout_s, MaxTimeout) + ApprovalGrace
+	//
+	// (timeout_s of 0 means MaxTimeout). Handlers read the command budget with
+	// CommandTimeout. Default 10m.
+	ApprovalGrace time.Duration
 	// FirstLineTimeout is how long a new connection may take to deliver its
 	// request line (default 5s).
 	FirstLineTimeout time.Duration
@@ -92,6 +103,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if cfg.MaxTimeout <= 0 {
 		cfg.MaxTimeout = DefaultMaxTimeout
+	}
+	if cfg.ApprovalGrace <= 0 {
+		cfg.ApprovalGrace = DefaultApprovalGrace
 	}
 	if cfg.FirstLineTimeout <= 0 {
 		cfg.FirstLineTimeout = DefaultFirstLineTimeout
@@ -336,7 +350,8 @@ func (s *Server) serveConn(conn net.Conn) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(s.baseCtx, s.requestTimeout(req))
+	budget := s.requestTimeout(req)
+	ctx, cancel := context.WithTimeout(context.WithValue(s.baseCtx, budgetKey{}, budget), budget+s.cfg.ApprovalGrace)
 	defer cancel()
 
 	// Cancel the handler if the client goes away. The protocol is strictly
@@ -366,6 +381,19 @@ func (s *Server) lookup(op string) Handler {
 	return nil
 }
 
+type budgetKey struct{}
+
+// CommandTimeout returns the command time budget the daemon granted this
+// request: timeout_s capped by Config.MaxTimeout (MaxTimeout when the request
+// set none). It excludes the approval grace added to the connection deadline,
+// so a handler should apply it to the command itself. ok is false for a
+// context that did not come from the daemon.
+func CommandTimeout(ctx context.Context) (d time.Duration, ok bool) {
+	d, ok = ctx.Value(budgetKey{}).(time.Duration)
+	return d, ok
+}
+
+// requestTimeout is the command budget for req (see CommandTimeout).
 func (s *Server) requestTimeout(req *proto.Request) time.Duration {
 	max := s.cfg.MaxTimeout
 	if req.TimeoutS <= 0 {

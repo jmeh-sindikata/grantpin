@@ -232,11 +232,12 @@ func TestTimeoutCapAppliedToHandlerContext(t *testing.T) {
 		deadlines <- time.Until(dl)
 		_ = w.Finish(okResp())
 	})
-	r := start(t, Config{Router: rt, MaxTimeout: 30 * time.Second})
+	r := start(t, Config{Router: rt, MaxTimeout: 30 * time.Second, ApprovalGrace: time.Minute})
 	for _, ts := range []int{5, 3600, 0} {
 		call(t, r.path, proto.Request{Op: proto.OpList, TimeoutS: ts})
 	}
-	for _, want := range []time.Duration{5 * time.Second, 30 * time.Second, 30 * time.Second} {
+	// deadline = min(timeout_s, MaxTimeout) + ApprovalGrace
+	for _, want := range []time.Duration{65 * time.Second, 90 * time.Second, 90 * time.Second} {
 		got := <-deadlines
 		if got > want || got < want-5*time.Second {
 			t.Errorf("deadline in %v, want about %v", got, want)
@@ -244,11 +245,39 @@ func TestTimeoutCapAppliedToHandlerContext(t *testing.T) {
 	}
 }
 
+func TestCommandTimeoutExcludesApprovalGrace(t *testing.T) {
+	got := make(chan time.Duration, 3)
+	rt := routerWith(proto.OpRun, func(ctx context.Context, _ *proto.Request, w ResponseWriter) {
+		d, ok := CommandTimeout(ctx)
+		if !ok {
+			t.Error("CommandTimeout missing")
+		}
+		got <- d
+		_ = w.Finish(okResp())
+	})
+	r := start(t, Config{Router: rt, MaxTimeout: 30 * time.Second})
+	for _, ts := range []int{5, 3600, 0} {
+		call(t, r.path, proto.Request{Op: proto.OpRun, TimeoutS: ts})
+	}
+	for _, want := range []time.Duration{5 * time.Second, 30 * time.Second, 30 * time.Second} {
+		if d := <-got; d != want {
+			t.Errorf("command timeout %v, want %v", d, want)
+		}
+	}
+	if _, ok := CommandTimeout(context.Background()); ok {
+		t.Error("CommandTimeout set on a foreign context")
+	}
+	d, _ := New(Config{SocketPath: "x"})
+	if d.cfg.ApprovalGrace != 10*time.Minute {
+		t.Errorf("default ApprovalGrace = %v", d.cfg.ApprovalGrace)
+	}
+}
+
 func TestTimeoutEnforcedWithTimeoutReason(t *testing.T) {
 	rt := routerWith(proto.OpRun, func(ctx context.Context, _ *proto.Request, _ ResponseWriter) {
 		<-ctx.Done() // honours ctx but sends nothing
 	})
-	r := start(t, Config{Router: rt, MaxTimeout: 150 * time.Millisecond})
+	r := start(t, Config{Router: rt, MaxTimeout: 100 * time.Millisecond, ApprovalGrace: 50 * time.Millisecond})
 	begin := time.Now()
 	_, resp := call(t, r.path, proto.Request{Op: proto.OpRun, TimeoutS: 3600})
 	if resp.OK || resp.Error != proto.ErrFailed || resp.Reason != proto.ReasonTimeout {
@@ -268,7 +297,7 @@ func TestHandlerIgnoringContextIsAbandoned(t *testing.T) {
 			t.Error("Finish after abandon should fail (already finished by server)")
 		}
 	})
-	r := start(t, Config{Router: rt, MaxTimeout: 50 * time.Millisecond, HandlerGrace: 100 * time.Millisecond})
+	r := start(t, Config{Router: rt, MaxTimeout: 30 * time.Millisecond, ApprovalGrace: 20 * time.Millisecond, HandlerGrace: 100 * time.Millisecond})
 	_, resp := call(t, r.path, proto.Request{Op: proto.OpRun})
 	if resp.OK || resp.Reason != proto.ReasonTimeout {
 		t.Errorf("resp = %+v", resp)

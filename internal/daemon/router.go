@@ -13,9 +13,11 @@ import (
 // Handler serves one validated request. It must send exactly one final
 // response via w.Finish; it may call w.Stream any number of times before that.
 //
-// The ctx carries the per-connection deadline (the request's timeout_s, capped
-// by Config.MaxTimeout) and is cancelled when the client goes away or the
-// daemon's shutdown grace period expires. Handlers must honour it.
+// The ctx carries the per-connection deadline (the request's timeout_s capped
+// by Config.MaxTimeout, plus Config.ApprovalGrace for human approval) and is
+// cancelled when the client goes away or the daemon's shutdown grace period
+// expires. Handlers must honour it. CommandTimeout(ctx) is the budget for the
+// command itself.
 //
 // Handlers must not retain req or w after returning.
 type Handler interface {
