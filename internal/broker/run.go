@@ -162,9 +162,9 @@ func validateRun(req *proto.Request, callerOK bool) (cwd, msg string) {
 		return "", "argv too long"
 	case argvBytes(req.Argv) > maxArgvBytes:
 		return "", "argv too large"
-	case hasControl(req.Argv...):
-		return "", "argv must not contain control characters"
-	case hasControl(req.Cwd, req.Caller):
+	case hasControl(true, req.Argv...):
+		return "", "argv must not contain control characters other than newline, carriage return and tab"
+	case hasControl(false, req.Cwd, req.Caller):
 		return "", "cwd and caller must not contain control characters"
 	case len(req.Secrets) == 0:
 		return "", "secrets must not be empty"
@@ -191,12 +191,14 @@ func validateRun(req *proto.Request, callerOK bool) (cwd, msg string) {
 }
 
 // hasControl reports whether any string contains a byte below 0x20 other than
-// a tab. Such bytes can forge lines in the approval prompt, the audit listing
-// and the logs, and have no place in a command line the human is asked to read.
-func hasControl(ss ...string) bool {
+// a tab (or, with allowNL, a newline or carriage return, which multi-line
+// `sh -c` scripts legitimately carry). Such bytes could forge lines in the
+// audit listing and logs; the approval prompt and `grantd audit` sanitise what
+// they print, and the daemon log no longer contains argv.
+func hasControl(allowNL bool, ss ...string) bool {
 	for _, s := range ss {
 		for i := 0; i < len(s); i++ {
-			if s[i] < 0x20 && s[i] != '\t' {
+			if c := s[i]; c < 0x20 && c != '\t' && !(allowNL && (c == '\n' || c == '\r')) {
 				return true
 			}
 		}

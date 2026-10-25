@@ -307,7 +307,8 @@ func TestRunBadRequests(t *testing.T) {
 		"bad caller":        mut(func(r *proto.Request) { r.Caller = "evil\nAllow?" }),
 		"long caller":       mut(func(r *proto.Request) { r.Caller = strings.Repeat("a", 100) }),
 		"bad env prefix":    mut(func(r *proto.Request) { r.EnvPrefix = "bad-prefix" }),
-		"newline in argv":   mut(func(r *proto.Request) { r.Argv = []string{"sh", "-c", "a\nb"} }),
+		"newline in cwd":    mut(func(r *proto.Request) { r.Cwd = e.cwd + "/x\ny" }),
+		"newline in caller": mut(func(r *proto.Request) { r.Caller = "a\nb" }),
 		"escape in argv":    mut(func(r *proto.Request) { r.Argv = []string{"echo", "\x1b[2J"} }),
 		"nul in argv":       mut(func(r *proto.Request) { r.Argv = []string{"echo", "a\x00b"} }),
 		"control in cwd":    mut(func(r *proto.Request) { r.Cwd = e.cwd + "/x\ry" }),
@@ -329,7 +330,24 @@ func TestRunBadRequests(t *testing.T) {
 	}
 }
 
-// A tab is the one control character argv may carry.
+// Multi-line scripts are a normal argv; the audit row keeps them intact.
+func TestRunArgvMayContainNewlines(t *testing.T) {
+	e := newEnv(t)
+	script := "echo one\r\necho \"$API_KEY\"\n# done\n"
+	w := e.do(e.run([]string{"API_KEY"}, "sh", "-c", script))
+	wantOK(t, w)
+	if *w.final.ExitCode != 0 || w.out("stdout") != "one\r\n[REDACTED:API_KEY]\n" && w.out("stdout") != "one\n[REDACTED:API_KEY]\n" {
+		t.Fatalf("exit=%v stdout=%q", w.final.ExitCode, w.out("stdout"))
+	}
+	if rel, _ := e.lastPair(); rel.Argv[2] != script {
+		t.Errorf("audit argv = %q", rel.Argv)
+	}
+	if strings.Contains(e.logs.String(), "echo one") {
+		t.Error("argv in the broker log")
+	}
+}
+
+// A tab is allowed too.
 func TestRunArgvMayContainTabs(t *testing.T) {
 	e := newEnv(t)
 	wantOK(t, e.do(e.run([]string{"API_KEY"}, "sh", "-c", "true\t# comment")))
