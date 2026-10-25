@@ -75,7 +75,9 @@ func allowForLabel(ttl time.Duration) string {
 // string such as "-e" can never be read as an osascript option.
 func dialogArgs(req approve.ApprovalRequest, ttl time.Duration) []string {
 	text := "An agent is asking grantd to release secrets:\n\n" + BuildReason(req, 0)
-	if ttl > 0 {
+	if scope := GrantScope(req, ttl); scope != "" {
+		text += "\n\n" + scope + "."
+	} else if ttl > 0 {
 		text += "\n\n\"" + allowForLabel(ttl) + "\" lets the same request run again for that long."
 	}
 	return []string{"-e", chooserScript, "--", text, allowForLabel(ttl)}

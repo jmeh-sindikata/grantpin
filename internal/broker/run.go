@@ -226,6 +226,11 @@ func (b *Broker) approveRun(ctx context.Context, rc *runCtx, req *proto.Request,
 		PolicyPresent: pol.Present(),
 		SuggestedTTL:  suggested,
 	}
+	// Show exactly what "Allow for N" will store, taken from the same function
+	// that builds the grant.
+	scope := grant.FromDecision(areq, suggested, maxTTL, matchedPrefix(pol, req.Argv), b.now())
+	areq.GrantCmdPrefix = slices.Clone(scope.CmdPrefix)
+	areq.GrantCwdPrefix = scope.CwdPrefix
 	dec, err := b.ask(ctx, areq)
 	switch {
 	case err != nil && ctx.Err() != nil:

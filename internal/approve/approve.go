@@ -42,6 +42,14 @@ type ApprovalRequest struct {
 	// PolicyPresent is false when no .grantd.yml was found; the prompt must then
 	// say "no policy".
 	PolicyPresent bool
+	// GrantCmdPrefix and GrantCwdPrefix are exactly what an "Allow for N"
+	// answer will store: the grant covers any later request from the same
+	// caller whose argv starts with GrantCmdPrefix, whose cwd is
+	// GrantCwdPrefix or below it, and that asks only for secrets covered by
+	// Secrets. Approvers that offer "Allow for N" must show this scope. Both
+	// are empty when no grant can result (e.g. show).
+	GrantCmdPrefix []string
+	GrantCwdPrefix string
 	// SuggestedTTL is the default duration offered for "Allow for N" (1h by
 	// default, already capped by policy max_grant_ttl).
 	SuggestedTTL time.Duration

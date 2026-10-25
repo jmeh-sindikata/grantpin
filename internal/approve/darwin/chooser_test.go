@@ -179,3 +179,21 @@ func TestLimitedBuffer(t *testing.T) {
 		t.Error("exceeded max")
 	}
 }
+
+func TestDialogArgsStateGrantScope(t *testing.T) {
+	r := req()
+	r.Argv = []string{"php", "artisan", "sync"}
+	r.GrantCmdPrefix = []string{"php", "artisan"}
+	r.GrantCwdPrefix = "/Users/me/projects/foo"
+	args := dialogArgs(r, time.Hour)
+	if !strings.HasSuffix(args[3], "\n\nAllow for 1h covers: php artisan … in /Users/me/projects/foo and subfolders.") {
+		t.Errorf("text = %q", args[3])
+	}
+	if args[4] != "Allow for 1h" {
+		t.Errorf("label = %q", args[4])
+	}
+	// No third button, no scope sentence.
+	if a := dialogArgs(r, 0); strings.Contains(a[3], "covers") || a[4] != "" {
+		t.Errorf("scope without Allow for N: %q", a)
+	}
+}

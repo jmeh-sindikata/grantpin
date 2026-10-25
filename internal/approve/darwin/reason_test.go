@@ -193,3 +193,50 @@ func TestBuildReasonSanitisesExpandedNames(t *testing.T) {
 		t.Errorf("control character survived: %q", got)
 	}
 }
+
+func scoped() approve.ApprovalRequest {
+	r := req()
+	r.Argv = []string{"php", "artisan", "sync", "--force"}
+	r.GrantCmdPrefix = []string{"php", "artisan"}
+	r.GrantCwdPrefix = "/Users/me/projects/foo"
+	return r
+}
+
+func TestGrantScopeText(t *testing.T) {
+	want := "Allow for 1h covers: php artisan … in /Users/me/projects/foo and subfolders"
+	if got := GrantScope(scoped(), time.Hour); got != want {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+	if GrantScope(scoped(), 0) != "" {
+		t.Error("scope shown without an Allow-for-N offer")
+	}
+	if GrantScope(req(), time.Hour) != "" {
+		t.Error("scope shown without a grant scope in the request")
+	}
+	r := scoped()
+	r.GrantCmdPrefix = []string{"a`b", "x\ny"}
+	r.GrantCwdPrefix = "/p\nAllow?"
+	if g := GrantScope(r, time.Hour); strings.ContainsAny(g, "\n`") {
+		t.Errorf("unsanitised: %q", g)
+	}
+}
+
+func TestBuildReasonStatesGrantScopeWhenAllowForNIsOffered(t *testing.T) {
+	got := BuildReason(scoped(), time.Hour)
+	if !strings.Contains(got, "(Allow for 1h covers: php artisan … in /Users/me/projects/foo and subfolders)") {
+		t.Errorf("got %q", got)
+	}
+	if strings.Contains(got, "approval lasts") {
+		t.Errorf("old wording kept: %q", got)
+	}
+	if g := BuildReason(scoped(), 0); strings.Contains(g, "covers") {
+		t.Errorf("scope in an allow-once reason: %q", g)
+	}
+	// Long argv/cwd are truncated in the main text, never the granted prefix.
+	r := scoped()
+	r.Argv = []string{strings.Repeat("x", 800)}
+	r.GrantCmdPrefix = []string{"php", strings.Repeat("p", 40)}
+	if g := BuildReason(r, time.Hour); !strings.Contains(g, "php "+strings.Repeat("p", 40)+" …") {
+		t.Errorf("granted prefix truncated: %q", g)
+	}
+}

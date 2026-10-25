@@ -52,7 +52,9 @@ func BuildReason(req approve.ApprovalRequest, grantTTL time.Duration) string {
 	}
 
 	suffix := ""
-	if grantTTL > 0 {
+	if scope := GrantScope(req, grantTTL); scope != "" {
+		suffix += " (" + scope + ")"
+	} else if grantTTL > 0 {
 		suffix += " (approval lasts " + formatTTL(grantTTL) + ")"
 	}
 	if !req.PolicyPresent {
@@ -80,6 +82,30 @@ func BuildReason(req approve.ApprovalRequest, grantTTL time.Duration) string {
 	cwdLen := utf8.RuneCountInString(cwd)
 	cwd = truncateMiddle(cwd, max(cwdLen-over, minCwdRunes))
 	return assemble(argv, cwd)
+}
+
+// GrantScope states what an "Allow for N" answer covers, e.g.
+//
+//	Allow for 1h covers: php artisan … in /Users/me/projects/foo and subfolders
+//
+// The "…" says any further arguments are covered. It is empty when ttl is not
+// positive or the request carries no grant scope. The command prefix and
+// directory are the security-relevant part of the text and are never
+// truncated; they are sanitised like every other untrusted string.
+func GrantScope(req approve.ApprovalRequest, ttl time.Duration) string {
+	if ttl <= 0 {
+		return ""
+	}
+	parts := make([]string, len(req.GrantCmdPrefix))
+	for i, a := range req.GrantCmdPrefix {
+		parts[i] = strings.ReplaceAll(clean(a), "`", "'")
+	}
+	cmd := strings.Join(parts, " ")
+	cwd := clean(req.GrantCwdPrefix)
+	if cmd == "" || cwd == "" {
+		return ""
+	}
+	return "Allow for " + formatTTL(ttl) + " covers: " + cmd + " … in " + cwd + " and subfolders"
 }
 
 // renderSecrets lists the requested secrets. A glob that expanded to concrete

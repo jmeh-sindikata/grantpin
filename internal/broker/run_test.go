@@ -599,3 +599,26 @@ func TestRunApprovalRequestCarriesExpandedNames(t *testing.T) {
 		t.Errorf("literal request Expanded = %v", r.Expanded)
 	}
 }
+
+func TestRunApprovalRequestStatesGrantScope(t *testing.T) {
+	e := newEnv(t)
+	// No policy: the grant would be scoped to the full argv in the resolved cwd.
+	wantOK(t, e.do(e.run([]string{"API_KEY"}, "sh", "-c", "exit 0")))
+	r := e.ap.last()
+	if strings.Join(r.GrantCmdPrefix, "|") != "sh|-c|exit 0" || r.GrantCwdPrefix != e.cwd {
+		t.Errorf("scope = %q in %q", r.GrantCmdPrefix, r.GrantCwdPrefix)
+	}
+	// With a policy prefix: the policy prefix, and what is stored is identical.
+	writePolicy(t, e.cwd, "version: 1\nsecrets: [API_KEY]\ncommands:\n  - [sh]\n", 0o600)
+	e.ap.ttl = time.Hour
+	w := e.do(e.run([]string{"API_KEY"}, "sh", "-c", "exit 0"))
+	wantOK(t, w)
+	r = e.ap.last()
+	g, err := e.g.Get(context.Background(), w.final.GrantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(r.GrantCmdPrefix, "|") != "sh" || strings.Join(g.CmdPrefix, "|") != strings.Join(r.GrantCmdPrefix, "|") || g.CwdPrefix != r.GrantCwdPrefix {
+		t.Errorf("shown scope %q in %q != stored %q in %q", r.GrantCmdPrefix, r.GrantCwdPrefix, g.CmdPrefix, g.CwdPrefix)
+	}
+}

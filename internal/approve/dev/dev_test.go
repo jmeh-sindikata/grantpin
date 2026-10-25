@@ -5,6 +5,7 @@ package dev
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,7 +28,7 @@ func TestRecordsAndDecides(t *testing.T) {
 	a := New(false)
 	req := approve.ApprovalRequest{
 		Caller: "claude-code", Cwd: "/w", Argv: []string{"php", "artisan"},
-		Secrets: []string{"A", "b/*"}, Expanded: []string{"A", "b/x"}, PolicyPresent: true, SuggestedTTL: time.Hour,
+		Secrets: []string{"A", "b/*"}, Expanded: []string{"A", "b/x"}, GrantCmdPrefix: []string{"php", "artisan"}, GrantCwdPrefix: "/w", PolicyPresent: true, SuggestedTTL: time.Hour,
 	}
 	d, err := a.Ask(context.Background(), req)
 	if err != nil || d.Allow || d.Reason == "" {
@@ -35,6 +36,7 @@ func TestRecordsAndDecides(t *testing.T) {
 	}
 	req.Argv[0] = "mutated" // recorded copy must be independent
 	req.Expanded[1] = "mutated"
+	req.GrantCmdPrefix[0] = "mutated"
 	a.SetAllow(true)
 	a.TTL = time.Hour
 	d, _ = a.Ask(context.Background(), approve.ApprovalRequest{Caller: "x"})
@@ -42,7 +44,7 @@ func TestRecordsAndDecides(t *testing.T) {
 		t.Fatalf("allow decision = %+v", d)
 	}
 	seen := a.Requests()
-	if len(seen) != 2 || seen[0].Argv[0] != "php" || seen[0].Caller != "claude-code" || len(seen[0].Expanded) != 2 || seen[0].Expanded[1] != "b/x" || !seen[0].PolicyPresent {
+	if len(seen) != 2 || seen[0].Argv[0] != "php" || seen[0].Caller != "claude-code" || len(seen[0].Expanded) != 2 || seen[0].Expanded[1] != "b/x" || strings.Join(seen[0].GrantCmdPrefix, " ") != "php artisan" || seen[0].GrantCwdPrefix != "/w" || !seen[0].PolicyPresent {
 		t.Fatalf("seen = %+v", seen)
 	}
 	a.Reset()
