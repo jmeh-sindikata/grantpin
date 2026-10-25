@@ -11,7 +11,7 @@ import (
 // must refuse to start (never fall back to a no-human approver).
 func TestDaemonRefusesWithoutBackends(t *testing.T) {
 	t.Setenv("GRANTD_HOME", t.TempDir())
-	err := runDaemon(t.Context(), shortSocket(t), nil, backendConfig{})
+	err := runDaemon(t.Context(), shortSocket(t), nil)
 	if err == nil || !strings.Contains(err.Error(), "start daemon") || !strings.Contains(err.Error(), "yet") {
 		t.Fatalf("err = %v", err)
 	}

@@ -8,10 +8,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"grantd/internal/client"
+	"grantd/internal/presence"
+	"grantd/internal/vault"
 )
 
 func shortSocket(t *testing.T) string {
@@ -94,14 +97,14 @@ func TestDaemonRefusesSecondInstance(t *testing.T) {
 	sock := shortSocket(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- runDaemon(ctx, sock, nil, backendConfig{}) }()
+	go func() { done <- runDaemon(ctx, sock, nil) }()
 	for range 100 {
 		if _, err := client.Status(ctx, sock); err == nil {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if err := runDaemon(ctx, sock, nil, backendConfig{}); err == nil {
+	if err := runDaemon(ctx, sock, nil); err == nil {
 		t.Error("second daemon started on a live socket")
 	}
 	cancel()
@@ -118,27 +121,47 @@ func TestResolveSocket(t *testing.T) {
 	}
 }
 
-func TestDaemonKeychainFallbackFlagReachesBackends(t *testing.T) {
-	useFakeBackends(t)
-	var got []backendConfig
-	inner := openBackends
-	openBackends = func(cfg backendConfig) (backends, error) {
-		got = append(got, cfg)
-		return inner(cfg)
-	}
-	for _, args := range [][]string{{"daemon", "--socket", shortSocket(t)}, {"daemon", "--keychain-fallback", "--socket", shortSocket(t)}} {
-		ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
-		root := newRootCmd()
-		root.SetOut(&bytes.Buffer{})
-		root.SetErr(&bytes.Buffer{})
-		root.SetArgs(args)
-		if err := root.ExecuteContext(ctx); err != nil {
-			t.Fatalf("%v: %v", args, err)
+func TestKeychainFallbackIsAnInitOnlyFlag(t *testing.T) {
+	root := newRootCmd()
+	for _, path := range [][]string{{"daemon"}, {"service", "install"}} {
+		c, _, err := root.Find(path)
+		if err != nil || c.Flags().Lookup("keychain-fallback") != nil {
+			t.Errorf("%v must not have --keychain-fallback (err=%v)", path, err)
 		}
-		cancel()
 	}
-	if len(got) != 2 || got[0].KeychainFallback || !got[1].KeychainFallback {
-		t.Errorf("configs seen by openBackends = %+v", got)
+}
+
+// A keystore that reports a stronger tier before unwrapping than after (the
+// macOS keystore resolves its mode while unwrapping) must not slip past
+// vault.Open's pre-unwrap check.
+type shiftyKS struct {
+	testKS
+	unwrapped atomic.Bool
+}
+
+func (k *shiftyKS) Tier() presence.PresenceTier {
+	if k.unwrapped.Load() {
+		return presence.TierNone
+	}
+	return presence.TierHardware
+}
+func (k *shiftyKS) Unwrap(ctx context.Context, w []byte) ([]byte, error) {
+	k.unwrapped.Store(true)
+	return k.testKS.Unwrap(ctx, w)
+}
+
+func TestDaemonRefusesKeystoreThatDowngradesAfterUnwrap(t *testing.T) {
+	useFakeBackends(t)
+	p, _ := vault.DefaultPath()
+	v, err := vault.Init(context.Background(), p, &shiftyKS{}, vault.WithDefaultMinTier(presence.TierNone))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = v.Close()
+	be := backends{ks: &shiftyKS{}, ap: &testApprover{allow: true}}
+	err = serveDaemon(t.Context(), shortSocket(t), nil, be)
+	if err == nil || !strings.Contains(err.Error(), "refusing to downgrade") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

@@ -21,6 +21,6 @@ func openKeyStore(backendConfig) (keystore.KeyStore, error) { return devks.Open(
 
 // openApprover returns the INSECURE TierNone dev approver: auto-deny unless
 // GRANTD_DEV_APPROVE=allow. It only exists in grantd_dev builds.
-func openApprover(backendConfig) (approve.Approver, error) {
+func openApprover() (approve.Approver, error) {
 	return devap.New(os.Getenv(devApproveEnv) == "allow"), nil
 }

@@ -21,7 +21,7 @@ func openKeyStore(backendConfig) (keystore.KeyStore, error) {
 
 // openApprover has no production backend on this platform/build. The daemon
 // refuses to start rather than run without a human in the loop.
-func openApprover(backendConfig) (approve.Approver, error) {
+func openApprover() (approve.Approver, error) {
 	if runtime.GOOS == "darwin" {
 		return nil, fmt.Errorf("the macOS approver needs a cgo build (CGO_ENABLED=1)")
 	}

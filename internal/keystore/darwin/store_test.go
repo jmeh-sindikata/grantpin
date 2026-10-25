@@ -46,22 +46,40 @@ func TestModeNames(t *testing.T) {
 	}
 }
 
-func TestUnwrapModeMismatch(t *testing.T) {
+// Unwrap follows the blob's own mode byte, whatever the store's options or
+// resolved mode are. The hooks stand in for Security.framework.
+func TestUnwrapFollowsTheBlobsMode(t *testing.T) {
 	ctx := context.Background()
-	blobSE := encodeBlob(ModeSecureEnclave, []byte("x"))
-	blobKC := encodeBlob(ModeKeychain, []byte("x"))
+	blobSE := encodeBlob(ModeSecureEnclave, []byte("se-payload"))
+	blobKC := encodeBlob(ModeKeychain, []byte("kc-payload"))
+	for _, fallback := range []bool{false, true} {
+		for _, mode := range []Mode{0, ModeSecureEnclave, ModeKeychain} {
+			s := fakeStore(mode, fallback)
+			var gotSE, gotKC string
+			s.unwrapSEHook = func(p []byte) ([]byte, error) { gotSE = string(p); return []byte("key-se"), nil }
+			s.unwrapKCHook = func(p, hdr []byte) ([]byte, error) {
+				gotKC = string(p)
+				if len(hdr) != 2 || hdr[0] != byte(ModeKeychain) {
+					t.Errorf("bad header %v", hdr)
+				}
+				return []byte("key-kc"), nil
+			}
+			if k, err := s.Unwrap(ctx, blobKC); err != nil || string(k) != "key-kc" || gotKC != "kc-payload" || gotSE != "" {
+				t.Errorf("fallback=%v mode=%v: keychain blob -> %q %v (se=%q kc=%q)", fallback, mode, k, err, gotSE, gotKC)
+			}
+			if k, err := s.Unwrap(ctx, blobSE); err != nil || string(k) != "key-se" || gotSE != "se-payload" {
+				t.Errorf("fallback=%v mode=%v: SE blob -> %q %v (se=%q)", fallback, mode, k, err, gotSE)
+			}
+		}
+	}
+}
 
-	// Fallback not enabled: keychain blob refused outright.
-	if _, err := fakeStore(0, false).Unwrap(ctx, blobKC); !errors.Is(err, ErrModeMismatch) {
-		t.Errorf("kc blob, fallback off: %v", err)
-	}
-	// Store resolved to keychain: SE blob refused.
-	if _, err := fakeStore(ModeKeychain, true).Unwrap(ctx, blobSE); !errors.Is(err, ErrModeMismatch) {
-		t.Errorf("se blob on kc store: %v", err)
-	}
-	// Store resolved to SE: keychain blob refused.
-	if _, err := fakeStore(ModeSecureEnclave, true).Unwrap(ctx, blobKC); !errors.Is(err, ErrModeMismatch) {
-		t.Errorf("kc blob on se store: %v", err)
+func TestUnwrapRejectsUnknownModeBlob(t *testing.T) {
+	s := fakeStore(0, true)
+	s.unwrapSEHook = func([]byte) ([]byte, error) { t.Error("hook called"); return nil, nil }
+	s.unwrapKCHook = func(_, _ []byte) ([]byte, error) { t.Error("hook called"); return nil, nil }
+	if _, err := s.Unwrap(context.Background(), []byte{9, FormatVersion, 1, 2, 3}); !errors.Is(err, ErrBadBlob) {
+		t.Errorf("err = %v", err)
 	}
 }
 

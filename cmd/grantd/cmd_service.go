@@ -50,7 +50,6 @@ func newServiceCmd() *cobra.Command {
 	}
 	install.Flags().StringVar(&opts.Exe, "exe", "", "grantd binary the service runs (default: this executable)")
 	install.Flags().StringVar(&opts.Socket, "socket", "", "socket path to export to the daemon as GRANTD_SOCKET")
-	install.Flags().BoolVar(&opts.KeychainFallback, "keychain-fallback", false, "run the daemon with --keychain-fallback (macOS: allow a Keychain-resident key when the Secure Enclave is unavailable; must match how the vault was created)")
 	install.Flags().StringVar(&opts.LogDir, "log-dir", "", "directory for daemon logs (default: ~/Library/Logs/grantd)")
 
 	uninstall := &cobra.Command{
@@ -117,9 +116,6 @@ func printServiceStatus(cmd *cobra.Command, st service.Status) {
 	}
 	if st.ExePath != "" {
 		fmt.Fprintf(w, "exe:       %s\n", st.ExePath)
-	}
-	if st.KeychainFallback {
-		fmt.Fprintf(w, "options:   --keychain-fallback\n")
 	}
 	if st.ExeMissing {
 		fmt.Fprintf(w, "warning:   executable no longer exists; re-run `grantd service install`\n")

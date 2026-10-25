@@ -29,6 +29,10 @@ type Store struct {
 	svc string
 	acc string
 
+	// Test seams: when set, Unwrap calls these instead of Security.framework.
+	unwrapSEHook func(payload []byte) ([]byte, error)
+	unwrapKCHook func(payload, hdr []byte) ([]byte, error)
+
 	mu   sync.Mutex
 	mode Mode           // 0 = unresolved
 	key  unsafe.Pointer // retained SecKeyRef (private) when mode == ModeSecureEnclave
@@ -132,7 +136,9 @@ func (s *Store) Wrap(ctx context.Context, dataKey []byte) ([]byte, error) {
 	return s.wrapKeychain(dataKey)
 }
 
-// Unwrap recovers the data key. It never prompts and never creates keys.
+// Unwrap recovers the data key. It never prompts and never creates keys. The
+// blob's mode byte selects the mechanism, whatever options this Store was built
+// with (see the package comment).
 func (s *Store) Unwrap(ctx context.Context, wrapped []byte) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -144,18 +150,17 @@ func (s *Store) Unwrap(ctx context.Context, wrapped []byte) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// The blob names the mode that produced it and that mode alone decides how
+	// it is opened; WithAllowKeychainFallback only governs what Wrap may create.
 	switch m {
 	case ModeSecureEnclave:
-		if s.mode == ModeKeychain {
-			return nil, fmt.Errorf("%w: blob is %s, store is %s", ErrModeMismatch, m, s.mode)
+		if s.unwrapSEHook != nil {
+			return s.unwrapSEHook(payload)
 		}
 		return s.unwrapSE(payload)
 	case ModeKeychain:
-		if !s.cfg.allowFallback {
-			return nil, fmt.Errorf("%w: blob is %s but the keychain fallback is not enabled", ErrModeMismatch, m)
-		}
-		if s.mode == ModeSecureEnclave {
-			return nil, fmt.Errorf("%w: blob is %s, store is %s", ErrModeMismatch, m, s.mode)
+		if s.unwrapKCHook != nil {
+			return s.unwrapKCHook(payload, wrapped[:2])
 		}
 		return s.unwrapKeychain(payload, wrapped[:2])
 	}

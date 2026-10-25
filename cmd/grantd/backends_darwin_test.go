@@ -66,12 +66,12 @@ func TestDarwinApproverIsConstructedWithDefaults(t *testing.T) {
 		}
 		return spyAP{}, nil
 	}
-	ap, err := openApprover(backendConfig{KeychainFallback: true})
+	ap, err := openApprover()
 	if err != nil || ap.Tier() != presence.TierHardware || called != 1 {
 		t.Fatalf("%v %v called=%d", ap, err, called)
 	}
 	newDarwinApprover = func(...approvedarwin.Option) (approve.Approver, error) { return nil, errors.New("boom") }
-	if _, err := openApprover(backendConfig{}); err == nil || !strings.Contains(err.Error(), "boom") {
+	if _, err := openApprover(); err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("err = %v", err)
 	}
 }

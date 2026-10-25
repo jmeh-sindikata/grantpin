@@ -245,7 +245,7 @@ func TestDaemonRefusesUnusableVault(t *testing.T) {
 	if err := os.WriteFile(vp, []byte("not a database"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err := runDaemon(t.Context(), shortSocket(t), nil, backendConfig{})
+	err := runDaemon(t.Context(), shortSocket(t), nil)
 	if err == nil || !strings.Contains(err.Error(), "open vault") {
 		t.Fatalf("err = %v", err)
 	}

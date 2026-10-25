@@ -15,17 +15,12 @@ import (
 // dependency on the daemon package).
 const socketEnv = "GRANTD_SOCKET"
 
-// keychainFallbackFlag is the daemon flag Options.KeychainFallback adds.
-const keychainFallbackFlag = "--keychain-fallback"
-
 type plistSpec struct {
 	Label  string
 	Exe    string
 	Socket string
-	// KeychainFallback appends --keychain-fallback to the daemon arguments.
-	KeychainFallback bool
-	OutLog           string
-	ErrLog           string
+	OutLog string
+	ErrLog string
 }
 
 func xmlEscape(s string) string {
@@ -44,9 +39,6 @@ var plistTmpl = template.Must(template.New("plist").Funcs(template.FuncMap{"x": 
 	<array>
 		<string>{{x .Exe}}</string>
 		<string>daemon</string>
-{{- if .KeychainFallback}}
-		<string>` + keychainFallbackFlag + `</string>
-{{- end}}
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
@@ -187,30 +179,17 @@ func parseValue(dec *xml.Decoder, se xml.StartElement) (any, error) {
 
 // plistExe extracts ProgramArguments[0] from plist data.
 func plistExe(data []byte) (string, error) {
-	args, err := plistArgs(data)
+	m, err := parsePlist(data)
 	if err != nil {
 		return "", err
 	}
-	return args[0], nil
-}
-
-// plistArgs returns the string elements of ProgramArguments (at least one).
-func plistArgs(data []byte) ([]string, error) {
-	m, err := parsePlist(data)
-	if err != nil {
-		return nil, err
+	args, _ := m["ProgramArguments"].([]any)
+	if len(args) == 0 {
+		return "", fmt.Errorf("service: plist has no ProgramArguments")
 	}
-	raw, _ := m["ProgramArguments"].([]any)
-	if len(raw) == 0 {
-		return nil, fmt.Errorf("service: plist has no ProgramArguments")
+	exe, _ := args[0].(string)
+	if exe == "" {
+		return "", fmt.Errorf("service: plist ProgramArguments[0] is not a string")
 	}
-	args := make([]string, 0, len(raw))
-	for _, a := range raw {
-		s, _ := a.(string)
-		args = append(args, s)
-	}
-	if args[0] == "" {
-		return nil, fmt.Errorf("service: plist ProgramArguments[0] is not a string")
-	}
-	return args, nil
+	return exe, nil
 }

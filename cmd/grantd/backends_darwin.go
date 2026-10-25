@@ -32,7 +32,7 @@ func openKeyStore(cfg backendConfig) (keystore.KeyStore, error) {
 // openApprover returns the LocalAuthentication approver (Touch ID with
 // password fallback) with the Allow once / Allow for N / Deny chooser, which is
 // on by default.
-func openApprover(backendConfig) (approve.Approver, error) {
+func openApprover() (approve.Approver, error) {
 	ap, err := newDarwinApprover()
 	if err != nil {
 		return nil, fmt.Errorf("macOS approver: %w", err)

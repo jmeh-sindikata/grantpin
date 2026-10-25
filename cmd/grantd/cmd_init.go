@@ -45,6 +45,6 @@ func newInitCmd() *cobra.Command {
 			return nil
 		},
 	}
-	addBackendFlags(c, &bcfg)
+	addInitFlags(c, &bcfg)
 	return c
 }

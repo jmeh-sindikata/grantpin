@@ -12,7 +12,7 @@ import (
 
 func TestDevApproverDefaultsToDeny(t *testing.T) {
 	t.Setenv(devApproveEnv, "")
-	ap, err := openApprover(backendConfig{})
+	ap, err := openApprover()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,13 +25,13 @@ func TestDevApproverDefaultsToDeny(t *testing.T) {
 	}
 	for _, v := range []string{"yes", "ALLOW", "1", "deny"} {
 		t.Setenv(devApproveEnv, v)
-		ap, _ = openApprover(backendConfig{})
+		ap, _ = openApprover()
 		if d, _ := ap.Ask(context.Background(), approve.ApprovalRequest{}); d.Allow {
 			t.Errorf("%s=%q allowed", devApproveEnv, v)
 		}
 	}
 	t.Setenv(devApproveEnv, "allow")
-	ap, _ = openApprover(backendConfig{})
+	ap, _ = openApprover()
 	if d, _ := ap.Ask(context.Background(), approve.ApprovalRequest{}); !d.Allow || d.TTL != 0 {
 		t.Errorf("allow decision = %+v", d)
 	}

@@ -55,8 +55,8 @@ var (
 	// ErrSecureEnclaveUnavailable means the Secure Enclave could not be used
 	// and the keychain fallback was not enabled (or also failed).
 	ErrSecureEnclaveUnavailable = errors.New("darwin keystore: Secure Enclave unavailable (VM, no SE, or binary lacks keychain entitlements); pass WithAllowKeychainFallback(true) to accept the weaker Keychain fallback")
-	// ErrModeMismatch means a wrapped blob was produced in a different mode
-	// than the one this store can unwrap.
+	// ErrModeMismatch is no longer returned by Unwrap, which opens a blob by
+	// its own mode byte; it remains for API compatibility.
 	ErrModeMismatch = errors.New("darwin keystore: wrapped blob mode does not match this store")
 	// ErrBadBlob means the blob is malformed (too short, unknown version/mode).
 	ErrBadBlob = errors.New("darwin keystore: malformed wrapped blob")

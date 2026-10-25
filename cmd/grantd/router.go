@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"sync"
@@ -26,27 +27,30 @@ type backends struct {
 	ap approve.Approver
 }
 
-// backendConfig carries the user-facing backend options from the command line.
+// backendConfig carries the options of `grantd init` that configure the
+// keystore. The daemon needs none: the macOS keystore opens a wrapped key by
+// the mode recorded in the blob itself.
 type backendConfig struct {
-	// KeychainFallback lets the macOS keystore fall back to a Keychain-resident
-	// key (TierDialog) when the Secure Enclave is unusable. Default false.
+	// KeychainFallback lets the macOS keystore create a Keychain-resident key
+	// (TierDialog) when the Secure Enclave is unusable. Default false. Only
+	// meaningful when a vault is created.
 	KeychainFallback bool
 }
 
-// addBackendFlags adds the flags that configure the backends to c.
-func addBackendFlags(c *cobra.Command, cfg *backendConfig) {
+// addInitFlags adds the keystore flags of `grantd init` to c.
+func addInitFlags(c *cobra.Command, cfg *backendConfig) {
 	c.Flags().BoolVar(&cfg.KeychainFallback, "keychain-fallback", false,
-		"macOS: allow a Keychain-resident key (dialog tier) when the Secure Enclave is unavailable; the vault must be opened with the same setting")
+		"macOS: if the Secure Enclave is unavailable, protect the vault key with a Keychain item (dialog tier, weaker) instead of failing; recorded in the vault, so later commands need no flag")
 }
 
 // openBackends selects the keystore and approver for this build. Tests replace
 // it to run the daemon with fakes.
-var openBackends = func(cfg backendConfig) (backends, error) {
-	ks, err := openKeyStore(cfg)
+var openBackends = func() (backends, error) {
+	ks, err := openKeyStore(backendConfig{})
 	if err != nil {
 		return backends{}, err
 	}
-	ap, err := openApprover(cfg)
+	ap, err := openApprover()
 	if err != nil {
 		return backends{}, err
 	}
@@ -98,6 +102,13 @@ func (h *brokerHolder) get(ctx context.Context) (*broker.Broker, error) {
 		return nil, err
 	}
 	closeVault := func() { _ = v.Close() }
+	// vault.Open checks the keystore tier before it unwraps the key; a keystore
+	// that resolves its mode while unwrapping (macOS) can report a different
+	// tier afterwards. Never run a vault on a weaker keystore than it was made for.
+	if t := h.be.ks.Tier(); !t.Meets(v.Info().KeystoreTier) {
+		closeVault()
+		return nil, fmt.Errorf("keystore tier %s is weaker than the %s the vault was created with; refusing to downgrade", t, v.Info().KeystoreTier)
+	}
 	if err := grant.Migrate(ctx, v.DB()); err != nil {
 		closeVault()
 		return nil, err

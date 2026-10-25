@@ -33,10 +33,6 @@ type Options struct {
 	// LogDir receives daemon.out.log and daemon.err.log. Empty means the
 	// platform default (~/Library/Logs/grantd on macOS).
 	LogDir string
-	// KeychainFallback adds --keychain-fallback to the daemon's arguments, so
-	// the macOS keystore may use a Keychain-resident key when the Secure
-	// Enclave is unavailable. It must match how the vault was created.
-	KeychainFallback bool
 }
 
 // Status describes the installed service.
@@ -50,9 +46,6 @@ type Status struct {
 	State      string // raw manager state, e.g. "running", "not running"
 	ExePath    string // program recorded in the definition, if installed
 	ExeMissing bool   // ExePath no longer exists on disk
-	// KeychainFallback: the recorded daemon arguments include
-	// --keychain-fallback.
-	KeychainFallback bool
 }
 
 // Manager manages the background service.

@@ -28,9 +28,22 @@
 //
 // # Blob format
 //
-// Wrap output is: 1 byte mode | 1 byte format version | payload. Unwrap refuses
-// a blob whose mode differs from the store's active mode, instead of feeding
-// garbage to a decryptor. See the format constants.
+// Wrap output is: 1 byte mode | 1 byte format version | payload. See the
+// format constants.
+//
+// # DECISION: blobs are self-describing
+//
+// Unwrap opens a blob by its own mode byte, whatever options the Store was
+// built with. WithAllowKeychainFallback only governs what Wrap may create (so
+// it matters for `grantd init`, not for the daemon). Making Unwrap depend on the
+// option would force every long-lived caller (daemon, launchd plist) to repeat
+// a setting chosen once at init, and a mismatch would lock the user out of the
+// vault. Opening by the blob's mode does not weaken anything the vault relies
+// on: the vault records the keystore tier at init and Open refuses a keystore
+// whose tier is weaker, and the daemon re-checks the tier after Unwrap (which
+// may resolve the mode), so a blob cannot be silently swapped to a weaker mode
+// without the daemon noticing. A Keychain-mode blob leaves Tier() at
+// TierDialog once unwrapped.
 //
 // # Memory
 //
