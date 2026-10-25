@@ -275,27 +275,24 @@ func matchedPrefix(pol *policy.Policy, argv []string) []string {
 	return best
 }
 
-// ReasonReleased marks the audit row written before secrets are decrypted.
+// ReasonReleased marks the audit row written once plaintext has left the vault
+// and before the command is started.
 const ReasonReleased = "released"
 
-// release writes the pre-release audit row, resolves the secrets, runs the
-// command and answers. Every release is bracketed in the audit log: an
-// allowed_* row (reason "released", no exit code) before anything is
-// decrypted, then exactly one "completed" row when the command ends or fails
-// to start. If the pre-release row cannot be written nothing is released.
+// release resolves the secrets, writes the pre-spawn audit row, runs the
+// command and answers. A started release is bracketed in the audit log: an
+// allowed_* row (reason "released", no exit code) written after the secrets
+// are decrypted but before the command is spawned, then exactly one
+// "completed" row when the command ends. Both rows are scrubbed with the
+// redactor built from the resolved values. A failure before the released row
+// (resolve, env names) leaves a single "error" row; if the released row cannot
+// be written the plaintext is zeroed, nothing is spawned and no completed row
+// follows.
 func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cwd string, names []string, decision, grantID string) {
 	rc.entry.GrantID = grantID
-	rel := rc.entry
-	rel.Decision, rel.Reason = decision, ReasonReleased
-	if _, err := b.recordStrict(ctx, rel); err != nil {
-		b.log.Error("audit append failed; refusing to release", "err", err.Error())
-		fail(rc.w, proto.ErrFailed, proto.ReasonInternal, "audit log unavailable")
-		return
-	}
-
 	values, err := b.d.Vault.Resolve(ctx, names)
 	if err != nil {
-		b.releaseFailure(ctx, rc, grantID, err)
+		b.runLookupFailure(ctx, rc, err)
 		return
 	}
 	defer func() {
@@ -305,7 +302,7 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 	}()
 	envNames, err := runner.EnvNames(names, req.EnvPrefix)
 	if err != nil {
-		rc.completeFailure(ctx, grantID, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())
+		rc.refuse(ctx, audit.DecisionError, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())
 		return
 	}
 	// Plaintext as strings is required by runner.Spec; Go cannot zero these.
@@ -318,6 +315,14 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 		byName[name] = string(v)
 	}
 	rc.redact = runner.NewRedactor(byName)
+
+	rel := rc.entryNow()
+	rel.Decision, rel.Reason = decision, ReasonReleased
+	if _, err := b.recordStrict(ctx, rel); err != nil {
+		b.log.Error("audit append failed; not starting command", "err", err.Error())
+		fail(rc.w, proto.ErrFailed, proto.ReasonInternal, "audit log unavailable")
+		return
+	}
 
 	runCtx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
@@ -375,24 +380,8 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 	_ = rc.w.Finish(resp)
 }
 
-// releaseFailure maps a vault error after the pre-release row to a response
-// and closes the audit bracket.
-func (b *Broker) releaseFailure(ctx context.Context, rc *runCtx, grantID string, err error) {
-	switch {
-	case errors.Is(err, vault.ErrNotFound):
-		rc.completeFailure(ctx, grantID, proto.ErrNotFound, proto.ReasonSecretNotFound, err.Error())
-	case errors.Is(err, vault.ErrExpired):
-		rc.completeFailure(ctx, grantID, proto.ErrRefused, proto.ReasonSecretExpired, "")
-	case ctx.Err() != nil:
-		rc.completeFailure(ctx, grantID, proto.ErrFailed, ctxFailure(ctx), "")
-	default:
-		b.log.Error("resolving secrets failed", "err", err.Error())
-		rc.completeFailure(ctx, grantID, proto.ErrFailed, proto.ReasonInternal, "")
-	}
-}
-
-// completeFailure closes the audit bracket for a release whose command never
-// ran: a completed row with no exit code and the cause as its reason.
+// completeFailure closes the audit bracket for a release whose command could
+// not be started: a completed row with no exit code and the cause as its reason.
 func (rc *runCtx) completeFailure(ctx context.Context, grantID, category, reason, msg string) {
 	msg = rc.scrub(msg)
 	e := rc.entryNow()

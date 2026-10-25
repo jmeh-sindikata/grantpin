@@ -512,43 +512,49 @@ func TestRunMessagesAreScrubbed(t *testing.T) {
 	if rc.scrub("x") != "x" {
 		t.Fatal("scrub without redactor must be identity")
 	}
-	// Argv[0] that happens to contain the value must not leak via the
-	// "command not found" message.
+	// An argv that contains the value (the test knows it; an agent would not)
+	// must not leak through the response, the command-not-found message or any
+	// audit row, the released row included.
 	req := e.run([]string{"API_KEY"}, e.secret)
 	w := e.do(req)
 	wantOK(t, w)
 	if b, _ := marshalAll(w); strings.Contains(b, e.secret) {
 		t.Errorf("value leaked: %q", b)
 	}
-	if a := e.lastAudit(); a.Decision == "" {
-		t.Error("no audit")
+	rel, done := e.lastPair()
+	if rel.Reason != ReasonReleased || done.Decision != audit.DecisionCompleted {
+		t.Fatalf("rows = %+v / %+v", rel, done)
 	}
 	es, _ := e.a.List(context.Background(), 10, 0)
+	if len(es) != 2 {
+		t.Fatalf("%d rows", len(es))
+	}
 	for _, en := range es {
-		if strings.Contains(en.Reason, e.secret) {
-			t.Errorf("audit reason leaked value: %+v", en)
+		if strings.Contains(strings.Join(en.Argv, " ")+en.Reason+en.Cwd+en.Caller+strings.Join(en.Secrets, " "), e.secret) {
+			t.Errorf("audit row leaked value: %+v", en)
 		}
-		// The pre-release row is written before anything is decrypted, so it
-		// records argv as sent (an agent that knows the value already has it);
-		// the completed row is scrubbed.
-		if en.Decision == audit.DecisionCompleted && strings.Contains(strings.Join(en.Argv, " "), e.secret) {
-			t.Errorf("completed row leaked value: %+v", en)
+		if got := strings.Join(en.Argv, " "); got != "[REDACTED:API_KEY]" {
+			t.Errorf("argv in row %s = %q", en.ID, got)
 		}
 	}
 }
 
-func TestRunAuditBracketWhenResolveFails(t *testing.T) {
+func TestRunResolveFailureLeavesSingleErrorRow(t *testing.T) {
 	e := newEnv(t)
 	// The secret disappears between approval and release.
 	e.ap.onAsk = func() { _ = e.v.Delete(context.Background(), "API_KEY") }
+	before := e.auditCount()
 	w := e.do(e.run([]string{"API_KEY"}, "true"))
 	wantFail(t, w, proto.ErrNotFound, proto.ReasonSecretNotFound)
-	rel, done := e.lastPair()
-	if rel.Decision != audit.DecisionAllowedOnce || done.ExitCode != nil || !strings.HasPrefix(done.Reason, "not started: secret_not_found") {
-		t.Errorf("audit = %+v / %+v", rel, done)
+	if e.auditCount() != before+1 {
+		t.Fatalf("want exactly one new audit row, got %d", e.auditCount()-before)
 	}
-	if w.final.AuditID != done.ID {
-		t.Errorf("audit id %q != completed row %q", w.final.AuditID, done.ID)
+	a := e.lastAudit()
+	if a.Decision != audit.DecisionError || !strings.HasPrefix(a.Reason, proto.ReasonSecretNotFound) || a.Reason == ReasonReleased {
+		t.Errorf("audit = %+v", a)
+	}
+	if w.final.AuditID != a.ID {
+		t.Errorf("audit id %q != %q", w.final.AuditID, a.ID)
 	}
 }
 
@@ -572,7 +578,7 @@ func TestRunNothingReleasedWhenPreReleaseAuditFails(t *testing.T) {
 	w := e.do(e.run([]string{"API_KEY"}, "sh", "-c", "touch "+marker))
 	wantFail(t, w, proto.ErrFailed, proto.ReasonInternal)
 	if _, err := os.Stat(marker); err == nil {
-		t.Fatal("command ran although the pre-release audit row could not be written")
+		t.Fatal("command ran although the released audit row could not be written")
 	}
 }
 

@@ -263,9 +263,9 @@ func TestRunRedactsBothStreamsAndNeverLeaksOnTheWire(t *testing.T) {
 	}
 	// The audit log never holds it either (argv containing the value was scrubbed).
 	for _, e := range result[[]proto.AuditInfo](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 100})) {
-		// The released row is written before decryption and records argv as
-		// sent; everything else must be clean.
-		if strings.Contains(e.Reason, apiKey) || (e.Decision == audit.DecisionCompleted && strings.Contains(strings.Join(e.Argv, " "), apiKey)) {
+		// Every row, the released one included, is written after decryption
+		// and scrubbed with the redactor.
+		if strings.Contains(strings.Join(e.Argv, " ")+e.Reason+e.Cwd+e.Caller, apiKey) {
 			t.Errorf("audit entry holds the value: %+v", e)
 		}
 	}

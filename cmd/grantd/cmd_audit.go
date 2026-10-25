@@ -18,7 +18,7 @@ func newAuditCmd() *cobra.Command {
 	// A run that was released appears as two rows, newest first: "completed"
 	// (exit code, duration, reason such as timeout or canceled) above the
 	// allowed_* row with reason "released" that was written before the
-	// secrets were decrypted. A released row with no completed row above it
+	// command was spawned (secrets already decrypted). A released row with no completed row above it
 	// means the daemon died mid-run.
 	list := func(cmd *cobra.Command, _ []string) error {
 		resp, err := simpleCall(cmd.Context(), socket, &proto.Request{Op: proto.OpAudit, Caller: "cli", Action: proto.ActionList, Limit: limit})

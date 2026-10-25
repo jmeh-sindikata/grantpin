@@ -33,21 +33,24 @@
 //	human allows with a TTL                     (runs, grant stored)           allowed_new_grant
 //	human allows once                           (runs)                         allowed_once
 //	storing the new grant failed                failed/internal                error
-//	resolving/decrypting failed                 failed/internal|not_found...   completed (no exit code)
-//	audit row before release cannot be written failed/internal                (nothing released)
+//	resolving/decrypting failed                 failed/internal|not_found...   error
+//	released audit row cannot be written        failed/internal                (nothing spawned)
 //	process could not be started                failed/internal                completed (no exit code)
 //	command ran                                 ok, exit_code                  completed
 //
 // # Audit bracket
 //
-// A release writes two rows. Immediately after approval or grant match, and
-// before any secret is decrypted, an allowed_grant / allowed_once /
-// allowed_new_grant row with reason "released", the grant ID and no exit code.
-// When the command ends (or fails to start) a "completed" row with the same
-// grant ID, the exit code, the duration and, for timeout/canceled/not-found
-// outcomes, a reason. The response's audit_id is the completed row. A released
-// row with nothing after it means the daemon died mid-run. If the released row
-// cannot be written, nothing is released.
+// A started command writes two rows. Once the secrets are decrypted and the
+// env names built, and before the command is spawned, an allowed_grant /
+// allowed_once / allowed_new_grant row with reason "released", the grant ID and
+// no exit code. When the command ends (or fails to start) a "completed" row
+// with the same grant ID, the exit code, the duration and, for timeout/canceled
+// outcomes, a reason. Both rows are scrubbed with the redactor built from the
+// resolved values, so no row ever holds a value even if argv does. The
+// response's audit_id is the completed row. A released row with nothing after
+// it means the daemon died mid-run. If the released row cannot be written the
+// plaintext is zeroed, nothing is spawned and no completed row follows. A
+// failure before that point (resolve, env names) leaves one "error" row.
 //
 // # Timeouts
 //
