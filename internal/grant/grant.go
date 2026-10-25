@@ -33,6 +33,8 @@ const KindStanding = "standing"
 var (
 	// ErrNoMatch means no stored grant satisfies the query.
 	ErrNoMatch = errors.New("grant: no matching grant")
+	// ErrExhausted means a finite-use grant has no use left (Consume).
+	ErrExhausted = errors.New("grant: no uses remaining")
 	// ErrNotFound means a grant ID does not exist.
 	ErrNotFound = errors.New("grant: not found")
 	// ErrInvalidGrant means Add refused a malformed grant.

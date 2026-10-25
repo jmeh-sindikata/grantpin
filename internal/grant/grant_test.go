@@ -324,8 +324,11 @@ func TestUsesCountIsReMACedAndSurvivesRoundTrip(t *testing.T) {
 	added := mustAdd(t, s, g)
 	for want := 2; want >= 0; want-- {
 		got, err := s.Match(context.Background(), query())
-		if err != nil || *got.UsesRemaining != want {
-			t.Fatalf("match: %+v %v (want %d left)", got, err, want)
+		if err != nil || *got.UsesRemaining != want+1 {
+			t.Fatalf("match: %+v %v (want %d left before consuming)", got, err, want+1)
+		}
+		if err := s.Consume(context.Background(), got.ID); err != nil {
+			t.Fatal(err)
 		}
 		back, err := s.Get(context.Background(), added.ID)
 		if err != nil || back.Tampered || *back.UsesRemaining != want {
@@ -603,7 +606,7 @@ func TestMatchExpiryBoundary(t *testing.T) {
 	}
 }
 
-func TestMatchUsesRemaining(t *testing.T) {
+func TestMatchDoesNotConsumeConsumeDoes(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
 	two := 2
@@ -611,20 +614,52 @@ func TestMatchUsesRemaining(t *testing.T) {
 	g.UsesRemaining = &two
 	added := mustAdd(t, s, g)
 
-	m1, err := s.Match(ctx, query())
-	if err != nil || *m1.UsesRemaining != 1 {
-		t.Fatalf("m1 = %+v %v", m1, err)
+	for range 3 { // matching alone never changes the count
+		m, err := s.Match(ctx, query())
+		if err != nil || *m.UsesRemaining != 2 {
+			t.Fatalf("match = %+v %v", m, err)
+		}
 	}
-	m2, err := s.Match(ctx, query())
-	if err != nil || *m2.UsesRemaining != 0 {
-		t.Fatalf("m2 = %+v %v", m2, err)
+	if back, _ := s.Get(ctx, added.ID); *back.UsesRemaining != 2 {
+		t.Fatalf("Match consumed a use: %d", *back.UsesRemaining)
+	}
+	for i := range 2 {
+		if err := s.Consume(ctx, added.ID); err != nil {
+			t.Fatalf("consume %d: %v", i, err)
+		}
+	}
+	if err := s.Consume(ctx, added.ID); !errors.Is(err, ErrExhausted) {
+		t.Fatalf("consume past zero: %v", err)
 	}
 	if _, err := s.Match(ctx, query()); !errors.Is(err, ErrNoMatch) {
 		t.Fatalf("exhausted: %v", err)
 	}
 	back, _ := s.Get(ctx, added.ID)
-	if *back.UsesRemaining != 0 {
-		t.Fatalf("stored = %d", *back.UsesRemaining)
+	if back.Tampered || *back.UsesRemaining != 0 {
+		t.Fatalf("stored = %+v", back)
+	}
+}
+
+func TestConsumeUnlimitedAndMissing(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	added := mustAdd(t, s, base())
+	for range 3 {
+		if err := s.Consume(ctx, added.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if back, _ := s.Get(ctx, added.ID); back.UsesRemaining != nil {
+		t.Fatalf("unlimited grant gained a count: %+v", back)
+	}
+	if err := s.Consume(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing: %v", err)
+	}
+	if err := s.Revoke(ctx, added.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Consume(ctx, added.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("revoked: %v", err)
 	}
 }
 
@@ -645,7 +680,7 @@ func TestNonMatchDoesNotConsumeUse(t *testing.T) {
 	}
 }
 
-func TestMatchConcurrentUses(t *testing.T) {
+func TestConsumeConcurrentUses(t *testing.T) {
 	const N, workers = 4, 10
 	s := newStore(t)
 	n := N
@@ -661,11 +696,10 @@ func TestMatchConcurrentUses(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, err := s.Match(context.Background(), query())
-			switch {
+			switch err := s.Consume(context.Background(), added.ID); {
 			case err == nil:
 				ok.Add(1)
-			case errors.Is(err, ErrNoMatch):
+			case errors.Is(err, ErrExhausted):
 				none.Add(1)
 			default:
 				t.Errorf("unexpected: %v", err)
@@ -684,15 +718,15 @@ func TestMatchConcurrentUses(t *testing.T) {
 }
 
 // Two Store values over one DB share no mutex, so this exercises the
-// UPDATE ... WHERE uses_remaining > 0 guard itself.
-func TestMatchConcurrentUsesAcrossStores(t *testing.T) {
+// compare-and-swap guard itself.
+func TestConsumeConcurrentUsesAcrossStores(t *testing.T) {
 	const N, workers = 3, 10
 	db := newDB(t)
 	stores := []*Store{NewStore(db, testKey), NewStore(db, testKey)}
 	n := N
 	g := base()
 	g.UsesRemaining = &n
-	mustAdd(t, stores[0], g)
+	added := mustAdd(t, stores[0], g)
 
 	var ok atomic.Int32
 	var wg sync.WaitGroup
@@ -700,9 +734,9 @@ func TestMatchConcurrentUsesAcrossStores(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := stores[i%2].Match(context.Background(), query()); err == nil {
+			if err := stores[i%2].Consume(context.Background(), added.ID); err == nil {
 				ok.Add(1)
-			} else if !errors.Is(err, ErrNoMatch) {
+			} else if !errors.Is(err, ErrExhausted) {
 				t.Errorf("unexpected: %v", err)
 			}
 		}()
@@ -726,6 +760,9 @@ func TestMatchFallsThroughExhaustedToNext(t *testing.T) {
 	m, err := s.Match(ctx, query())
 	if err != nil || m.ID != ga.ID {
 		t.Fatalf("first should be oldest: %v %v", m, err)
+	}
+	if err := s.Consume(ctx, m.ID); err != nil {
+		t.Fatal(err)
 	}
 	m, err = s.Match(ctx, query())
 	if err != nil || m.ID != gb.ID {
@@ -986,6 +1023,9 @@ func TestStandingUsesKeepTheKindMAC(t *testing.T) {
 		m, err := s.Match(ctx, query())
 		if err != nil || !m.Standing {
 			t.Fatalf("use %d: %+v %v", i, m, err)
+		}
+		if err := s.Consume(ctx, m.ID); err != nil {
+			t.Fatal(err)
 		}
 	}
 	if _, err := s.Match(ctx, query()); !errors.Is(err, ErrNoMatch) {

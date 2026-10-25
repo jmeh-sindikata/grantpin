@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -692,5 +693,124 @@ func TestRunNoPolicyOffersTheDaemonDefault(t *testing.T) {
 	}
 	if grant.MaxDialogGrantTTL != 24*time.Hour {
 		t.Errorf("MaxDialogGrantTTL = %v", grant.MaxDialogGrantTTL)
+	}
+}
+
+// A request that matches a finite-use grant but then fails before anything is
+// released must not burn one of the grant's uses.
+func TestRunFailedResolveAfterGrantMatchKeepsTheUse(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	// The broker's clock runs 3h behind the vault's (real) one: a secret that
+	// expired 1h ago still looks valid to the broker's checks and the grant
+	// matches, but Resolve refuses it.
+	e.advance(-3 * time.Hour)
+	past := time.Now().Add(-time.Hour)
+	if err := e.v.Set(ctx, vault.Meta{Name: "STALE", ExpiresAt: &past}, []byte("stale-secret-value"), false); err != nil {
+		t.Fatal(err)
+	}
+	req := e.add([]string{"STALE"}, day, "true")
+	req.Uses = 2
+	wantOK(t, e.do(req))
+	asked := e.ap.calls()
+
+	run := e.run([]string{"STALE"}, "true")
+	run.Caller = "claude-code"
+	for range 3 {
+		wantFail(t, e.do(run), proto.ErrRefused, proto.ReasonSecretExpired)
+	}
+	if e.ap.calls() != asked {
+		t.Fatal("the grant did not match: the human was asked")
+	}
+	gs := decode[[]proto.GrantInfo](t, e.do(&proto.Request{Op: proto.OpGrants, Action: proto.ActionList}))
+	if len(gs) != 1 || gs[0].UsesRemaining == nil || *gs[0].UsesRemaining != 2 {
+		t.Fatalf("uses were consumed by failed runs: %+v", gs)
+	}
+}
+
+// A successful grant-matched run costs exactly one use.
+func TestRunGrantMatchedReleaseConsumesOneUse(t *testing.T) {
+	e := newEnv(t)
+	req := e.add([]string{"API_KEY"}, day, "true")
+	req.Uses = 2
+	wantOK(t, e.do(req))
+	run := e.run([]string{"API_KEY"}, "true")
+	run.Caller = "claude-code"
+	wantOK(t, e.do(run))
+	gs := decode[[]proto.GrantInfo](t, e.do(&proto.Request{Op: proto.OpGrants, Action: proto.ActionList}))
+	if len(gs) != 1 || *gs[0].UsesRemaining != 1 {
+		t.Fatalf("grants = %+v", gs)
+	}
+}
+
+// Many concurrent runs against a 3-use grant release exactly 3 times, even
+// though Match no longer takes the use itself.
+func TestRunConcurrentRunsCannotOverConsumeAGrant(t *testing.T) {
+	e := newEnv(t)
+	const uses, workers = 3, 8
+	req := e.add([]string{"API_KEY"}, day, "sh", "-c", "echo x >> ran")
+	req.Uses = uses
+	wantOK(t, e.do(req))
+	e.ap.allow = false // anything that does not match a grant is denied
+
+	var wg sync.WaitGroup
+	var okRuns atomic.Int32
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			run := e.run([]string{"API_KEY"}, "sh", "-c", "echo x >> ran")
+			run.Caller, run.V = "claude-code", proto.Version
+			w := &recWriter{}
+			e.b.Handle(context.Background(), run, w)
+			if w.final.OK {
+				okRuns.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	b, err := os.ReadFile(filepath.Join(e.cwd, "ran"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(b), "x"); n != uses || okRuns.Load() != uses {
+		t.Fatalf("command ran %d times, %d ok responses, want %d", n, okRuns.Load(), uses)
+	}
+	gs := decode[[]proto.GrantInfo](t, e.do(&proto.Request{Op: proto.OpGrants, Action: proto.ActionList}))
+	if len(gs) != 1 || *gs[0].UsesRemaining != 0 {
+		t.Fatalf("grants = %+v", gs)
+	}
+}
+
+// lastPair2 is lastPair without requiring the completed row to carry an exit code.
+func (e *env) lastPair2() (released, completed audit.Entry) {
+	e.t.Helper()
+	es, err := e.a.List(context.Background(), 2, 0)
+	if err != nil || len(es) < 2 {
+		e.t.Fatalf("audit list: %v %v", es, err)
+	}
+	return es[1], es[0]
+}
+
+// If the grant is revoked after Match, the release is not started and the
+// audit bracket is closed.
+func TestRunGrantRevokedAfterMatchDoesNotRelease(t *testing.T) {
+	e := newEnv(t)
+	req := e.add([]string{"API_KEY"}, day, "sh", "-c", "echo x >> ran")
+	req.Uses = 2
+	wantOK(t, e.do(req))
+	// Revoke from inside the released-row append, i.e. after Match and Resolve.
+	run := e.run([]string{"API_KEY"}, "sh", "-c", "echo x >> ran")
+	run.Caller = "claude-code"
+	gs, _ := e.g.List(context.Background())
+	e.b.afterReleased = func() { _ = e.g.Revoke(context.Background(), gs[0].ID) }
+	w := e.do(run)
+	wantFail(t, w, proto.ErrDenied, proto.ReasonNoGrant)
+	if rel, done := e.lastPair2(); rel.Reason != ReasonReleased || done.Decision != audit.DecisionCompleted ||
+		!strings.HasPrefix(done.Reason, "not started: "+proto.ReasonNoGrant) {
+		t.Errorf("audit bracket = %+v / %+v", rel, done)
+	}
+	if _, err := os.Stat(filepath.Join(e.cwd, "ran")); err == nil {
+		t.Fatal("command ran although the grant was revoked")
 	}
 }

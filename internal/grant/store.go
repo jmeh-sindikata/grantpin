@@ -71,7 +71,7 @@ type Store struct {
 	key    []byte
 	now    func() time.Time
 	log    *slog.Logger
-	mu     sync.Mutex // serialises Match so use-counting never interleaves in-process
+	mu     sync.Mutex // serialises Consume so use-counting never interleaves in-process
 	warned sync.Map   // grant IDs already reported as tampered
 }
 
@@ -165,8 +165,8 @@ func (s *Store) verify(canon, mac []byte) bool {
 	return len(s.key) > 0 && hmac.Equal(s.sign(canon), mac)
 }
 
-// SetClock overrides the clock used by Add (default CreatedAt), Get, List and
-// Purge. Intended for tests. Match always uses Query.Now.
+// SetClock overrides the clock used by Add (default CreatedAt), Get, List,
+// Consume and Purge. Intended for tests. Match always uses Query.Now.
 func (s *Store) SetClock(now func() time.Time) { s.now = now }
 
 const cols = `id, caller, cwd_prefix, secrets, cmd_prefix, created_at, expires_at, uses_remaining, mac, kind`
@@ -368,19 +368,15 @@ func (s *Store) Purge(ctx context.Context) (int64, error) {
 //   - q.Now is before ExpiresAt (a grant is expired at the ExpiresAt instant);
 //   - UsesRemaining is nil or > 0.
 //
-// On success with a finite UsesRemaining, one use is consumed atomically
-// (UPDATE ... WHERE uses_remaining > 0, rows affected checked); the returned
-// grant reflects the decremented count. If a concurrent request took the last
-// use, the next candidate is tried.
+// Match never changes the store: a use of a finite-use grant is taken by
+// Consume, which the caller invokes once the release is really going ahead (a
+// request that matches and then fails before releasing must not burn a use).
 func (s *Store) Match(ctx context.Context, q Query) (*Grant, error) {
 	if !filepath.IsAbs(q.Cwd) {
 		return nil, fmt.Errorf("%w: cwd %q is not absolute", ErrNoMatch, q.Cwd)
 	}
 	cwd := filepath.Clean(q.Cwd)
 	nowNs := q.Now.UnixNano()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+cols+` FROM grants
@@ -389,34 +385,18 @@ func (s *Store) Match(ctx context.Context, q Query) (*Grant, error) {
 	if err != nil {
 		return nil, fmt.Errorf("grant: match: %w", err)
 	}
-	var cands []Grant
+	defer rows.Close()
 	for rows.Next() {
 		g, err := s.scan(rows, q.Now)
 		if err != nil {
-			rows.Close()
 			return nil, fmt.Errorf("grant: match: %w", err)
 		}
 		if !g.Tampered && g.matches(q, cwd) {
-			cands = append(cands, g)
-		}
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, fmt.Errorf("grant: match: %w", err)
-	}
-
-	for _, g := range cands {
-		if g.UsesRemaining == nil {
 			return &g, nil
 		}
-		got, err := s.consume(ctx, g, q, cwd)
-		if err != nil {
-			return nil, err
-		}
-		if got != nil {
-			return got, nil
-		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("grant: match: %w", err)
 	}
 	return nil, ErrNoMatch
 }
@@ -425,44 +405,50 @@ func (s *Store) Match(ctx context.Context, q Query) (*Grant, error) {
 // several Store values share a database.
 const consumeAttempts = 64
 
-// consume takes one use of a finite-use grant: it atomically replaces
-// uses_remaining and the row's mac, guarded by the count it read, and retries
-// with a fresh read if another writer got there first. It returns nil when the
-// grant is no longer usable.
-func (s *Store) consume(ctx context.Context, g Grant, q Query, cwd string) (*Grant, error) {
-	nowNs := q.Now.UnixNano()
+// Consume takes one use of grant id. For a grant with unlimited uses it only
+// checks that the row still exists and authenticates (a grant revoked since
+// Match no longer releases). For a finite-use grant it atomically replaces
+// uses_remaining and the row's mac, guarded by the count it read, retrying with
+// a fresh read if another writer got there first, so concurrent callers can
+// never take more uses than the grant has. It returns ErrNotFound for a missing
+// or tampered row and ErrExhausted when no use is left. Expiry is not checked:
+// Match did that moments earlier.
+func (s *Store) Consume(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for range consumeAttempts {
-		left := *g.UsesRemaining - 1
-		l := int64(left)
-		mac := s.sign(canonical(g.ID, g.Caller, g.CwdPrefix, g.Secrets, g.CmdPrefix,
-			g.CreatedAt.UnixNano(), g.ExpiresAt.UnixNano(), &l, kindOf(g)))
-		res, err := s.db.ExecContext(ctx,
-			`UPDATE grants SET uses_remaining = ?, mac = ?
-			 WHERE id = ? AND uses_remaining = ? AND expires_at > ?`,
-			l, mac, g.ID, int64(*g.UsesRemaining), nowNs)
+		g, err := s.scan(s.db.QueryRowContext(ctx, `SELECT `+cols+` FROM grants WHERE id = ?`, id), s.now())
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
 		if err != nil {
-			return nil, fmt.Errorf("grant: match: %w", err)
+			return fmt.Errorf("grant: consume: %w", err)
+		}
+		switch {
+		case g.Tampered:
+			return ErrNotFound
+		case g.UsesRemaining == nil:
+			return nil
+		case *g.UsesRemaining <= 0:
+			return ErrExhausted
+		}
+		left := int64(*g.UsesRemaining - 1)
+		mac := s.sign(canonical(g.ID, g.Caller, g.CwdPrefix, g.Secrets, g.CmdPrefix,
+			g.CreatedAt.UnixNano(), g.ExpiresAt.UnixNano(), &left, kindOf(g)))
+		res, err := s.db.ExecContext(ctx,
+			`UPDATE grants SET uses_remaining = ?, mac = ? WHERE id = ? AND uses_remaining = ?`,
+			left, mac, g.ID, int64(*g.UsesRemaining))
+		if err != nil {
+			return fmt.Errorf("grant: consume: %w", err)
 		}
 		n, err := res.RowsAffected()
 		if err != nil {
-			return nil, fmt.Errorf("grant: match: %w", err)
+			return fmt.Errorf("grant: consume: %w", err)
 		}
 		if n == 1 {
-			g.UsesRemaining = &left
-			return &g, nil
+			return nil
 		}
-		// Lost the race (or the row changed): look again.
-		cur, err := s.scan(s.db.QueryRowContext(ctx, `SELECT `+cols+` FROM grants WHERE id = ?`, g.ID), q.Now)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("grant: match: %w", err)
-		}
-		if cur.Tampered || cur.UsesRemaining == nil || *cur.UsesRemaining <= 0 || !cur.ExpiresAt.After(q.Now) || !cur.matches(q, cwd) {
-			return nil, nil
-		}
-		g = cur
+		// Lost the race (or the row changed): read it again.
 	}
-	return nil, nil
+	return fmt.Errorf("grant: consume: too much contention")
 }

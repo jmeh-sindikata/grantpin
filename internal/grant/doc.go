@@ -11,7 +11,9 @@
 // encoding of (id, caller, cwd_prefix, secrets, cmd_prefix, created_at,
 // expires_at, uses_remaining, kind) (see canonical). Get, List and Match verify it;
 // a row that fails is flagged Tampered, never matches, and is reported once at
-// WARN. Consuming a use rewrites uses_remaining and mac in one UPDATE.
+// WARN. Consuming a use (Store.Consume, called by the broker once a release is
+// going ahead; Match does not consume) rewrites uses_remaining and mac in one
+// compare-and-swap UPDATE.
 //
 // # Kinds
 //

@@ -334,6 +334,29 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 		return
 	}
 
+	if b.afterReleased != nil {
+		b.afterReleased()
+	}
+	// A finite-use grant pays for this release only now that the released row
+	// is on record and nothing has been spawned yet: a request that matched but
+	// failed to resolve above costs no use. If a concurrent run took the last
+	// use (or the grant was revoked) since Match, close the bracket and stop.
+	if decision == audit.DecisionAllowedGrant {
+		switch err := b.d.Grants.Consume(ctx, grantID); {
+		case err == nil:
+		case errors.Is(err, grant.ErrExhausted), errors.Is(err, grant.ErrNotFound):
+			rc.completeFailure(ctx, grantID, proto.ErrDenied, proto.ReasonNoGrant, "grant no longer usable")
+			return
+		case ctx.Err() != nil:
+			rc.completeFailure(ctx, grantID, proto.ErrFailed, ctxFailure(ctx), "")
+			return
+		default:
+			b.log.Error("consuming grant use failed", "err", err.Error())
+			rc.completeFailure(ctx, grantID, proto.ErrFailed, proto.ReasonInternal, "")
+			return
+		}
+	}
+
 	runCtx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
 	so := &frameWriter{w: rc.w, stream: proto.StreamStdout, onErr: cancelRun}

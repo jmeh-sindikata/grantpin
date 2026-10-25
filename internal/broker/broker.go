@@ -64,6 +64,10 @@ type Broker struct {
 	log    *slog.Logger
 	now    func() time.Time
 	askSem chan struct{} // capacity 1: serialises Approver.Ask
+
+	// afterReleased, if set, runs right after a run's released audit row is
+	// written (tests use it to interleave a concurrent change).
+	afterReleased func()
 }
 
 // New validates deps and returns a Broker.
