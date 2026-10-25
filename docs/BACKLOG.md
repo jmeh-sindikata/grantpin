@@ -2,6 +2,18 @@
 
 Ideas and known gaps that are deliberately not in v0.1. Each line says why it was deferred. Items marked **gap** are shortcomings of the current code that the docs describe rather than hide; the others are features.
 
+## Roadmap (agreed 2026-10-25)
+
+In this order, one at a time:
+
+1. **Manual macOS hardware test** (docs/MANUAL-TEST-MACOS.md). Report the outcome letter; it decides whether Secure Enclave needs a signed bundle.
+2. **Real Claude Code run** via the MCP shim, proving the README five-minute path.
+3. **Daily use** for a week; collect friction.
+4. **Native macOS menu-bar app (SwiftUI)** as v0.2, overriding the v0.1 "no GUI" non-goal. Talks to the daemon over the socket (docs/PROTOCOL.md): secrets add/edit/delete, grants with revoke, audit viewer, status and install-at-login. Ships as a signed `.app` bundle containing the daemon, which also answers the Secure Enclave entitlement question. The approval dialog later moves from `osascript` into the app. Rationale: the agent never needs the CLI, but humans who will not open a terminal must still be able to put secrets in.
+5. **Security hardening** from the gaps below, informed by 1 to 3.
+6. **Linux, then Windows backends**, then the socket-forwarding guide (HANDOFF §11 v0.2 to v0.4, now shifted one version later).
+7. **Publishing**: GitHub, CI on macOS runners, Homebrew formula, signed releases. Rename from the placeholder `grantd` first.
+
 ## Security gaps
 
 - **Detect replay of a genuine grant row (gap).** Grant rows are MAC'd (HMAC-SHA256 under `vault.DeriveKey("grant-mac")`), so forged or edited rows never match, but a row (or the whole file) saved earlier can be written back to revive a revoked grant or reset `uses_remaining` until the row's own expiry (THREAT-MODEL 4.5). Fix: a monotonic counter or generation number bound into the MAC and anchored somewhere the file-write attacker can't roll back (the Keychain, the audit chain head). Deferred: bounded by the grant TTL (1 hour by default), and it needs the same external anchor as the audit truncation item below.
