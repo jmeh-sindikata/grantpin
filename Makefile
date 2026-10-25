@@ -2,7 +2,21 @@
 GO        ?= go
 STATICCHECK ?= staticcheck
 DEV_TAG   := grantd_dev
-VERSION   ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# Version, first match wins: VERSION=x on the command line, git describe, the
+# contents of a VERSION file (written by `make dist-src` so a git archive export
+# still carries the hash), then "dev".
+ifeq ($(origin VERSION),command line)
+VERSION_SRC := command line
+else ifneq ($(shell git describe --tags --always --dirty 2>/dev/null),)
+VERSION     := $(shell git describe --tags --always --dirty 2>/dev/null)
+VERSION_SRC := git
+else ifneq ($(wildcard VERSION),)
+VERSION     := $(shell cat VERSION)
+VERSION_SRC := VERSION file
+else
+VERSION     := dev
+VERSION_SRC := default
+endif
 LDFLAGS   := -X main.version=$(VERSION)
 
 # Signed .app bundle (roadmap 4a; docs/MANUAL-TEST-MACOS.md 2c). BUNDLE_ID is the
@@ -14,16 +28,27 @@ KEYCHAIN_GROUP ?= dev.grantd
 APP            := dist/grantd.app
 BUILD_NUMBER   ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 
-.PHONY: build sign bundle sign-bundle test vet lint cover dev-test tools-check ci clean
+.PHONY: build dist-src sign bundle sign-bundle test vet lint cover dev-test tools-check ci clean
 
 build: ## Build bin/grantd (production tags: no dev backends)
+	@echo "version: $(VERSION) ($(VERSION_SRC))"
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/grantd ./cmd/grantd
+
+dist-src: ## Export HEAD to dist/grantd-src.tar.gz with a VERSION file, so builds from the export carry the hash
+	@v=$$(git describe --tags --always 2>/dev/null) || { echo "make dist-src: needs a git checkout" >&2; exit 1; }; \
+	rm -rf dist/src-stage && mkdir -p dist/src-stage/grantd && \
+	git archive HEAD | tar -x -C dist/src-stage/grantd && \
+	echo "$$v" > dist/src-stage/grantd/VERSION && \
+	tar -czf dist/grantd-src.tar.gz -C dist/src-stage grantd && \
+	rm -rf dist/src-stage && \
+	echo "wrote dist/grantd-src.tar.gz (VERSION $$v)"
 
 sign: build ## Ad-hoc codesign bin/grantd with build/grantd.entitlements (macOS; see docs/MANUAL-TEST-MACOS.md 2a)
 	codesign --force --sign - --identifier dev.grantd.grantd --entitlements build/grantd.entitlements bin/grantd
 	codesign -d --entitlements - bin/grantd
 
 bundle: build ## Assemble dist/grantd.app from bin/grantd (unsigned; macOS; see docs/MANUAL-TEST-MACOS.md 2c)
+	@echo "bundle version: $(VERSION) ($(VERSION_SRC))"
 	@test -x bin/grantd || { echo "bin/grantd missing"; exit 1; }
 	rm -rf $(APP)
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources

@@ -161,6 +161,8 @@ dist/grantd.app/Contents/
   embedded.provisionprofile   added by make sign-bundle
 ```
 
+**Version.** `make build` and `make bundle` print the version they use and where it came from. Order: `make VERSION=x` on the command line, then `git describe --tags --always --dirty`, then the contents of a `VERSION` file in the repo root, then `dev`. A tree from plain `git archive` has no `.git` and would report `dev`; run `make dist-src` in the checkout instead, which writes `dist/grantd-src.tar.gz` containing a `VERSION` file with the hash, so building from the unpacked archive (`make bundle`) carries it.
+
 The bundle identifier lives in one place, `BUNDLE_ID` in the Makefile
 (`dev.grantd.app`; override with `make BUNDLE_ID=...`), and `KEYCHAIN_GROUP`
 (`dev.grantd`) is the keychain group without the team prefix. Rename the project

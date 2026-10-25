@@ -29,3 +29,4 @@ coverage.html
 go.work
 go.work.sum
 /vendor/
+/VERSION
