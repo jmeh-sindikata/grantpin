@@ -185,10 +185,24 @@ class DevDaemonCase: XCTestCase {
         XCTFail("the dev daemon did not answer on \(socket)")
     }
 
+    /// SIGTERM, then wait for the daemon to be gone. `Process.waitUntilExit`
+    /// can miss the exit of a child that dies quickly and then waits for ever,
+    /// so this reaps the child itself, and uses SIGKILL after 5 seconds.
     func stopDaemon() {
-        daemon?.terminate()
-        daemon?.waitUntilExit()
+        guard let d = daemon else { return }
         daemon = nil
+        d.terminate()
+        let pid = d.processIdentifier
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            var status: Int32 = 0
+            let r = waitpid(pid, &status, WNOHANG)
+            if r == pid || (r == -1 && errno == ECHILD) { return }
+            usleep(20_000)
+        }
+        kill(pid, SIGKILL)
+        var status: Int32 = 0
+        waitpid(pid, &status, 0)
     }
 
     /// Stores a secret with a fresh buffer, as the app would.

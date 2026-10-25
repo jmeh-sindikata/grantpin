@@ -36,7 +36,7 @@ final class StatusLineTests: XCTestCase {
     func testNotInitializedOffersCreateVault() {
         let l = StatusLine.from(.notInitialized)
         XCTAssertEqual(l.headline, "No vault yet")
-        XCTAssertEqual(l.button, .createVault)
+        XCTAssertEqual(l.button, .setUp)
     }
 
     func testReadyShowsCounts() {
@@ -190,6 +190,60 @@ final class PopoverModelTests: XCTestCase {
         await m.start()
         await m.createVault()
         XCTAssertEqual(actions.started + actions.created, 0)
+    }
+
+    func testRepairAndRestartRunServiceInstall() async {
+        let actions = FakeActions()
+        let m = PopoverModel(audit: FakeService(), actions: actions)
+        await m.perform(.repair)
+        await m.perform(.restart)
+        await m.perform(.startService)
+        XCTAssertEqual(actions.started, 3)
+        // Set Up, Review and Open Logs Folder open windows or folders: the view does that
+        await m.perform(.setUp); await m.perform(.review); await m.perform(.openLogs)
+        XCTAssertEqual(actions.started + actions.created, 3)
+        XCTAssertNil(m.running)
+    }
+
+    func testOutsideApplicationsTheButtonsAreOff() async {
+        let actions = FakeActions()
+        let m = PopoverModel(audit: FakeService(), actions: actions, location: .elsewhere)
+        XCTAssertEqual(m.buttonsDisabledReason, "Move grantd to your Applications folder first")
+        await m.start()
+        XCTAssertEqual(actions.started, 0)
+        m.location = .ok
+        XCTAssertNil(m.buttonsDisabledReason)
+        await m.start()
+        XCTAssertEqual(actions.started, 1)
+    }
+
+    func testQuickListIsTheSixNewestSecrets() async {
+        let svc = FakeService(secrets: (0..<9).map {
+            SecretInfo(name: "S\($0)", updatedAt: Date(timeIntervalSince1970: Double(1_000 + ($0 * 7) % 9)))
+        })
+        let m = PopoverModel(audit: svc, actions: nil, secrets: svc)
+        await m.refreshSecrets()
+        XCTAssertEqual(m.quickSecrets.count, 6)
+        let times = m.quickSecrets.map(\.updatedAt)
+        XCTAssertEqual(times, times.sorted(by: >), "newest first")
+        XCTAssertEqual(Set(m.quickSecrets.map(\.name)).count, 6)
+        XCTAssertGreaterThanOrEqual(times.last!, Date(timeIntervalSince1970: 1_003))
+    }
+
+    func testQuickListEmptiesQuietlyOnAnError() async {
+        let svc = FakeService(secrets: [SecretInfo(name: "A")])
+        let m = PopoverModel(audit: svc, actions: nil, secrets: svc)
+        await m.refreshSecrets()
+        XCTAssertEqual(m.quickSecrets.map(\.name), ["A"])
+        svc.listFailure = GrantdError.daemon(category: .failed, reason: .vaultNotInitialized, message: "")
+        await m.refreshSecrets()
+        XCTAssertTrue(m.quickSecrets.isEmpty, "hidden, not shown as an error")
+    }
+
+    func testGrantsRowTitle() {
+        XCTAssertEqual(grantsRowTitle(activeGrants: 3), "Grants (3)…")
+        XCTAssertEqual(grantsRowTitle(activeGrants: 0), "Grants (0)…")
+        XCTAssertEqual(grantsRowTitle(activeGrants: nil), "Grants…")
     }
 
     func testNoHelperMeansNoButtons() async {

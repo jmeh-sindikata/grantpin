@@ -104,6 +104,7 @@ extension AuditList {
                                     "argv": e.argv, "secrets": e.secrets, "decision": e.decision, "grant_id": e.grantID,
                                     "duration_ms": e.durationMS, "reason": e.reason]
             if let c = e.exitCode { d["exit_code"] = c }
+            if let x = e.expanded { d["expanded"] = x }
             return d
         }
         let json = try! JSONSerialization.data(withJSONObject: ["entries": enc, "truncated": truncated])
