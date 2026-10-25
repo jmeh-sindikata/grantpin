@@ -37,7 +37,7 @@
 //
 //	<caller> may run `<cmd prefix> …` with <secrets> in <cwd> and subfolders for the next 30 days, without further prompts.
 //
-//	Only continue if you just ran `grantd grants add` yourself.
+//	Only continue if you just asked for this yourself.
 //
 // and the Touch ID reason repeats it ("Create standing grant for 30 days: …").
 // A display dialog cannot set a font size, so the duration cannot be shown in

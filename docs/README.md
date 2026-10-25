@@ -825,7 +825,7 @@ Create a standing grant?
 
 claude-code may run `php artisan …` with DB_URL, aws/* (aws/access_key) in /Users/you/projects/demo and subfolders for the next 30 days, without further prompts.
 
-Only continue if you just ran `grantd grants add` yourself.
+Only continue if you just asked for this yourself.
 
 [ Cancel ]   [ Create standing grant ]
 ```

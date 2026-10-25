@@ -131,7 +131,7 @@ func GrantScope(req approve.ApprovalRequest, ttl time.Duration) string {
 //
 //	<caller> may run `<cmd prefix> …` with <secrets> in <cwd> and subfolders for the next 30 days, without further prompts.
 //
-//	Only continue if you just ran `grantd grants add` yourself.
+//	Only continue if you just asked for this yourself.
 //
 // The whole request is untrusted and sanitised like BuildReason. The command
 // prefix, secrets (with globs expanded) and directory are the scope of the
@@ -168,7 +168,7 @@ func StandingText(req approve.ApprovalRequest) string {
 	if !req.PolicyPresent {
 		text += " (No policy file applies.)"
 	}
-	return text + "\n\nOnly continue if you just ran `grantd grants add` yourself."
+	return text + "\n\nOnly continue if you just asked for this yourself."
 }
 
 // usesSuffix discloses a use limit, e.g. " (at most 3 runs)"; empty when

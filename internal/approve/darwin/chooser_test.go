@@ -224,7 +224,7 @@ func TestDialogArgsStandingGrant(t *testing.T) {
 	}
 	want := "Create a standing grant?\n\n" +
 		"claude-code may run `php artisan …` with DB_URL, aws/* (aws/access_key) in /Users/me/projects/foo and subfolders for the next 30 days, without further prompts.\n\n" +
-		"Only continue if you just ran `grantd grants add` yourself."
+		"Only continue if you just asked for this yourself."
 	if args[3] != want {
 		t.Errorf("text:\n%q\nwant:\n%q", args[3], want)
 	}

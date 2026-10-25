@@ -304,3 +304,21 @@ func TestBuildReasonUnchangedForShowAndRelease(t *testing.T) {
 		t.Errorf("show reason changed: %q vs %q", b, a)
 	}
 }
+
+// The closing sentence of the standing-grant dialog is fixed text: it must not
+// name a CLI command (the menu-bar app triggers this dialog too) and must not
+// depend on the untrusted caller string.
+func TestStandingTextClosingSentence(t *testing.T) {
+	const want = "\n\nOnly continue if you just asked for this yourself."
+	for _, caller := range []string{"claude-code", "grantd-app", "cli", ""} {
+		r := standingReq()
+		r.Caller = caller
+		got := StandingText(r)
+		if !strings.HasSuffix(got, want) {
+			t.Errorf("caller %q: text does not end with the fixed sentence: %q", caller, got)
+		}
+		if strings.Contains(strings.TrimSuffix(got, want), "grants add") {
+			t.Errorf("caller %q: text mentions the CLI command: %q", caller, got)
+		}
+	}
+}
