@@ -16,16 +16,32 @@
 //
 // # Choices offered
 //
-// LocalAuthentication only reports success or failure, so v0.1 is allow-once
-// only: success yields Decision{Allow: true, TTL: 0}; cancel, failed
-// authentication, or "Deny" yield Decision{Allow: false}. The daemon may opt in
-// to "Allow for N" semantics with WithDefaultTTL; when it does, the prompt text
-// states the duration so the human knows what they are approving, and the TTL is
-// capped by ApprovalRequest.SuggestedTTL. A native three-button (Allow once /
-// Allow for N / Deny) chooser would need an AppKit NSAlert on the main thread of
-// a process running NSApplication; a Go daemon does not own the main thread
-// safely, so this is deliberately NOT implemented (see docs/MANUAL-TEST-MACOS.md
-// and the step-7 report).
+// LocalAuthentication only reports success or failure, so the three-way choice
+// is a separate native step. By default (WithChooser(true)) Ask first runs
+// /usr/bin/osascript (absolute path, minimal environment, killed on ctx
+// cancellation) with a constant AppleScript `display dialog` offering
+//
+//	{"Deny", "Allow once", "Allow for <SuggestedTTL>"}
+//
+// default and cancel button "Deny", caution icon, giving up (= Deny) after
+// 120s. The dialog text and the third button label are passed as run-handler
+// arguments after `--`; untrusted caller/argv/cwd text is sanitised and never
+// interpolated into AppleScript source. Only the exact `button returned:` label
+// with `gave up:false` counts; any other output is Deny. Deny short-circuits
+// before LocalAuthentication. For either Allow button the LocalAuthentication
+// prompt follows, and only chosen button AND authentication success yield
+// Decision{Allow:true, TTL: 0 (once) or SuggestedTTL (Allow for N)}. With
+// SuggestedTTL == 0 the third button is not offered.
+//
+// WithChooser(false) skips the dialog: LocalAuthentication alone, allow-once,
+// or the WithDefaultTTL duration (capped by SuggestedTTL, stated in the prompt).
+//
+// Residual risk: the osascript dialog is ordinary UI. A process running as the
+// same account that holds Accessibility permission could script it and click
+// "Allow". That is exactly why LocalAuthentication always follows an Allow
+// button: the sensor or password is not scriptable the same way. If the dialog
+// cannot be shown (osascript fails for a reason other than the user cancelling)
+// Ask returns ErrChooserFailed; it never degrades to an allow.
 //
 // # Prompt text
 //

@@ -11,6 +11,15 @@ type Option func(*config)
 
 type config struct {
 	defaultTTL time.Duration
+	chooser    bool
+}
+
+// WithChooser enables (default) or disables the three-way Allow once / Allow
+// for N / Deny dialog shown via /usr/bin/osascript before the
+// LocalAuthentication prompt. false falls back to LA-only: allow-once, or the
+// WithDefaultTTL duration.
+func WithChooser(on bool) Option {
+	return func(c *config) { c.chooser = on }
 }
 
 // WithDefaultTTL makes a successful authentication an "Allow for N" decision
@@ -27,7 +36,7 @@ func WithDefaultTTL(d time.Duration) Option {
 }
 
 func newConfig(opts []Option) config {
-	var c config
+	c := config{chooser: true}
 	for _, o := range opts {
 		if o != nil {
 			o(&c)

@@ -77,7 +77,8 @@ func TestDecideOnlyOKAllows(t *testing.T) {
 	}
 }
 
-// TestManualPromptsOnce shows ONE real Touch ID / password prompt.
+// TestManualPromptsOnce runs the full chain: the osascript chooser, then (for
+// either Allow button) one Touch ID / password prompt.
 // Skipped unless GRANTD_MANUAL_TEST=1. See docs/MANUAL-TEST-MACOS.md.
 func TestManualPromptsOnce(t *testing.T) {
 	if os.Getenv("GRANTD_MANUAL_TEST") != "1" {
@@ -114,7 +115,7 @@ func TestManualCancelViaContext(t *testing.T) {
 	if os.Getenv("GRANTD_MANUAL_TEST") != "1" {
 		t.Skip("set GRANTD_MANUAL_TEST=1 to run (shows a Touch ID / password prompt)")
 	}
-	a, _ := New()
+	a, _ := New(WithChooser(false))
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	start := time.Now()
@@ -126,4 +127,73 @@ func TestManualCancelViaContext(t *testing.T) {
 		t.Fatalf("err = %v, want DeadlineExceeded", err)
 	}
 	t.Logf("returned after %v", time.Since(start))
+}
+
+func TestChooserDefaultsAndOptOut(t *testing.T) {
+	a, _ := New()
+	if a.(*Approver).choose == nil {
+		t.Error("chooser should be on by default")
+	}
+	b, _ := New(WithChooser(false))
+	if b.(*Approver).choose != nil {
+		t.Error("WithChooser(false) must disable it")
+	}
+}
+
+// Deny from the chooser must short-circuit before LocalAuthentication, so this
+// never shows an LA prompt (and the fake means no dialog either).
+func TestAskChooserDenyShortCircuits(t *testing.T) {
+	f := &fakeExec{stdout: "button returned:Deny, gave up:false\n"}
+	a := &Approver{cfg: newConfig(nil), choose: newFake(f), slot: make(chan struct{}, 1)}
+	d, err := a.Ask(context.Background(), req())
+	if errors.Is(err, ErrNoGUISession) {
+		t.Skip("no GUI session")
+	}
+	if err != nil || d.Allow || d.Reason != "user denied" || f.calls != 1 {
+		t.Fatalf("got %+v %v calls=%d", d, err, f.calls)
+	}
+}
+
+func TestAskChooserFailureIsNotAllow(t *testing.T) {
+	f := &fakeExec{code: 1, stderr: "boom"}
+	a := &Approver{cfg: newConfig(nil), choose: newFake(f), slot: make(chan struct{}, 1)}
+	d, err := a.Ask(context.Background(), req())
+	if errors.Is(err, ErrNoGUISession) {
+		t.Skip("no GUI session")
+	}
+	if d.Allow || !errors.Is(err, ErrChooserFailed) {
+		t.Fatalf("got %+v %v", d, err)
+	}
+}
+
+// TestManualChooserOnly shows ONLY the osascript dialog (no Touch ID).
+func TestManualChooserOnly(t *testing.T) {
+	if os.Getenv("GRANTD_MANUAL_TEST") != "1" {
+		t.Skip("set GRANTD_MANUAL_TEST=1 to run (shows an osascript dialog)")
+	}
+	r := approve.ApprovalRequest{Caller: "grantd-manual-test", Cwd: "/tmp/grantd-manual-test",
+		Argv: []string{"echo", "hello"}, Secrets: []string{"MANUAL_TEST_SECRET"}, SuggestedTTL: time.Hour}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	c, err := newChooser().ask(ctx, r, time.Hour)
+	t.Logf("choice=%d (0 deny, 1 once, 2 for-1h) err=%v", c, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestManualLAOnly is the original single-prompt test with the chooser off.
+func TestManualLAOnly(t *testing.T) {
+	if os.Getenv("GRANTD_MANUAL_TEST") != "1" {
+		t.Skip("set GRANTD_MANUAL_TEST=1 to run (shows a Touch ID / password prompt)")
+	}
+	a, _ := New(WithChooser(false))
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	d, err := a.Ask(ctx, approve.ApprovalRequest{Caller: "grantd-manual-test", Cwd: "/tmp/grantd-manual-test",
+		Argv: []string{"echo", "hello"}, Secrets: []string{"MANUAL_TEST_SECRET"}})
+	t.Logf("decision=%+v err=%v", d, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
