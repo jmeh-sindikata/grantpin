@@ -26,7 +26,10 @@ var ErrUnsupported = errors.New("service: not supported on this platform")
 type Options struct {
 	// Exe is the grantd binary to run. Empty means the current executable.
 	// It is resolved through symlinks and must be absolute, executable and
-	// not inside a temporary directory.
+	// not inside a temporary directory. It may also name a macOS app bundle
+	// (a directory ending in ".app"); the service then runs the bundle's
+	// inner binary, Contents/MacOS/<CFBundleExecutable>, which is what the
+	// bundle's signature and provisioning profile apply to.
 	Exe string
 	// Socket, if set, is exported to the daemon as GRANTD_SOCKET. Must be
 	// absolute.
@@ -118,6 +121,35 @@ func resolveExe(exe string) (string, error) {
 	real, err := filepath.EvalSymlinks(exe)
 	if err != nil {
 		return "", fmt.Errorf("service: resolve executable %q: %w", exe, err)
+	}
+	if fi, err := os.Stat(real); err == nil && fi.IsDir() && strings.HasSuffix(real, ".app") {
+		return bundleExe(real)
+	}
+	return real, nil
+}
+
+// bundleExe returns the inner binary of the app bundle at dir:
+// Contents/MacOS/<CFBundleExecutable> (default "grantd"). The name must be a
+// plain file name so a crafted Info.plist cannot point outside the bundle.
+func bundleExe(dir string) (string, error) {
+	name := "grantd"
+	if data, err := os.ReadFile(filepath.Join(dir, "Contents", "Info.plist")); err == nil {
+		if m, perr := parsePlist(data); perr == nil {
+			if n, _ := m["CFBundleExecutable"].(string); n != "" {
+				name = n
+			}
+		}
+	}
+	if name != filepath.Base(name) || name == "." || name == ".." {
+		return "", fmt.Errorf("service: %s: invalid CFBundleExecutable %q", dir, name)
+	}
+	inner := filepath.Join(dir, "Contents", "MacOS", name)
+	real, err := filepath.EvalSymlinks(inner)
+	if err != nil {
+		return "", fmt.Errorf("service: app bundle %s has no executable at %s: %w", dir, inner, err)
+	}
+	if !within(real, dir) {
+		return "", fmt.Errorf("service: %s resolves outside the app bundle %s", inner, dir)
 	}
 	return real, nil
 }
