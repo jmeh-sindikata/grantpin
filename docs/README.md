@@ -174,6 +174,8 @@ Allow for 1h covers: printenv … in /Users/you/projects/demo and subfolders.
 
 Deny is the default button and also what Esc, closing the dialog, or 120 seconds of silence mean. If the project had no policy, the text ends with "(no policy)". If the request names a glob, the dialog lists what it matched, for example `aws/* (aws/access_key, aws/secret_key)`. The caller name is whatever the MCP client reported in its handshake (lowercased and sanitised); it is informational, not proof of who is asking. The line starting "Allow for 1h covers:" states exactly what the grant will permit if you press the third button: the command prefix (here the policy's `printenv`; without a policy, the whole command), the directory and everything beneath it, for that long, for the same caller and secrets. Read the command and that scope; they are the control.
 
+The duration on the third button is the policy's `max_grant_ttl` (so `8h` with `max_grant_ttl: 8h`), but never more than 24 hours, and 1 hour when there is no policy. Two other prompts look different on purpose: `grantd show` offers only `[ Deny ] [ Reveal once ]` (never a duration), and `grantd grants add` shows "Create a standing grant?" with `[ Cancel ] [ Create standing grant ]` (see [Standing grants](#standing-grants)). Only this release prompt can offer "Allow for N".
+
 Then, only if you pressed an Allow button, the macOS authentication sheet (Touch ID, or your account password if there is no sensor or Touch ID is locked out) repeats the request. Touch the sensor. Only the button and a successful authentication together release the secret. Cancelling the sheet is a deny.
 
 "Allow for 1h" stores a grant: for the next hour, the same caller, working directory (and anything beneath it), secrets and command prefix run without a prompt, as the "covers:" line said. "Allow once" stores nothing.
@@ -394,7 +396,7 @@ Flags:
 
 ### `grantd grants`
 
-Bare `grants` is `grants list`. Rows that fail authentication are shown as `TAMPERED` and never match; revoke them. Neither list nor revoke needs approval.
+Bare `grants` is `grants list`. The `STANDING` column says `standing` for grants created with `grants add` (the others, made by the dialog's "Allow for N", show `-`); `EXPIRES` is the time left. Rows that fail authentication are shown as `TAMPERED` and never match; revoke them. Neither list nor revoke needs approval; `add` always does.
 
 ```
 List or revoke grants
@@ -404,6 +406,7 @@ Usage:
   grantd grants [command]
 
 Available Commands:
+  add         Create a standing grant (long-lived, you approve it once)
   list        List active grants
   revoke      Revoke one grant by ID, or all with --all
 
@@ -412,6 +415,48 @@ Flags:
       --socket string   socket path (default: $GRANTD_SOCKET or the platform default)
 
 Use "grantd grants [command] --help" for more information about a command.
+```
+
+### `grantd grants add`
+
+Creates a [standing grant](#standing-grants). Example: `grantd grants add --caller claude-code --secrets DB_URL --ttl 30d -- php artisan`.
+
+```
+Create a standing grant: for the next --ttl, requests from --caller to run a
+command starting with the given prefix, in --cwd or below it, asking only for
+the listed secrets, are released without a prompt.
+
+  grantd grants add --caller claude-code --secrets DB_URL,aws/* --ttl 30d -- php artisan
+
+Everything after -- (or after --cmd, which must then be the last flag) is the
+command prefix, so "php artisan" covers "php artisan migrate" but not "php x".
+--caller has no default: say who the grant is for. --cwd defaults to the
+current directory. --uses N ends the grant after N releases.
+
+You approve it once, in a dialog that says "standing grant" and states the
+duration, followed by Touch ID. The repo policy's max_grant_ttl limits only
+the "Allow for N" button of a normal prompt, not this. A standing grant lasts
+at most 90 days, or less if the policy sets max_standing_grant_ttl; a longer
+--ttl is refused, not shortened. Revoke it with "grantd grants revoke ID".
+
+Any program that can reach the daemon socket can send this request, so only
+approve a standing-grant dialog that you started yourself.
+
+Exit status: 77 when you cancelled or the dialog could not be shown, 78 when
+the repo policy or the secret's presence tier refused it.
+
+Usage:
+  grantd grants add --caller NAME --secrets A,b/* --ttl 30d [--cwd DIR] [--uses N] -- cmd args... [flags]
+
+Flags:
+      --caller string     who the grant is for, e.g. claude-code (required, no default)
+      --cmd               the rest of the line is the command prefix (same as --)
+      --cwd string        directory the grant covers, with its subfolders (default: current directory)
+  -h, --help              help for add
+      --secrets strings   secret names or globs the grant covers (comma-separated)
+      --socket string     socket path (default: $GRANTD_SOCKET or the platform default)
+      --ttl string        how long the grant lasts, e.g. 30d, 12h (required; at most 90d)
+      --uses int          end the grant after N releases (default: unlimited within --ttl)
 ```
 
 ### `grantd grants list`
@@ -681,7 +726,7 @@ To try it without Claude Code, point an MCP client at it, e.g. `npx @modelcontex
 | `GRANTD_SOCKET` | If set, the socket path used by the daemon and every client. `--socket` overrides it per command. |
 | `XDG_DATA_HOME` | If set and absolute: vault at `$XDG_DATA_HOME/grantd/vault.db` (on every platform, including macOS, unless `GRANTD_HOME` is set). On non-macOS also the socket directory. |
 | `XDG_RUNTIME_DIR` | If set: socket at `$XDG_RUNTIME_DIR/grantd.sock`. |
-| `GRANTD_DEV_APPROVE` | Test builds only (`-tags grantd_dev`): `allow` makes the dev approver auto-allow; anything else auto-denies. Does nothing in a production build. |
+| `GRANTD_DEV_APPROVE` | Test builds only (`-tags grantd_dev`): `allow` makes the dev approver auto-allow; `allow-no-standing` does the same but denies standing-grant requests (`grants add`); anything else auto-denies. Does nothing in a production build. |
 | `GRANTD_MANUAL_TEST` | Enables the hardware-touching tests in [MANUAL-TEST-MACOS.md](MANUAL-TEST-MACOS.md). |
 
 Resolution order for the **vault**: `$GRANTD_HOME/vault.db`, then `$XDG_DATA_HOME/grantd/vault.db`, then `~/Library/Application Support/grantd/vault.db` (macOS) or `~/.local/share/grantd/vault.db`.
@@ -728,6 +773,7 @@ commands:           # allowed argv prefixes
   - [aws]
   - [./deploy.sh]
 max_grant_ttl: 4h   # optional; Go durations or Nd; default 1h
+max_standing_grant_ttl: 30d   # optional; caps `grants add`; no default
 ```
 
 Semantics, all of which are enforced in `internal/policy` and `internal/broker`:
@@ -737,12 +783,13 @@ Semantics, all of which are enforced in `internal/policy` and `internal/broker`:
 - **Broken means refused.** A policy file that exists but is unreadable, is not a regular file, is not owned by the current user, is world-writable, is over 1 MiB, has an unknown key, is not exactly one YAML document, or has `version` other than 1 refuses the request. The search never skips past a broken file to a looser one. (Group-writable is allowed. The ownership and mode checks are Unix-only.)
 - **Secrets.** A requested literal name must equal a policy entry or match a policy glob (doublestar syntax, so `aws/*` matches one level and `aws/**` any depth). A requested **glob** (`--secrets 'aws/*'`) is allowed only if that exact text appears in the policy, even if the policy has `**`. An empty or missing `secrets` list allows nothing.
 - **Commands.** `argv` must start, element for element, with one of the listed prefixes. Matching is textual on what the caller typed: `[./deploy.sh]` matches `./deploy.sh` and not `/abs/path/deploy.sh`. An empty or missing `commands` list allows nothing. A prefix like `[sh, -c]` or `[bash]` allows arbitrary shell code; list the narrowest prefix you can.
-- **`max_grant_ttl`** caps the lifetime of an "Allow for N" grant, and the N the dialog offers. Absent, it is 1 hour. Without a policy file the cap is also 1 hour.
+- **`max_grant_ttl`** is the N the dialog offers on "Allow for N", and the cap on the grant that button creates, but never more than 24 hours (`max_grant_ttl: 7d` offers 24h). Absent, it is 1 hour. Without a policy file the dialog offers 1 hour. It does **not** limit standing grants: the cap is for prompts an agent can trigger, and a standing grant is something you create on purpose with `grants add`.
+- **`max_standing_grant_ttl`** (optional) caps standing grants for this repo, with the same syntax as `max_grant_ttl`. Absent means no repo cap. It can only lower the daemon's 90-day ceiling, never raise it. A `grants add --ttl` above the ceiling is refused with `bad_request`, not shortened.
 - **Grant scope follows the policy.** When you press "Allow for N", the grant's command prefix is the longest policy prefix that the request's argv starts with (the whole argv if there is no policy). With `commands: [[php, artisan]]`, approving `php artisan sync` for an hour permits every `php artisan ...` command in that directory for that hour. The dialog's "Allow for N covers:" line shows that prefix, so you can see the scope before you accept it; keep policy prefixes narrow.
 
 ## Grants
 
-A grant is what "Allow for N" creates. It is the only thing that lets a release happen without a prompt.
+A grant is what lets a release happen without a prompt. There are two kinds: the **dialog grant** that "Allow for N" creates (at most 24 hours), and the **standing grant** that you create with `grantd grants add` (at most 90 days; see [Standing grants](#standing-grants)). They match requests in exactly the same way.
 
 A request matches a grant when **all** of these hold:
 
@@ -753,11 +800,38 @@ A request matches a grant when **all** of these hold:
 - the grant has not expired (it expires at exactly its `expires_at`) and, if it has a use count, has uses left;
 - the stored row authenticates (below).
 
-The grant's command scope is the longest policy command prefix that the request's argv starts with, else the full argv; its directory is the request's resolved working directory. The grant records the secrets **as requested** (`aws/*`), not as expanded at approval time, so a glob grant also covers a matching secret you add later. The TTL is the dialog's N, which is 1 hour or `max_grant_ttl` if that is shorter (it is not user-selectable in v0.1 and there is no flag to change the default). Allow-once never creates a grant. `uses_remaining` exists in the store and the protocol, but nothing creates a grant with a use limit today. `grantd grants` lists active grants; `grantd grants revoke ID` and `grantd grants revoke --all` delete them (neither needs approval).
+The grant's command scope is the longest policy command prefix that the request's argv starts with, else the full argv; its directory is the request's resolved working directory. The grant records the secrets **as requested** (`aws/*`), not as expanded at approval time, so a glob grant also covers a matching secret you add later. The TTL of a dialog grant is the dialog's N: the policy's `max_grant_ttl` capped at 24 hours, or 1 hour with no policy (it is not user-selectable and there is no flag to change the default). Allow-once never creates a grant. A grant with a use limit (`uses_remaining`) can only be created with `grants add --uses N`. `grantd grants` lists active grants; `grantd grants revoke ID` and `grantd grants revoke --all` delete them (neither needs approval).
 
-**Grants are authenticated.** Each row carries an HMAC-SHA256 under `vault.DeriveKey("grant-mac")` (a key derived from the vault key, which only the daemon holds) over the row's id, caller, directory, secrets, command prefix, created/expiry times and remaining uses. A row that someone inserted or edited in `vault.db` fails verification: it never matches, `grantd grants` lists it as `TAMPERED: failed authentication, ignored (revoke it)`, `grantd status` prints a `WARNING:` line with the count, and the daemon logs it once at WARN. Finite use counts are decremented with a compare-and-swap that rewrites the MAC. What the MAC does not stop: deleting rows (that only revokes), and **replaying an older genuine row** that was saved earlier, within its lifetime (reviving a revoked grant, or resetting `uses_remaining`). Grants created before this existed are dropped on upgrade (you get asked again).
+**Grants are authenticated.** Each row carries an HMAC-SHA256 under `vault.DeriveKey("grant-mac")` (a key derived from the vault key, which only the daemon holds) over the row's id, caller, directory, secrets, command prefix, created/expiry times, remaining uses and kind (so a dialog grant cannot be relabelled as a standing one or the reverse). A row that someone inserted or edited in `vault.db` fails verification: it never matches, `grantd grants` lists it as `TAMPERED: failed authentication, ignored (revoke it)`, `grantd status` prints a `WARNING:` line with the count, and the daemon logs it once at WARN. Finite use counts are decremented with a compare-and-swap that rewrites the MAC. What the MAC does not stop: deleting rows (that only revokes), and **replaying an older genuine row** that was saved earlier, within its lifetime (reviving a revoked grant, or resetting `uses_remaining`). Grants created before this existed are dropped on upgrade (you get asked again). For a standing grant the replay window is its whole lifetime rather than an hour.
 
 What a grant binds to is **the argv text and the directory, not the program's contents.** If you grant `php artisan` in `~/projects/demo`, an agent that can edit files in that tree can change what `artisan` does and use the grant. Approving "Allow for N" is approving the repository's code to run with those secrets for that long.
+
+### Standing grants
+
+```sh
+grantd grants add --caller claude-code --secrets DB_URL,aws/* --ttl 30d -- php artisan
+grantd grants add --caller claude-code --secrets API_KEY --ttl 12h --cwd ~/projects/demo --uses 20 -- ./deploy.sh
+```
+
+A standing grant is a grant that **you** create, up front, for a long time, instead of answering a prompt later. `--caller` is required (no default): you state who it is for. `--secrets` takes names and globs; everything after `--` (or after `--cmd`) is the command prefix, so `php artisan` also covers `php artisan migrate`; `--cwd` defaults to the current directory and covers its subfolders; `--uses N` ends the grant after N releases. The daemon validates it like a run (the directory must exist, the secrets must exist and not be expired, and a `.grantd.yml` that does not allow those secrets and that command refuses it with `policy_refused`).
+
+The ceilings: `--ttl` may be at most **90 days**, and at most the policy's `max_standing_grant_ttl` if the nearest `.grantd.yml` sets one. Above the ceiling the request is refused with `bad_request` and a message naming the limit; it is never shortened. The policy's `max_grant_ttl` is not involved.
+
+You approve it once. The dialog is not the release prompt:
+
+```
+Create a standing grant?
+
+claude-code may run `php artisan …` with DB_URL, aws/* (aws/access_key) in /Users/you/projects/demo and subfolders for the next 30 days, without further prompts.
+
+Only continue if you just ran `grantd grants add` yourself.
+
+[ Cancel ]   [ Create standing grant ]
+```
+
+Cancel is the default (Esc and 120 seconds of silence cancel too). A use limit shows as "(at most 5 runs)". Touch ID follows, and its text repeats it ("Create standing grant for 30 days: ..."). Nothing is stored until both succeed. The dialog cannot show the duration in large print (`display dialog` has no font control); it is in the first sentence. After that, matching runs are released with no prompt, audited as `allowed_grant`; the creation itself is one `allowed_new_grant` row with reason `standing`. `grantd grants` marks the grant in its `STANDING` column; `grantd grants revoke ID` removes it.
+
+**Anything that can reach the socket can ask for this dialog.** The daemon cannot tell `grantd grants add` from an agent writing the same JSON line to the socket, and the `caller` in the dialog is whatever the sender claimed. So the protection is the human reading the dialog: if you did not just run `grants add`, press Cancel. A standing grant you approve is, for its whole lifetime, an unattended release of those secrets to any process that claims the caller name and runs that command prefix in that directory (see the grant caveats above, and the [threat model](THREAT-MODEL.md)). Keep it narrow: a specific command prefix, a specific directory, the shortest `--ttl` that works, and `--uses` where a count makes sense.
 
 ## Redaction
 

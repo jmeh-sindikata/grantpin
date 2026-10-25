@@ -44,8 +44,11 @@ Every field except `v` and `op` is optional on the wire (`omitempty`); which are
 | `overwrite` | bool | set | Replace an existing secret. |
 | `tag` | string | list | Only secrets with this tag. |
 | `expiring_within_s` | int | list | Only secrets that expire within this many seconds (already-expired ones included). |
-| `action` | string | grants, audit | grants: `list` (default), `revoke`, `revoke_all`. audit: `list` (default), `verify`, `export`. Anything else: `bad_request`. |
+| `action` | string | grants, audit | grants: `list` (default), `add`, `revoke`, `revoke_all`. audit: `list` (default), `verify`, `export`. Anything else: `bad_request`. |
 | `grant_id` | string | grants | The grant to revoke. |
+| `grant_caller` | string | grants add | The caller label the standing grant is for. Required, no default; same rules as `caller`. |
+| `ttl_s` | int | grants add | Lifetime in seconds. Required, above zero, at most 90 days (or the nearest policy's `max_standing_grant_ttl`, if lower); above that: `bad_request`, never shortened. |
+| `uses` | int | grants add | End the grant after this many releases. Default 0: unlimited within `ttl_s`. |
 | `limit` | int | audit list | Rows to return, newest first. Default 100, at most 1000. |
 
 `proto.Request` implements `String()` and `GoString()` so that formatting a request never prints `value`.
@@ -72,7 +75,7 @@ For `run`, zero or more frames arrive before the final response:
 |---|---|
 | `ok` | Whether the op succeeded. |
 | `exit_code` | `run` only, present (including `0`) when the command ran. Absent otherwise. |
-| `grant_id` | `run`: the grant that authorised it or that the human's "Allow for N" created; absent for allow-once. `grants revoke`: the revoked ID. |
+| `grant_id` | `run`: the grant that authorised it or that the human's "Allow for N" created; absent for allow-once. `grants revoke`: the revoked ID. `grants add`: the new standing grant's ID. |
 | `audit_id` | The audit row this request wrote, when it wrote one. For a `run` that was released it is the `completed` row. |
 | `error` | On failure: the category. |
 | `reason` | On failure: the specific cause. On a successful `run` that timed out: `timeout`. |
@@ -218,7 +221,14 @@ Notes:
 << {"ok":true,"result":[]}
 ```
 
-`list` returns the active (unexpired) grants as `[{id, caller, cwd_prefix, secrets, cmd_prefix, expires_at, uses_remaining?, created_at, tampered?}]`. A stored row whose HMAC does not verify is returned with `"tampered":true`; it never matches a request, and its other fields are untrusted and for display only (revoke it by ID). `revoke` with `grant_id` answers `{"ok":true,"grant_id":"..."}` or `not_found` / `grant_not_found`. `revoke_all` answers `{"ok":true}`. Not presence-gated.
+`list` returns the active (unexpired) grants as `[{id, caller, cwd_prefix, secrets, cmd_prefix, expires_at, uses_remaining?, created_at, standing?, tampered?}]` (`standing` is true for grants made with `add`). A stored row whose HMAC does not verify is returned with `"tampered":true`; it never matches a request, and its other fields are untrusted and for display only (revoke it by ID). `revoke` with `grant_id` answers `{"ok":true,"grant_id":"..."}` or `not_found` / `grant_not_found`. `revoke_all` answers `{"ok":true}`. `list` and `revoke*` are not presence-gated.
+
+`add` creates a **standing grant** and always asks the human. Request fields: `cwd` (absolute, must exist; symlinks are resolved), `secrets` (names or globs), `argv` (the command prefix), `grant_caller`, `ttl_s`, optionally `uses`; `caller` is the requester as usual. It is validated like `run`, refused with `refused/policy_refused` when the nearest `.grantd.yml` forbids those secrets or that command, then the human sees a "standing grant" dialog that states the duration, followed by authentication. Answers: `{"ok":true,"grant_id":"...","audit_id":"...","result":{<GrantInfo with "standing":true>}}`; `denied/user_denied` or `denied/approver_unavailable` when the human cancelled or the prompt could not be shown; `bad_request` for a malformed request or a `ttl_s` above the ceiling (the message names the limit). The audit row is `allowed_new_grant` with reason `standing`. Any socket client can send this request; the dialog is the control (see the threat model).
+
+```
+>> {"v":1,"op":"grants","action":"add","caller":"cli","grant_caller":"claude-code","cwd":"/Users/you/projects/demo","secrets":["DB_URL","aws/*"],"argv":["php","artisan"],"ttl_s":2592000}
+<< {"ok":true,"grant_id":"4f6c...","audit_id":"57","result":{"id":"4f6c...","caller":"claude-code","cwd_prefix":"/Users/you/projects/demo","secrets":["DB_URL","aws/*"],"cmd_prefix":["php","artisan"],"expires_at":"...","created_at":"...","standing":true}}
+```
 
 ### `audit`
 
