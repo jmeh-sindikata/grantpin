@@ -32,15 +32,15 @@ The full analysis is in [THREAT-MODEL.md](THREAT-MODEL.md). The short version:
 
 - Secrets landing in the agent's context, chat history, or the vendor's logs. No tool, CLI verb or socket op returns a value to the agent (except `show`, below).
 - `cat .env` / `printenv` exposure. There is no plaintext secret on disk and none in your shell's environment; the value exists in the environment of the one approved child process.
-- Silent use. Every release needs either a fresh approval or a grant that you created by approving; every release is audited.
+- Silent use. Every release needs either a fresh approval or a grant that you created by approving; every release is audited. Grants are stored with an HMAC under a key derived from the vault key, so a row someone inserts or edits in the vault file never matches (it is listed as `TAMPERED` by `grantd grants` and `grantd status` prints a warning).
 - "Fetch the key and send it to X" prompt injection. There is nothing to fetch. The injected agent can only ask to run a command, and you see the command.
 
 **It does not protect against**
 
 - **An approved command that exfiltrates.** If you approve `./deploy.sh` and that script sends the key elsewhere, grantd cannot tell. You are the control: read the command in the dialog.
-- **Anything that can write the vault file.** Grants are stored in the vault's SQLite file without a MAC. A process running as you can insert a grant row and then run commands with your secrets with no prompt (demonstrated in the threat model). Presence is enforced by the daemon's logic, not by the file's format. Until grants are authenticated (see [BACKLOG.md](BACKLOG.md)), do not treat grantd as a defence against code that already runs as your user with file-write access; it is a defence for the agent-with-a-shell case where you are watching prompts.
+- **Code that already runs as you with full control of your account.** Presence is enforced by the daemon's logic, not by cryptography on the key. Forged grant rows are rejected, but a process running as you can still delete the vault, replace the `grantd` binary or the launchd plist, write `.grantd.yml` files, replay a previously captured genuine grant row within its lifetime, or (with the Keychain fallback) read the key. grantd is a defence for the agent-with-a-shell case where you are watching prompts, not for an attacker who owns your user account.
 - **Redaction misses.** Redaction is exact byte match of the injected value. Base64, hex, URL-encoding, substrings, hashes and reversed output pass through unchanged.
-- **A compromised account or a fallback key store.** With `--keychain-fallback` the vault key is readable by anything running as you. With the Secure Enclave key there is no per-use Touch ID on the key (by design); see the threat model for what that means.
+- **A compromised account or a fallback key store.** With a vault created by `grantd init --keychain-fallback` the vault key is readable by anything running as you. With the Secure Enclave key there is no per-use Touch ID on the key (by design); see the threat model for what that means.
 - **Secrets set, overwritten or deleted by the agent.** `set`, `delete` and overwrite are not presence-gated. A same-user process can destroy or replace a secret (a denial-of-service and integrity risk, not a disclosure).
 
 The one real security boundary is **human presence at release time**: the dialog that shows the exact command, and the Touch ID prompt behind it. Everything else is defence in depth.
@@ -59,7 +59,7 @@ install -m 0755 bin/grantd ~/.local/bin/grantd   # or any permanent directory on
 
 `make build` produces a production binary: the insecure test backends are not compiled in (see [Development](#development)).
 
-**Optional: `make sign`.** On macOS, Secure Enclave keys live in the data-protection keychain, which the system opens only to code that carries an application identifier. A plain `go build` binary has none, and per [MANUAL-TEST-MACOS.md](MANUAL-TEST-MACOS.md) §2a key creation usually fails with `errSecMissingEntitlement` (`-34018`). `make sign` builds and then ad-hoc signs `bin/grantd` with `build/grantd.entitlements` (identifier `dev.grantd.grantd`, entitlement `com.apple.application-identifier`) to give it one. Whether macOS accepts an ad-hoc application identifier for Secure Enclave keys is machine-dependent and not verified here; the decision tree in MANUAL-TEST-MACOS.md §2a is how to find out. If `grantd init` says the Secure Enclave is unavailable, run `make sign` and retry; if it still fails, use the weaker Keychain fallback: `grantd init --keychain-fallback`, then `grantd service install --keychain-fallback` (or `grantd daemon --keychain-fallback`); see [Presence tiers](#presence-tiers-and-the-keychain-fallback).
+**Optional: `make sign`.** On macOS, Secure Enclave keys live in the data-protection keychain, which the system opens only to code that carries an application identifier. A plain `go build` binary has none, and per [MANUAL-TEST-MACOS.md](MANUAL-TEST-MACOS.md) §2a key creation usually fails with `errSecMissingEntitlement` (`-34018`). `make sign` builds and then ad-hoc signs `bin/grantd` with `build/grantd.entitlements` (identifier `dev.grantd.grantd`, entitlement `com.apple.application-identifier`) to give it one. Whether macOS accepts an ad-hoc application identifier for Secure Enclave keys is machine-dependent and not verified here; the decision tree in MANUAL-TEST-MACOS.md §2a is how to find out. If `grantd init` says the Secure Enclave is unavailable, run `make sign` and retry; if it still fails, use the weaker Keychain fallback: `grantd init --keychain-fallback`, the choice is recorded in the vault and in the wrapped key, so the daemon and the service need no flag; see [Presence tiers](#presence-tiers-and-the-keychain-fallback).
 
 **Run the daemon at login:**
 
@@ -147,16 +147,16 @@ An agent is asking grantd to release secrets:
 
 claude-code wants to run `printenv API_KEY` with API_KEY in /Users/you/projects/demo
 
-"Allow for 1h" lets the same request run again for that long.
+Allow for 1h covers: printenv … in /Users/you/projects/demo and subfolders.
 
 [ Deny ]   [ Allow once ]   [ Allow for 1h ]
 ```
 
-Deny is the default button and also what Esc, closing the dialog, or 120 seconds of silence mean. If the project had no policy, the text ends with "(no policy)". If the request names a glob, the dialog lists what it matched, for example `aws/* (aws/access_key, aws/secret_key)`. The caller name is whatever the MCP client reported in its handshake (lowercased and sanitised); it is informational, not proof of who is asking. Read the command; that is the control.
+Deny is the default button and also what Esc, closing the dialog, or 120 seconds of silence mean. If the project had no policy, the text ends with "(no policy)". If the request names a glob, the dialog lists what it matched, for example `aws/* (aws/access_key, aws/secret_key)`. The caller name is whatever the MCP client reported in its handshake (lowercased and sanitised); it is informational, not proof of who is asking. The line starting "Allow for 1h covers:" states exactly what the grant will permit if you press the third button: the command prefix (here the policy's `printenv`; without a policy, the whole command), the directory and everything beneath it, for that long, for the same caller and secrets. Read the command and that scope; they are the control.
 
 Then, only if you pressed an Allow button, the macOS authentication sheet (Touch ID, or your account password if there is no sensor or Touch ID is locked out) repeats the request. Touch the sensor. Only the button and a successful authentication together release the secret. Cancelling the sheet is a deny.
 
-"Allow for 1h" stores a grant: for the next hour, the same caller, working directory (and anything beneath it), secrets and command prefix run without a prompt. "Allow once" stores nothing.
+"Allow for 1h" stores a grant: for the next hour, the same caller, working directory (and anything beneath it), secrets and command prefix run without a prompt, as the "covers:" line said. "Allow once" stores nothing.
 
 **8. What the agent sees.** The tool result is:
 
@@ -184,7 +184,7 @@ grantd audit verify     # audit chain ok (N entries)
 grantd grants           # active grants; `grantd grants revoke --all` to drop them
 ```
 
-One thing to know before you rely on this for real commands: the command runs with the **daemon's** environment (plus the injected secrets), not your shell's or the agent's. Under `grantd service install` that is launchd's own default environment: the plist sets no `PATH`, so expect a short system one (I did not run the service in this session to confirm exactly what it is). Use absolute paths or commands in `/usr/bin`, or start the daemon yourself from a shell that has the `PATH` you want (see [Environment of the child process](#environment-of-the-child-process)).
+One thing to know before you rely on this for real commands: the command runs with the **daemon's** environment (plus the injected secrets), not your shell's or the agent's. Under `grantd service install` that is the environment launchd gives the job plus the `PATH` that `service install` recorded: by default the (absolute entries of the) `PATH` of the shell you ran it from, or whatever you pass with `--path`. Re-run `grantd service install` after changing your `PATH` (see [Environment of the child process](#environment-of-the-child-process)).
 
 ### Troubleshooting
 
@@ -192,7 +192,7 @@ One thing to know before you rely on this for real commands: the command runs wi
 |---|---|
 | `grantd: grantd daemon is not running ... start it with grantd daemon` (exit 69) | Nothing is listening on the socket. `grantd service install`, or `grantd daemon`. |
 | `vault not initialized; run grantd init` | The daemon is up but there is no vault yet. Run `grantd init`; the daemon picks it up without a restart. |
-| `init` fails: Secure Enclave unavailable | Try `make sign`; in a VM or on a Mac without a Secure Enclave use `grantd init --keychain-fallback` (and the same flag on `daemon` / `service install`) and read the tier consequences below. |
+| `init` fails: Secure Enclave unavailable | Try `make sign`; in a VM or on a Mac without a Secure Enclave use `grantd init --keychain-fallback` (no flag is needed afterwards) and read the tier consequences below. |
 | `denied (approver_unavailable)` (exit 77) | The prompt could not be shown: no GUI session (daemon started over SSH), no device password set, or `osascript` failed. It never degrades to an allow. |
 | `refused (tier_unmet)` (exit 78) | A secret needs a presence tier your backends do not provide. Tiers are never downgraded. |
 | `refused (policy_refused)` (exit 78) | `.grantd.yml` forbids the secret or command, or the file is unreadable, invalid, not owned by you, or world-writable. The message names the item. |
@@ -250,7 +250,7 @@ Use "grantd [command] --help" for more information about a command.
 
 ### `grantd init`
 
-Creates the vault and its key; does not need the daemon. Refuses if a vault already exists at the path. `--keychain-fallback`: see [Presence tiers](#presence-tiers-and-the-keychain-fallback).
+Creates the vault and its key; does not need the daemon. Refuses if a vault already exists at the path. `--keychain-fallback` exists only here: if the Secure Enclave is unavailable it creates a Keychain-protected key (dialog tier, weaker) instead of failing; later commands need no flag. See [Presence tiers](#presence-tiers-and-the-keychain-fallback).
 
 ```
 Create the vault and wrap its data key in the KeyStore
@@ -260,7 +260,7 @@ Usage:
 
 Flags:
   -h, --help                help for init
-      --keychain-fallback   macOS: allow a Keychain-resident key (dialog tier) when the Secure Enclave is unavailable; the vault must be opened with the same setting
+      --keychain-fallback   macOS: if the Secure Enclave is unavailable, protect the vault key with a Keychain item (dialog tier, weaker) instead of failing; recorded in the vault, so later commands need no flag
 ```
 
 ### `grantd set`
@@ -374,7 +374,7 @@ Flags:
 
 ### `grantd grants`
 
-Bare `grants` is `grants list`. Neither list nor revoke needs approval.
+Bare `grants` is `grants list`. Rows that fail authentication are shown as `TAMPERED` and never match; revoke them. Neither list nor revoke needs approval.
 
 ```
 List or revoke grants
@@ -514,9 +514,8 @@ Usage:
   grantd daemon [flags]
 
 Flags:
-  -h, --help                help for daemon
-      --keychain-fallback   macOS: allow a Keychain-resident key (dialog tier) when the Secure Enclave is unavailable; the vault must be opened with the same setting
-      --socket string       socket path (default: $GRANTD_SOCKET or the platform default)
+  -h, --help            help for daemon
+      --socket string   socket path (default: $GRANTD_SOCKET or the platform default)
 ```
 
 ### `grantd service`
@@ -542,7 +541,7 @@ Use "grantd service [command] --help" for more information about a command.
 
 ### `grantd service install`
 
-Writes `~/Library/LaunchAgents/dev.grantd.daemon.plist` and bootstraps it into your GUI session. Idempotent: run it again after moving or rebuilding the binary. The job runs `<exe> daemon`, plus `--keychain-fallback` if you pass that flag here; it must match how the vault was created.
+Writes `~/Library/LaunchAgents/dev.grantd.daemon.plist` and bootstraps it into your GUI session. Idempotent: run it again after moving or rebuilding the binary, or after changing your `PATH`. The job runs `<exe> daemon`. It records `PATH` in the plist (only absolute entries, in order, without duplicates; by default the `PATH` of the shell running `install`, or the value of `--path`) and `GRANTD_SOCKET` if you pass `--socket`; those are the only variables the plist defines, and commands started by `grantd run` inherit them from the daemon.
 
 ```
 Install and start the service
@@ -551,11 +550,11 @@ Usage:
   grantd service install [flags]
 
 Flags:
-      --exe string          grantd binary the service runs (default: this executable)
-  -h, --help                help for install
-      --keychain-fallback   run the daemon with --keychain-fallback (macOS: allow a Keychain-resident key when the Secure Enclave is unavailable; must match how the vault was created)
-      --log-dir string      directory for daemon logs (default: ~/Library/Logs/grantd)
-      --socket string       socket path to export to the daemon as GRANTD_SOCKET
+      --exe string       grantd binary the service runs (default: this executable)
+  -h, --help             help for install
+      --log-dir string   directory for daemon logs (default: ~/Library/Logs/grantd)
+      --path string      PATH the daemon (and the commands it runs) get (default: PATH of this shell)
+      --socket string    socket path to export to the daemon as GRANTD_SOCKET
 ```
 
 ### `grantd service uninstall`
@@ -601,7 +600,7 @@ Flags:
 
 ### `grantd status`
 
-Works without a vault. Shows the daemon's PID, version, socket, uptime, whether a vault exists, the key store and approver tiers, the number of secrets and active grants. Exits 69 if the daemon is not running.
+Works without a vault. Shows the daemon's PID, version, socket, uptime, whether a vault exists, the key store and approver tiers, the number of secrets and active grants. Prints a `WARNING:` line if any grant rows failed authentication. Exits 69 if the daemon is not running.
 
 ```
 Show daemon, vault and backend status
@@ -648,7 +647,7 @@ There is deliberately no tool that returns a value, and no `show`, `set`, `delet
 - **Caller.** The `caller` sent to the daemon is the MCP client's name from the `initialize` handshake, lowercased, with anything outside `[a-z0-9_.-]` replaced by `_`, at most 64 characters, `mcp` if empty. It is self-reported and not authenticated.
 - **Working directory.** `cwd` defaults to the shim's own working directory (Claude Code normally starts MCP servers in the project directory; if yours does not, the agent must pass `cwd`). A relative `cwd` is rejected.
 - **Blocking.** A `secret_run` call blocks while a prompt is on screen. The daemon allows up to ten minutes (the approval grace) on top of the command timeout.
-- **Daemon auto-start.** If nothing is listening, the shim spawns `grantd daemon --socket <path>` once (detached, own session, stdio on `/dev/null`) and waits up to 5 seconds for the socket, then retries; after a failed attempt it does not try again for 30 seconds. The spawned daemon gets a minimal environment: `HOME`, `USER`, `LOGNAME`, `PATH`, `TMPDIR`, `LANG`, `XDG_RUNTIME_DIR`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `DBUS_SESSION_BUS_ADDRESS`. In particular `GRANTD_HOME` is **not** forwarded, the daemon's output goes nowhere, and `--keychain-fallback` is not passed. If you use a non-default `GRANTD_HOME` or the Keychain fallback, run the daemon yourself. Prefer `grantd service install`.
+- **Daemon auto-start.** If nothing is listening, the shim spawns `grantd daemon --socket <path>` once (detached, own session, stdio on `/dev/null`) and waits up to 5 seconds for the socket, then retries; after a failed attempt it does not try again for 30 seconds. The spawned daemon gets a minimal environment: `HOME`, `USER`, `LOGNAME`, `PATH`, `TMPDIR`, `LANG`, `XDG_RUNTIME_DIR`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `DBUS_SESSION_BUS_ADDRESS`. In particular `GRANTD_HOME` is **not** forwarded and the daemon's output goes nowhere. If you use a non-default `GRANTD_HOME`, run the daemon yourself. Prefer `grantd service install`.
 - **Logging.** Logs go to stderr only (stdout is the protocol channel) and contain op names, never tool arguments.
 - **Custom socket.** `grantd mcp --socket PATH`, or `GRANTD_SOCKET` set in the shell that starts `claude`, not in the MCP config.
 
@@ -681,7 +680,7 @@ Resolution order for the **socket**: `$GRANTD_SOCKET`, then `$XDG_RUNTIME_DIR/gr
 
 ### Environment of the child process
 
-A command started by `run` gets a copy of the **daemon's** environment with the injected variables added (an injected variable replaces one of the same name). It does not get the environment of the `grantd run` process or of the agent. This is deliberate in one respect: an agent cannot smuggle `DYLD_INSERT_LIBRARIES`, `NODE_OPTIONS`, `BASH_ENV` or a different `PATH` into an approved run. It is a trap in another: a daemon started by `grantd service install` has launchd's default environment (the plist sets none beyond an optional `GRANTD_SOCKET`), so tools in `/opt/homebrew/bin` or `~/.local/bin` are likely not found. A daemon you start from your shell has your shell's environment; one the MCP shim starts has only the shim's `HOME`, `USER`, `LOGNAME`, `PATH`, `TMPDIR`, `LANG` and `XDG_*` variables. `argv[0]` without a `/` is looked up on the child's `PATH` (absolute entries only); a name with a `/` is taken relative to `cwd`. The child's stdin is `/dev/null`, it runs in its own process group, and when its leader exits the rest of the group is killed.
+A command started by `run` gets a copy of the **daemon's** environment with the injected variables added (an injected variable replaces one of the same name). It does not get the environment of the `grantd run` process or of the agent. This is deliberate in one respect: an agent cannot smuggle `DYLD_INSERT_LIBRARIES`, `NODE_OPTIONS`, `BASH_ENV` or a different `PATH` into an approved run. It is a trap in another: a daemon started by `grantd service install` has launchd's environment plus the `PATH` recorded at install time (the plist defines nothing else beyond an optional `GRANTD_SOCKET`), so a tool installed after that, or in a directory that was not on your `PATH` when you ran `install`, is not found until you re-run it. A daemon you start from your shell has your shell's environment; one the MCP shim starts has only the shim's `HOME`, `USER`, `LOGNAME`, `PATH`, `TMPDIR`, `LANG` and `XDG_*` variables. `argv[0]` without a `/` is looked up on the child's `PATH` (absolute entries only); a name with a `/` is taken relative to `cwd`. The child's stdin is `/dev/null`, it runs in its own process group, and when its leader exits the rest of the group is killed.
 
 ### Presence tiers and the Keychain fallback
 
@@ -693,7 +692,7 @@ Every secret has a `min_tier`: `none`, `dialog` or `hardware`. A run is refused 
 | Keychain fallback key store (`--keychain-fallback`) | `dialog` |
 | LocalAuthentication approver (Touch ID, password fallback) | `hardware` |
 
-`grantd init` makes `min_tier` default to the key store's tier, so with the Secure Enclave new secrets are `hardware`, and with the fallback they are `dialog`. A vault created with a stronger key store refuses to open with a weaker one. `--keychain-fallback` exists on `grantd init`, `grantd daemon` and `grantd service install`; the vault must be opened with the same setting it was created with. The daemon that `grantd mcp` auto-starts does not get it, so with the fallback run the daemon (or the service) yourself. The weaker mode puts the key-encryption key in an ordinary Keychain item, readable by processes that run as you (macOS may show its own "wants to use your confidential information" prompt to a binary other than the one that created the item; I did not test whether that is a real barrier); protection is then your login session plus the approval prompt. Read [THREAT-MODEL.md](THREAT-MODEL.md) before using it for anything you care about.
+`grantd init` makes `min_tier` default to the key store's tier, so with the Secure Enclave new secrets are `hardware`, and with the fallback they are `dialog`. A vault created with a stronger key store refuses to open with a weaker one. `--keychain-fallback` exists only on `grantd init`. It only decides what `init` may create; the wrapped key records which mechanism protects it, so the daemon, the service and the MCP auto-start open the vault with no flag. After the key store unwraps the vault key the daemon checks its tier again and refuses to run a vault on a weaker key store than the one it was created with. The weaker mode puts the key-encryption key in an ordinary Keychain item, readable by processes that run as you (macOS may show its own "wants to use your confidential information" prompt to a binary other than the one that created the item; I did not test whether that is a real barrier); protection is then your login session plus the approval prompt. Read [THREAT-MODEL.md](THREAT-MODEL.md) before using it for anything you care about.
 
 ## Policy files
 
@@ -719,7 +718,7 @@ Semantics, all of which are enforced in `internal/policy` and `internal/broker`:
 - **Secrets.** A requested literal name must equal a policy entry or match a policy glob (doublestar syntax, so `aws/*` matches one level and `aws/**` any depth). A requested **glob** (`--secrets 'aws/*'`) is allowed only if that exact text appears in the policy, even if the policy has `**`. An empty or missing `secrets` list allows nothing.
 - **Commands.** `argv` must start, element for element, with one of the listed prefixes. Matching is textual on what the caller typed: `[./deploy.sh]` matches `./deploy.sh` and not `/abs/path/deploy.sh`. An empty or missing `commands` list allows nothing. A prefix like `[sh, -c]` or `[bash]` allows arbitrary shell code; list the narrowest prefix you can.
 - **`max_grant_ttl`** caps the lifetime of an "Allow for N" grant, and the N the dialog offers. Absent, it is 1 hour. Without a policy file the cap is also 1 hour.
-- **Grant scope follows the policy.** When you press "Allow for N", the grant's command prefix is the longest policy prefix that the request's argv starts with (the whole argv if there is no policy). With `commands: [[php, artisan]]`, approving `php artisan sync` for an hour permits every `php artisan ...` command in that directory for that hour. The dialog says only that "the same request" may run again; keep policy prefixes narrow.
+- **Grant scope follows the policy.** When you press "Allow for N", the grant's command prefix is the longest policy prefix that the request's argv starts with (the whole argv if there is no policy). With `commands: [[php, artisan]]`, approving `php artisan sync` for an hour permits every `php artisan ...` command in that directory for that hour. The dialog's "Allow for N covers:" line shows that prefix, so you can see the scope before you accept it; keep policy prefixes narrow.
 
 ## Grants
 
@@ -731,9 +730,12 @@ A request matches a grant when **all** of these hold:
 - the request's `cwd`, after symlink resolution, equals the grant's directory or is inside it (lexical prefix on path components: `/a/foo` is not under `/a/f`);
 - every requested secret is covered: a literal name by an equal entry or by a glob entry that matches it; a requested glob only by a grant entry with the identical text;
 - `argv` starts with the grant's command prefix, element for element;
-- the grant has not expired (it expires at exactly its `expires_at`) and, if it has a use count, has uses left.
+- the grant has not expired (it expires at exactly its `expires_at`) and, if it has a use count, has uses left;
+- the stored row authenticates (below).
 
-The grant records the secrets **as requested** (`aws/*`), not as expanded at approval time, so a glob grant also covers a matching secret you add later. The TTL is the dialog's N, which is 1 hour or `max_grant_ttl` if that is shorter (it is not user-selectable in v0.1 and there is no flag to change the default). Allow-once never creates a grant. `uses_remaining` exists in the store and the protocol, but nothing creates a grant with a use limit today. `grantd grants` lists active grants; `grantd grants revoke ID` and `grantd grants revoke --all` delete them (neither needs approval).
+The grant's command scope is the longest policy command prefix that the request's argv starts with, else the full argv; its directory is the request's resolved working directory. The grant records the secrets **as requested** (`aws/*`), not as expanded at approval time, so a glob grant also covers a matching secret you add later. The TTL is the dialog's N, which is 1 hour or `max_grant_ttl` if that is shorter (it is not user-selectable in v0.1 and there is no flag to change the default). Allow-once never creates a grant. `uses_remaining` exists in the store and the protocol, but nothing creates a grant with a use limit today. `grantd grants` lists active grants; `grantd grants revoke ID` and `grantd grants revoke --all` delete them (neither needs approval).
+
+**Grants are authenticated.** Each row carries an HMAC-SHA256 under `vault.DeriveKey("grant-mac")` (a key derived from the vault key, which only the daemon holds) over the row's id, caller, directory, secrets, command prefix, created/expiry times and remaining uses. A row that someone inserted or edited in `vault.db` fails verification: it never matches, `grantd grants` lists it as `TAMPERED: failed authentication, ignored (revoke it)`, `grantd status` prints a `WARNING:` line with the count, and the daemon logs it once at WARN. Finite use counts are decremented with a compare-and-swap that rewrites the MAC. What the MAC does not stop: deleting rows (that only revokes), and **replaying an older genuine row** that was saved earlier, within its lifetime (reviving a revoked grant, or resetting `uses_remaining`). Grants created before this existed are dropped on upgrade (you get asked again).
 
 What a grant binds to is **the argv text and the directory, not the program's contents.** If you grant `php artisan` in `~/projects/demo`, an agent that can edit files in that tree can change what `artisan` does and use the grant. Approving "Allow for N" is approving the repository's code to run with those secrets for that long.
 
@@ -772,7 +774,7 @@ A `released` row with no `completed` row after it means the daemon died mid-run.
 
 - The triggers stop the application, not someone with write access to the file, who can drop them. Without the key such a person cannot forge a valid chain, so edits, reordering and deletions from the middle are detected by `verify`.
 - **Truncation is not detected.** Deleting the newest rows leaves a valid chain; there is no external anchor (a signed head, a remote log). An attacker who can write the file can erase their most recent activity.
-- The log is evidence of what the daemon did, not of what the grants table contained: the grants table is not authenticated (see the threat model). A forged grant shows up in the audit log as `allowed_grant` with a grant ID for which no `allowed_new_grant` row exists.
+- The audit log and the grants table are independent: a replayed genuine grant row (see Grants) is not visible in the audit log except as repeated `allowed_grant` rows for a grant you had revoked.
 
 `grantd audit export` prints the log as CSV (`id, ts, caller, cwd, argv, secrets, decision, grant_id, reason, exit_code, duration_ms`); `argv` and `secrets` are JSON arrays. Exports larger than 1 MiB are refused over the socket; use `audit list --limit`.
 

@@ -122,7 +122,7 @@ Request: `{"v":1,"op":"status"}`. Works without a vault. Result:
 {"ok":true,"result":{"version":"dev","proto_v":1,"pid":8683,"started_at":"2026-10-25T14:15:46.228625+01:00","vault_initialized":true,"keystore_tier":"none","approver_tier":"none","secrets":2,"active_grants":0,"socket":"/tmp/gdd-8677.sock"}}
 ```
 
-`keystore_tier` and `approver_tier` are `none`, `dialog` or `hardware`.
+`keystore_tier` and `approver_tier` are `none`, `dialog` or `hardware`. `tampered_grants` (omitted when 0) counts grant rows that failed authentication.
 
 ### `list`
 
@@ -218,7 +218,7 @@ Notes:
 << {"ok":true,"result":[]}
 ```
 
-`list` returns the active (unexpired) grants as `[{id, caller, cwd_prefix, secrets, cmd_prefix, expires_at, uses_remaining?, created_at}]`. `revoke` with `grant_id` answers `{"ok":true,"grant_id":"..."}` or `not_found` / `grant_not_found`. `revoke_all` answers `{"ok":true}`. Not presence-gated.
+`list` returns the active (unexpired) grants as `[{id, caller, cwd_prefix, secrets, cmd_prefix, expires_at, uses_remaining?, created_at, tampered?}]`. A stored row whose HMAC does not verify is returned with `"tampered":true`; it never matches a request, and its other fields are untrusted and for display only (revoke it by ID). `revoke` with `grant_id` answers `{"ok":true,"grant_id":"..."}` or `not_found` / `grant_not_found`. `revoke_all` answers `{"ok":true}`. Not presence-gated.
 
 ### `audit`
 

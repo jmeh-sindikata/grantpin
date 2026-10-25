@@ -4,7 +4,7 @@ A local secrets broker for AI coding agents. The agent asks to run a command wit
 
 **Read [docs/README.md](docs/README.md)**: it has what grantd does and does not protect against, install, the five-minute path from `grantd init` to a Touch ID-gated run through Claude Code, and the CLI reference.
 
-- [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md): assets, trust boundaries, attacker models, and the limits (including that grants in the vault file are not authenticated).
+- [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md): assets, trust boundaries, attacker models, and the limits (including what the grant MAC does and does not stop).
 - [docs/PROTOCOL.md](docs/PROTOCOL.md): the daemon's socket protocol.
 - [docs/MANUAL-TEST-MACOS.md](docs/MANUAL-TEST-MACOS.md): hardware test checklist.
 - [docs/BACKLOG.md](docs/BACKLOG.md): deferred work.
