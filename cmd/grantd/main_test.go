@@ -24,7 +24,7 @@ func TestHelpListsAllVerbs(t *testing.T) {
 
 func TestVerbsReturnNotImplemented(t *testing.T) {
 	for _, args := range [][]string{
-		{"init"}, {"set", "A"}, {"list"}, {"masked", "A"}, {"delete", "A"}, {"show", "A"},
+		{"set", "A"}, {"list"}, {"masked", "A"}, {"delete", "A"}, {"show", "A"},
 		{"run", "--secrets", "A", "--", "true"}, {"grants"}, {"grants", "list"}, {"grants", "revoke", "x"},
 		{"audit"}, {"audit", "list"}, {"audit", "verify"}, {"audit", "export", "--csv"},
 		{"import", ".env"}, {"daemon"}, {"service", "install"}, {"service", "uninstall"}, {"service", "status"},
