@@ -107,6 +107,13 @@ public struct SecretInfo: Decodable, Equatable, Sendable {
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(timeIntervalSince1970: 0)
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date(timeIntervalSince1970: 0)
     }
+
+    /// For tests and previews.
+    public init(name: String, tags: [String] = [], url: String = "", notes: String = "", expiresAt: Date? = nil,
+                minTier: Tier = .dialog, createdAt: Date = Date(timeIntervalSince1970: 0), updatedAt: Date = Date(timeIntervalSince1970: 0)) {
+        self.name = name; self.tags = tags; self.url = url; self.notes = notes; self.expiresAt = expiresAt
+        self.minTier = minTier; self.createdAt = createdAt; self.updatedAt = updatedAt
+    }
 }
 
 /// One grant of `grants list`, and the result of `grants add`. When `tampered`
@@ -141,6 +148,15 @@ public struct GrantInfo: Decodable, Equatable, Sendable {
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(timeIntervalSince1970: 0)
         standing = try c.decodeIfPresent(Bool.self, forKey: .standing) ?? false
         tampered = try c.decodeIfPresent(Bool.self, forKey: .tampered) ?? false
+    }
+
+    /// For tests and previews.
+    public init(id: String, caller: String = "claude-code", cwdPrefix: String = "/tmp", secrets: [String] = [], cmdPrefix: [String] = [],
+                expiresAt: Date = Date(timeIntervalSince1970: 0), usesRemaining: Int? = nil,
+                createdAt: Date = Date(timeIntervalSince1970: 0), standing: Bool = false, tampered: Bool = false) {
+        self.id = id; self.caller = caller; self.cwdPrefix = cwdPrefix; self.secrets = secrets; self.cmdPrefix = cmdPrefix
+        self.expiresAt = expiresAt; self.usesRemaining = usesRemaining; self.createdAt = createdAt
+        self.standing = standing; self.tampered = tampered
     }
 }
 
@@ -180,6 +196,15 @@ public struct AuditEntry: Decodable, Equatable, Sendable {
         exitCode = try c.decodeIfPresent(Int.self, forKey: .exitCode)
         durationMS = try c.decodeIfPresent(Int64.self, forKey: .durationMS) ?? 0
         reason = try c.decodeIfPresent(String.self, forKey: .reason) ?? ""
+    }
+
+    /// For tests and previews.
+    public init(id: String, ts: Date = Date(timeIntervalSince1970: 0), caller: String = "claude-code", cwd: String = "/tmp",
+                argv: [String] = [], secrets: [String] = [], expanded: [String]? = nil, decision: String,
+                grantID: String = "", exitCode: Int? = nil, durationMS: Int64 = 0, reason: String = "") {
+        self.id = id; self.ts = ts; self.caller = caller; self.cwd = cwd; self.argv = argv; self.secrets = secrets
+        self.expanded = expanded; self.decision = decision; self.grantID = grantID; self.exitCode = exitCode
+        self.durationMS = durationMS; self.reason = reason
     }
 }
 

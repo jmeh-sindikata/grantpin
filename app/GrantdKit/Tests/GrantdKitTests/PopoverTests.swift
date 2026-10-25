@@ -1,0 +1,201 @@
+import Foundation
+import XCTest
+@testable import GrantdKit
+
+final class StatusLineTests: XCTestCase {
+    func testChecking() {
+        let l = StatusLine.from(nil)
+        XCTAssertEqual(l.headline, "Checking…")
+        XCTAssertEqual(l.level, .neutral)
+        XCTAssertNil(l.button)
+    }
+
+    func testNotRunningOffersStart() {
+        let l = StatusLine.from(.notRunning)
+        XCTAssertEqual(l.headline, "Daemon not running")
+        XCTAssertEqual(l.level, .error)
+        XCTAssertEqual(l.button, .startService)
+    }
+
+    func testNotRunningBecauseThePathIsTooLong() {
+        let l = StatusLine.from(.notRunning, lastError: .socketPathTooLong(120))
+        XCTAssertEqual(l.detail, "Your account name is too long for grantd's default socket path.")
+    }
+
+    func testLockedExplainsAndShowsTheSanitisedError() {
+        let l = StatusLine.from(.locked(lastError: "keychain \u{1B}[31m locked \u{202E}"))
+        XCTAssertEqual(l.level, .warning)
+        XCTAssertNil(l.button)
+        XCTAssertTrue(l.detail!.hasPrefix("Unlock your Mac to use secrets."))
+        XCTAssertTrue(l.detail!.contains("keychain"))
+        XCTAssertFalse(l.detail!.unicodeScalars.contains("\u{1B}"))
+        XCTAssertFalse(l.detail!.unicodeScalars.contains("\u{202E}"))
+        XCTAssertEqual(StatusLine.from(.locked(lastError: nil)).detail, "Unlock your Mac to use secrets. grantd keeps trying.")
+    }
+
+    func testNotInitializedOffersCreateVault() {
+        let l = StatusLine.from(.notInitialized)
+        XCTAssertEqual(l.headline, "No vault yet")
+        XCTAssertEqual(l.button, .createVault)
+    }
+
+    func testReadyShowsCounts() {
+        let l = StatusLine.from(.ready(StatusResult(keystoreTier: .hardware, secrets: 3, activeGrants: 1)))
+        XCTAssertEqual(l.level, .ok)
+        XCTAssertEqual(l.headline, "grantd is running")
+        XCTAssertEqual(l.countsText, "3 secrets · 1 active grant")
+        XCTAssertNil(l.tamperedWarning)
+        XCTAssertEqual(StatusLine.from(.ready(StatusResult(secrets: 1, activeGrants: 2))).countsText, "1 secret · 2 active grants")
+    }
+
+    func testTamperedGrantsWarn() {
+        let l = StatusLine.from(.ready(StatusResult(secrets: 1, activeGrants: 1, tamperedGrants: 2)))
+        XCTAssertEqual(l.level, .warning)
+        XCTAssertEqual(l.tamperedWarning, "TAMPERED: 2 grants failed verification. Open Grants to review.")
+        XCTAssertEqual(StatusLine.from(.ready(StatusResult(tamperedGrants: 1))).tamperedWarning, "TAMPERED: 1 grant failed verification. Open Grants to review.")
+    }
+
+    func testProtocolMismatchAndKeychainOnlyWarn() {
+        XCTAssertEqual(StatusLine.from(.ready(StatusResult(protoV: 2))).headline, "grantd is out of step")
+        let k = StatusLine.from(.ready(StatusResult(keystoreTier: .dialog)))
+        XCTAssertEqual(k.level, .warning)
+        XCTAssertTrue(k.detail!.contains("Keychain"))
+    }
+}
+
+final class MenuBarIconTests: XCTestCase {
+    func testSymbolsPerState() {
+        XCTAssertEqual(MenuBarIcon.from(.ready(StatusResult(keystoreTier: .hardware))).symbol, "lock.shield.fill")
+        XCTAssertEqual(MenuBarIcon.from(.locked(lastError: nil)).symbol, "lock.shield")
+        XCTAssertTrue(MenuBarIcon.from(.locked(lastError: nil)).subdued)
+        XCTAssertEqual(MenuBarIcon.from(nil).symbol, "lock.shield")
+        for s in [ConnectionState.notRunning, .notInitialized, .ready(StatusResult(tamperedGrants: 1))] {
+            XCTAssertEqual(MenuBarIcon.from(s).symbol, "lock.trianglebadge.exclamationmark", "\(s)")
+            XCTAssertFalse(MenuBarIcon.from(s).subdued)
+        }
+        XCTAssertFalse(MenuBarIcon.from(.ready(StatusResult())).subdued)
+    }
+
+    func testEveryStateHasAnAccessibilityLabel() {
+        for s in [nil, ConnectionState.notRunning, .notInitialized, .locked(lastError: nil), .ready(StatusResult())] {
+            XCTAssertTrue(MenuBarIcon.from(s).label.hasPrefix("grantd"))
+        }
+    }
+}
+
+final class FakeActions: DaemonActions, @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var started = 0, created = 0
+    var startResult = ActionResult(outcome: .succeeded, summary: "grantd is running in the background.")
+    var createResult = ActionResult(outcome: .succeeded, summary: "Vault created.")
+    var delayNanos: UInt64 = 0
+    func startService() async -> ActionResult {
+        lock.withLock { started += 1 }
+        if delayNanos > 0 { try? await Task.sleep(nanoseconds: delayNanos) }
+        return startResult
+    }
+    func createVault() async -> ActionResult {
+        lock.withLock { created += 1 }
+        if delayNanos > 0 { try? await Task.sleep(nanoseconds: delayNanos) }
+        return createResult
+    }
+}
+
+@MainActor
+final class PopoverModelTests: XCTestCase {
+    let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func rows(_ n: Int) -> [AuditEntry] {
+        (0..<n).map { AuditEntry(id: "\($0)", ts: t0.addingTimeInterval(Double($0)), argv: ["grantd", "set", "S\($0)"], secrets: ["S\($0)"], decision: "allowed_once", reason: "set") }.reversed()
+    }
+
+    func testShowsTheLastThreeEventsNewestFirst() async {
+        let svc = FakeService()
+        svc.audit = .make(rows(10))
+        let m = PopoverModel(audit: svc, actions: nil, now: { self.t0.addingTimeInterval(100) })
+        await m.refreshActivity()
+        XCTAssertEqual(m.recent.count, 3)
+        XCTAssertEqual(m.recent.map(\.command), ["S9", "S8", "S7"])
+        XCTAssertEqual(m.recent[0].title, "Secret saved")
+        XCTAssertTrue(m.activityLoaded)
+    }
+
+    func testEmptyLog() async {
+        let m = PopoverModel(audit: FakeService(), actions: nil)
+        await m.refreshActivity()
+        XCTAssertTrue(m.recent.isEmpty)
+        XCTAssertTrue(m.activityLoaded)
+    }
+
+    func testAnErrorEmptiesTheList() async {
+        let svc = FakeService()
+        svc.audit = .make(rows(2))
+        let m = PopoverModel(audit: svc, actions: nil)
+        await m.refreshActivity()
+        XCTAssertEqual(m.recent.count, 2)
+        svc.failNext["audit"] = GrantdError.notRunning
+        await m.refreshActivity()
+        XCTAssertTrue(m.recent.isEmpty)
+        XCTAssertFalse(m.activityLoaded)
+    }
+
+    func testStartRunsTheActionAndKeepsTheResult() async {
+        let actions = FakeActions()
+        var polled = 0
+        let m = PopoverModel(audit: FakeService(), actions: actions, onActionFinished: { polled += 1 })
+        await m.start()
+        XCTAssertEqual(actions.started, 1)
+        XCTAssertEqual(m.lastResult?.summary, "grantd is running in the background.")
+        XCTAssertNil(m.running)
+        XCTAssertEqual(polled, 1, "status is polled right away")
+        m.dismissResult()
+        XCTAssertNil(m.lastResult)
+    }
+
+    func testCreateVaultRunsInit() async {
+        let actions = FakeActions()
+        let m = PopoverModel(audit: FakeService(), actions: actions)
+        await m.createVault()
+        XCTAssertEqual(actions.created, 1)
+        XCTAssertEqual(actions.started, 0)
+        XCTAssertEqual(m.lastResult?.summary, "Vault created.")
+    }
+
+    func testFailureIsShown() async {
+        let actions = FakeActions()
+        actions.startResult = ActionResult(outcome: .failed, summary: "grantd could not be started.", detail: "boom")
+        let m = PopoverModel(audit: FakeService(), actions: actions)
+        await m.start()
+        XCTAssertEqual(m.lastResult?.isSuccess, false)
+        XCTAssertEqual(m.lastResult?.detail, "boom")
+    }
+
+    func testOnlyOneActionAtATime() async throws {
+        let actions = FakeActions()
+        actions.delayNanos = 100_000_000
+        let m = PopoverModel(audit: FakeService(), actions: actions)
+        async let a: Void = m.start()
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(m.running, .startService)
+        await m.createVault()  // ignored while Start runs
+        await a
+        XCTAssertEqual(actions.created, 0)
+    }
+
+    func testDevelopmentModeNeverRunsTheHelper() async {
+        let actions = FakeActions()
+        let m = PopoverModel(audit: FakeService(), actions: actions, developmentSocket: "/tmp/gd-dev/s.sock")
+        XCTAssertTrue(m.isDevelopment)
+        XCTAssertNotNil(m.buttonsDisabledReason)
+        await m.start()
+        await m.createVault()
+        XCTAssertEqual(actions.started + actions.created, 0)
+    }
+
+    func testNoHelperMeansNoButtons() async {
+        let m = PopoverModel(audit: FakeService(), actions: nil)
+        XCTAssertEqual(m.buttonsDisabledReason, "The helper inside this app could not be found.")
+        await m.start()
+        XCTAssertNil(m.lastResult)
+    }
+}

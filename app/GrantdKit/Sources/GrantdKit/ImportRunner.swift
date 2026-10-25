@@ -76,102 +76,13 @@ public struct ImportRunner: Sendable {
     /// - Throws: `GrantdError.io` if the helper cannot be started.
     public func run(from file: FileHandle, dryRun: Bool, onConflict: ImportConflictMode,
                     timeout: TimeInterval = ImportRunner.timeout) async throws -> HelperOutput {
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = Self.arguments(dryRun: dryRun, onConflict: onConflict, socketPath: socketPath)
-        process.environment = environmentOverride ?? Self.standardEnvironment()
-        process.standardInput = file
-        let out = Pipe(), err = Pipe()
-        process.standardOutput = out
-        process.standardError = err
-
-        let outBuf = CappedBuffer(cap: Self.outputCap), errBuf = CappedBuffer(cap: Self.outputCap)
-        out.fileHandleForReading.readabilityHandler = { h in
-            let d = h.availableData
-            if d.isEmpty { h.readabilityHandler = nil } else { outBuf.append(d) }
-        }
-        err.fileHandleForReading.readabilityHandler = { h in
-            let d = h.availableData
-            if d.isEmpty { h.readabilityHandler = nil } else { errBuf.append(d) }
-        }
-
-        let state = RunState()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<HelperOutput, Error>) in
-                process.terminationHandler = { p in
-                    state.timer?.cancel()
-                    // Drain what is left in the pipes, then report.
-                    out.fileHandleForReading.readabilityHandler = nil
-                    err.fileHandleForReading.readabilityHandler = nil
-                    outBuf.append((try? out.fileHandleForReading.readToEnd()) ?? Data())
-                    errBuf.append((try? err.fileHandleForReading.readToEnd()) ?? Data())
-                    cont.resume(returning: HelperOutput(
-                        exitCode: p.terminationStatus,
-                        stdout: String(decoding: outBuf.data, as: UTF8.self),
-                        stderr: String(decoding: errBuf.data, as: UTF8.self),
-                        timedOut: state.timedOut))
-                }
-                do {
-                    try process.run()
-                } catch {
-                    out.fileHandleForReading.readabilityHandler = nil
-                    err.fileHandleForReading.readabilityHandler = nil
-                    cont.resume(throwing: GrantdError.io("cannot start the helper"))
-                    return
-                }
-                state.setProcess(process)
-                let timer = DispatchSource.makeTimerSource(queue: .global())
-                timer.schedule(deadline: .now() + timeout)
-                timer.setEventHandler { state.timeOut() }
-                state.timer = timer
-                timer.resume()
-            }
-        } onCancel: {
-            state.cancel()
-        }
-    }
-
-    final class CappedBuffer: @unchecked Sendable {
-        private let lock = NSLock()
-        private let cap: Int
-        private var storage = Data()
-        init(cap: Int) { self.cap = cap }
-        func append(_ d: Data) {
-            lock.lock(); defer { lock.unlock() }
-            let room = cap - storage.count
-            if room > 0 { storage.append(d.prefix(room)) }
-        }
-        var data: Data { lock.lock(); defer { lock.unlock() }; return storage }
-    }
-
-    final class RunState: @unchecked Sendable {
-        private let lock = NSLock()
-        private var process: Process?
-        private var cancelled = false
-        private(set) var timedOut = false
-        var timer: DispatchSourceTimer?
-
-        func setProcess(_ p: Process) {
-            lock.lock()
-            process = p
-            let stop = cancelled
-            lock.unlock()
-            if stop, p.isRunning { p.terminate() }
-        }
-        func cancel() {
-            lock.lock()
-            cancelled = true
-            let p = process
-            lock.unlock()
-            if let p, p.isRunning { p.terminate() }
-        }
-        func timeOut() {
-            lock.lock()
-            timedOut = true
-            let p = process
-            lock.unlock()
-            if let p, p.isRunning { p.terminate() }
-        }
+        try await HelperProcess.run(
+            executable: executable,
+            arguments: Self.arguments(dryRun: dryRun, onConflict: onConflict, socketPath: socketPath),
+            environment: environmentOverride ?? Self.standardEnvironment(),
+            standardInput: file,
+            timeout: timeout,
+            outputCap: Self.outputCap)
     }
 }
 
