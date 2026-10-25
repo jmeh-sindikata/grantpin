@@ -149,7 +149,7 @@ public final class PopoverModel {
 
     /// Whether Start and Create vault can run, and if not, why.
     public var buttonsDisabledReason: String? {
-        if isDevelopment { return "Development socket: the background service and the vault are not touched." }
+        if isDevelopment { return "In development mode the background service and the vault are not touched." }
         if actions == nil { return "The helper inside this app could not be found." }
         return nil
     }

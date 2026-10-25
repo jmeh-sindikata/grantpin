@@ -148,4 +148,22 @@ final class ValidatorTests: XCTestCase {
         XCTAssertEqual(Validators.valueSpaceNote(" abc "), "This value starts and ends with a space. That is kept.")
         XCTAssertNil(Validators.valueSpaceNote("abc\n"))
     }
+
+    // MARK: derived names
+
+    func testEnvironmentVariablePreview() {
+        XCTAssertEqual(Validators.environmentVariable(for: "API_KEY"), "API_KEY")
+        XCTAssertEqual(Validators.environmentVariable(for: "aws/access_key"), "ACCESS_KEY")
+        XCTAssertEqual(Validators.environmentVariable(for: "svc/db.pass-word"), "DB_PASS_WORD")
+        XCTAssertEqual(Validators.environmentVariable(for: "a/b/c"), "C")
+        XCTAssertEqual(Validators.environmentVariable(for: ""), "")
+    }
+
+    func testOnlyWebAddressesAreOpenable() {
+        XCTAssertEqual(Validators.webURL("https://example.com/x")?.host, "example.com")
+        XCTAssertNotNil(Validators.webURL(" http://localhost:3000 "))
+        for bad in ["file:///etc/passwd", "javascript:alert(1)", "x-apple.systempreferences:com.apple", "ssh://host", "example.com", "https://", "", "ftp://x.y"] {
+            XCTAssertNil(Validators.webURL(bad), bad)
+        }
+    }
 }

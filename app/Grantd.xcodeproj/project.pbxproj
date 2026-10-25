@@ -9,14 +9,24 @@
 /* Begin PBXBuildFile section */
 		3861D158F505B6C7F57F3141 /* GrantdKit in Frameworks */ = {isa = PBXBuildFile; productRef = 942135EB8A9FB7E7BD15EFA8 /* GrantdKit */; };
 		5C085FAC8FEB67B623B54642 /* GrantdApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B24A03269C1DC5E93C541E /* GrantdApp.swift */; };
-		BDAB9A3C91F258F1FAD86513 /* StatusModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7F908C984349C612F0B0E10 /* StatusModel.swift */; };
+		3B1BD0D3E3B196288B17828C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4109B21588439DAB04A5BA4C /* AppModel.swift */; };
+		12D5C364B5F02AA3ABD55AD2 /* PopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B9C36C92070CA4C8676037 /* PopoverView.swift */; };
+		DF2577C928CC5F1187DE36E4 /* SecretsWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DC199D26979047FB01054D /* SecretsWindow.swift */; };
+		5557C914A121B1C48972C007 /* SecretFormSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11CAE5DAF7B121CAFE0605AC /* SecretFormSheet.swift */; };
+		511A6D21E612D7651A54EFF3 /* ImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7B0A23336AD0A85A341E85F /* ImportSheet.swift */; };
+		2F224B478A9AD7293D5D0241 /* Shared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E357C154DF24DB222A1F3D /* Shared.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		02EECEE92C8D6E312059344F /* Grantd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Grantd.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		07ECEF67C18251606441847E /* GrantdKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GrantdKit; path = GrantdKit; sourceTree = SOURCE_ROOT; };
 		52B24A03269C1DC5E93C541E /* GrantdApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrantdApp.swift; sourceTree = "<group>"; };
-		E7F908C984349C612F0B0E10 /* StatusModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusModel.swift; sourceTree = "<group>"; };
+		4109B21588439DAB04A5BA4C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		84B9C36C92070CA4C8676037 /* PopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverView.swift; sourceTree = "<group>"; };
+		37DC199D26979047FB01054D /* SecretsWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretsWindow.swift; sourceTree = "<group>"; };
+		11CAE5DAF7B121CAFE0605AC /* SecretFormSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretFormSheet.swift; sourceTree = "<group>"; };
+		E7B0A23336AD0A85A341E85F /* ImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportSheet.swift; sourceTree = "<group>"; };
+		73E357C154DF24DB222A1F3D /* Shared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -60,7 +70,12 @@
 			isa = PBXGroup;
 			children = (
 				52B24A03269C1DC5E93C541E /* GrantdApp.swift */,
-				E7F908C984349C612F0B0E10 /* StatusModel.swift */,
+				73E357C154DF24DB222A1F3D /* Shared.swift */,
+				4109B21588439DAB04A5BA4C /* AppModel.swift */,
+				84B9C36C92070CA4C8676037 /* PopoverView.swift */,
+				37DC199D26979047FB01054D /* SecretsWindow.swift */,
+				11CAE5DAF7B121CAFE0605AC /* SecretFormSheet.swift */,
+				E7B0A23336AD0A85A341E85F /* ImportSheet.swift */,
 			);
 			path = Grantd;
 			sourceTree = "<group>";
@@ -156,7 +171,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				5C085FAC8FEB67B623B54642 /* GrantdApp.swift in Sources */,
-				BDAB9A3C91F258F1FAD86513 /* StatusModel.swift in Sources */,
+				2F224B478A9AD7293D5D0241 /* Shared.swift in Sources */,
+				3B1BD0D3E3B196288B17828C /* AppModel.swift in Sources */,
+				12D5C364B5F02AA3ABD55AD2 /* PopoverView.swift in Sources */,
+				DF2577C928CC5F1187DE36E4 /* SecretsWindow.swift in Sources */,
+				5557C914A121B1C48972C007 /* SecretFormSheet.swift in Sources */,
+				511A6D21E612D7651A54EFF3 /* ImportSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

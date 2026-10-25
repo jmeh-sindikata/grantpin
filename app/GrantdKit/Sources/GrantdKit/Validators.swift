@@ -210,3 +210,31 @@ public enum ValueIssue: Equatable, Sendable {
         }
     }
 }
+
+extension Validators {
+    /// The environment variable a secret becomes inside a command: the last
+    /// path segment, uppercased, `.` and `-` turned into `_` (README "grantd
+    /// run"). When another secret ends in the same word the daemon uses the
+    /// full name instead; the editor says so in a help text.
+    public static func environmentVariable(for name: String) -> String {
+        let last = name.split(separator: "/", omittingEmptySubsequences: false).last.map(String.init) ?? name
+        return last.uppercased().replacingOccurrences(of: ".", with: "_").replacingOccurrences(of: "-", with: "_")
+    }
+
+    /// The URL if `text` is an http or https address with a host: the only
+    /// kind the app ever opens, and only on an explicit click (docs/UI-SPEC.md
+    /// 4.4 rule 5). Anything else, `file:` and custom schemes included, is nil.
+    public static func webURL(_ text: String) -> URL? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let u = URL(string: t), let scheme = u.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              let host = u.host, !host.isEmpty
+        else { return nil }
+        return u
+    }
+}
+
+extension SecretInfo: Identifiable {
+    public var id: String { name }
+}
+
+extension SecretFormModel: Identifiable {}

@@ -1,64 +1,38 @@
 import SwiftUI
 import GrantdKit
 
-/// Stub of the menu-bar app: a menu bar icon, a title, one status line from
-/// `DaemonMonitor` (not running, locked, no vault, ready) and Quit. The real
-/// screens come with the later steps of docs/UI-SPEC.md section 7.
+/// The menu-bar app: a status item with a popover, a Secrets window, and
+/// placeholders for the Activity window and Settings that the next step fills
+/// (docs/UI-SPEC.md sections 3.1 to 3.5).
 @main
 struct GrantdApp: App {
-    @State private var monitor: DaemonMonitor
-    private let socket = SocketLocator.resolve()
-
-    init() {
-        let m = DaemonMonitor(transport: Client(socketPath: SocketLocator.resolve().path))
-        m.start()
-        _monitor = State(initialValue: m)
-    }
+    @State private var app = AppModel()
 
     var body: some Scene {
         MenuBarExtra {
-            PopoverView(monitor: monitor, developmentSocket: socket.isDevelopment ? socket.path : nil)
+            PopoverView(app: app)
         } label: {
-            Image(systemName: "lock.shield")
-                .accessibilityLabel("grantd")
+            MenuBarLabel(state: app.monitor.state)
         }
         .menuBarExtraStyle(.window)
-    }
-}
 
-struct PopoverView: View {
-    let monitor: DaemonMonitor
-    let developmentSocket: String?
+        Window("Secrets", id: WindowID.secrets) {
+            SecretsWindow(app: app)
+        }
+        .defaultSize(width: 880, height: 540)
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(verbatim: "grantd")
-                .font(.headline)
-            Text(verbatim: StatusText.headline(monitor.state))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel(Text(verbatim: "Status: " + StatusText.headline(monitor.state)))
-            if let detail = StatusText.detail(monitor.state) {
-                Text(verbatim: detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if let dev = developmentSocket {
-                Text(verbatim: "Development socket: " + dev)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
-            Divider()
-            Button("Quit grantd") { NSApplication.shared.terminate(nil) }
-                .keyboardShortcut("q")
-                .help("Quits this app. The background service keeps running.")
+        Window("Activity", id: WindowID.activity) {
+            PlaceholderWindow(
+                app: app, id: WindowID.activity, title: "Activity", symbol: "list.bullet.rectangle",
+                text: "The activity log and the grants list arrive in the next update. The newest events are in the menu bar item.")
         }
-        .padding(12)
-        .frame(width: 320, alignment: .leading)
-        .onAppear {
-            monitor.isVisible = true
-            Task { await monitor.refreshNow() }
+        .defaultSize(width: 520, height: 360)
+
+        Settings {
+            PlaceholderWindow(
+                app: app, id: "settings", title: "Settings", symbol: "gearshape",
+                text: "Settings arrive in the next update.")
+                .frame(width: 440, height: 260)
         }
-        .onDisappear { monitor.isVisible = false }
     }
 }
