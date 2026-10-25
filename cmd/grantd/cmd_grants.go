@@ -129,7 +129,7 @@ approve a standing-grant dialog that you started yourself.
 
 Exit status: 77 when you cancelled or the dialog could not be shown, 78 when
 the repo policy or the secret's presence tier refused it.`,
-		Args: cobra.MinimumNArgs(0),
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			f := cmd.Flags()
 			caller, _ := f.GetString("caller")

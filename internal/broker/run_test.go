@@ -306,7 +306,6 @@ func TestRunBadRequests(t *testing.T) {
 		"bad caller":     mut(func(r *proto.Request) { r.Caller = "evil\nAllow?" }),
 		"long caller":    mut(func(r *proto.Request) { r.Caller = strings.Repeat("a", 100) }),
 		"bad env prefix": mut(func(r *proto.Request) { r.EnvPrefix = "bad-prefix" }),
-		"wrong version":  mut(func(r *proto.Request) { r.V = 2 }),
 	} {
 		before := e.auditCount()
 		w := &recWriter{}

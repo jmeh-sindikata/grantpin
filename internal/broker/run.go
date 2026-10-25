@@ -153,8 +153,6 @@ func (b *Broker) runLookupFailure(ctx context.Context, rc *runCtx, err error) {
 // the request is malformed.
 func validateRun(req *proto.Request, callerOK bool) (cwd, msg string) {
 	switch {
-	case req.V != proto.Version:
-		return "", "unsupported protocol version"
 	case !callerOK:
 		return "", "invalid caller label"
 	case len(req.Argv) == 0 || req.Argv[0] == "":

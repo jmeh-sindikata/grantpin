@@ -402,7 +402,7 @@ func (s *Server) requestTimeout(req *proto.Request) time.Duration {
 	if int64(req.TimeoutS) > int64(max/time.Second) {
 		return max
 	}
-	return min(time.Duration(req.TimeoutS)*time.Second, max)
+	return time.Duration(req.TimeoutS) * time.Second
 }
 
 // runHandler runs h and guarantees a final response is written.

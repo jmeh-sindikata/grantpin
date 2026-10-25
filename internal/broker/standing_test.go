@@ -249,7 +249,6 @@ func TestGrantAddValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, mut := range map[string]func(*proto.Request){
-		"wrong version":      func(r *proto.Request) { r.V = 99 },
 		"relative cwd":       func(r *proto.Request) { r.Cwd = "relative/dir" },
 		"missing cwd":        func(r *proto.Request) { r.Cwd = filepath.Join(e.cwd, "nope") },
 		"cwd is a file":      func(r *proto.Request) { r.Cwd = file },

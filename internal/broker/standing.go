@@ -61,9 +61,7 @@ func (b *Broker) handleGrantAdd(ctx context.Context, req *proto.Request, w daemo
 	if !callerOK {
 		rc.entry.Caller = "(invalid)"
 	}
-	probe := *req
-	probe.Caller = label
-	cwd, msg := validateRun(&probe, callerOK)
+	cwd, msg := validateRun(req, callerOK)
 	if msg != "" {
 		badRequest(msg)
 		return
