@@ -814,3 +814,41 @@ func TestRunGrantRevokedAfterMatchDoesNotRelease(t *testing.T) {
 		t.Fatal("command ran although the grant was revoked")
 	}
 }
+
+// The context ending before the command could start is reported as the
+// caller's cancel/timeout, not as an internal failure.
+func TestRunNotStartedBecauseContextEnded(t *testing.T) {
+	marker := func(e *env) string { return filepath.Join(e.cwd, "ran") }
+	cases := []struct {
+		name   string
+		ctx    func() (context.Context, context.CancelFunc)
+		hook   func(cancel context.CancelFunc)
+		reason string
+	}{
+		{"canceled", func() (context.Context, context.CancelFunc) { return context.WithCancel(context.Background()) },
+			func(cancel context.CancelFunc) { cancel() }, proto.ReasonCanceled},
+		{"timeout", func() (context.Context, context.CancelFunc) {
+			return context.WithTimeout(context.Background(), 30*time.Millisecond)
+		}, func(context.CancelFunc) { time.Sleep(80 * time.Millisecond) }, proto.ReasonTimeout},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := newEnv(t)
+			ctx, cancel := c.ctx()
+			defer cancel()
+			e.b.afterReleased = func() { c.hook(cancel) }
+			w := e.doCtx(ctx, e.run([]string{"API_KEY"}, "sh", "-c", "touch "+marker(e)))
+			wantFail(t, w, proto.ErrFailed, c.reason)
+			rel, done := e.lastPair2()
+			if rel.Reason != ReasonReleased || done.Decision != audit.DecisionCompleted || done.Reason != c.reason || done.ExitCode != nil {
+				t.Errorf("audit = %+v / %+v", rel, done)
+			}
+			if w.final.AuditID != done.ID {
+				t.Errorf("audit id %q != %q", w.final.AuditID, done.ID)
+			}
+			if _, err := os.Stat(marker(e)); err == nil {
+				t.Error("command ran")
+			}
+		})
+	}
+}

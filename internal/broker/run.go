@@ -384,7 +384,16 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 	reason := ""
 	switch {
 	case exit == runner.ExitNotStarted:
-		rc.completeFailure(ctx, grantID, proto.ErrFailed, proto.ReasonInternal, "command could not be started: "+errText(runErr))
+		// The context ending before the process existed is the caller's doing
+		// (hang-up, shutdown, deadline), not an internal fault.
+		switch {
+		case errors.Is(ctx.Err(), context.DeadlineExceeded), errors.Is(runErr, context.DeadlineExceeded):
+			rc.completeFailure(ctx, grantID, proto.ErrFailed, proto.ReasonTimeout, "")
+		case ctx.Err() != nil, errors.Is(runErr, context.Canceled):
+			rc.completeFailure(ctx, grantID, proto.ErrFailed, proto.ReasonCanceled, "")
+		default:
+			rc.completeFailure(ctx, grantID, proto.ErrFailed, proto.ReasonInternal, "command could not be started: "+errText(runErr))
+		}
 		return
 	case res.TimedOut || errors.Is(ctx.Err(), context.DeadlineExceeded):
 		exit = runner.ExitTimeout
@@ -414,12 +423,17 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 }
 
 // completeFailure closes the audit bracket for a release whose command could
-// not be started: a completed row with no exit code and the cause as its reason.
+// not be started: a completed row with no exit code and the cause as its
+// reason ("canceled" or "timeout" when the context ended first, otherwise
+// "not started: <reason>").
 func (rc *runCtx) completeFailure(ctx context.Context, grantID, category, reason, msg string) {
 	msg = rc.scrub(msg)
 	e := rc.entryNow()
 	e.Decision = audit.DecisionCompleted
 	e.Reason = "not started: " + reason
+	if reason == proto.ReasonCanceled || reason == proto.ReasonTimeout {
+		e.Reason = reason
+	}
 	if msg != "" {
 		e.Reason += ": " + msg
 	}
