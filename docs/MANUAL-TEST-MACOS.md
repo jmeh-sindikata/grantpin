@@ -416,6 +416,7 @@ To assert instead of eyeball in `TestManualPromptsOnce`: `GRANTD_MANUAL_EXPECT=a
 | Touch ID locked out (too many failures) | sheet asks for the password directly (policy is DeviceOwnerAuthentication) |
 | Lid closed, clamshell with external display, or Mac without Touch ID | the password sheet is used; this still counts as TierHardware per HANDOFF §5 table |
 | No device passcode/password set | `errors.Is(err, ErrUnavailable)`; never an allow |
+| Daemon started (or vault first used) while the screen is locked, e.g. launchd right after login | unwrap fails with `OSStatus -25308`; the daemon stays up, `grantd status` shows `vault: locked (retrying, last error: ...)`, ops answer `failed`/`vault_locked`; after unlock the next request works with no restart; the log has one WARN and one recovery line |
 | Screen locked / fast user switch mid-prompt | `errors.Is(err, ErrInterrupted)`; no decision |
 | No GUI session (SSH, headless launchd) | `errors.Is(err, ErrNoGUISession)` immediately, no prompt |
 | `ctx` cancelled while the prompt is up | prompt is invalidated, `ctx.Err()` returned |

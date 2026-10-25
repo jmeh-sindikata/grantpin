@@ -111,6 +111,7 @@ For `run`, zero or more frames arrive before the final response:
 | `secret_not_found` | not_found | A named secret, or a literal or glob in `secrets` that matches nothing. |
 | `grant_not_found` | not_found | `grants revoke` with an unknown ID. |
 | `vault_not_initialized` | failed | No vault yet; `message`: run `grantd init`. |
+| `vault_locked` | failed | The vault exists but its key store is temporarily unavailable (screen locked, session not yet unlocked after login). `message`: "vault keystore unavailable (screen locked?); retrying". The daemon retries and the op works once the Mac is unlocked. `status` reports `vault_locked: true` and `vault_locked_error`. |
 | `timeout` | failed | The connection deadline expired (command budget plus approval grace), for example while waiting for the human. A command that merely overran its own `timeout_s` is a **successful** response with `exit_code` 124 and `reason: "timeout"`. |
 | `canceled` | failed | The client went away or the daemon is shutting down. |
 | `internal` | failed | Unexpected error. The cause goes to the daemon log, not to the client. |
@@ -253,7 +254,7 @@ Notes:
 << {"ok":false,"error":"bad_request","reason":"unsupported_version"}
 ```
 
-Before the vault exists, every op except `status` answers `failed` / `vault_not_initialized` with the message "vault not initialized; run grantd init". If the vault exists but cannot be opened (wrong key store, bad permissions), the answer is `failed` / `internal` with the message "vault could not be opened (see daemon log)".
+Before the vault exists, every op except `status` answers `failed` / `vault_not_initialized` with the message "vault not initialized; run grantd init". If the vault exists but its key store is temporarily unavailable (locked screen), every op except `status` answers `failed` / `vault_locked` until it recovers; the daemon retries in the background and on each request. If the vault exists but cannot be opened for good (wrong key store, bad permissions), the answer is `failed` / `internal` with the message "vault could not be opened (see daemon log)".
 
 ## Compatibility
 
