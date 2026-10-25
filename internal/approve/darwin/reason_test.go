@@ -129,6 +129,10 @@ func TestFormatTTL(t *testing.T) {
 		4*time.Hour + 20*time.Minute:    "4h20m",
 		10 * time.Second:                "under a minute",
 		59*time.Minute + 40*time.Second: "1h",
+		8 * time.Hour:                   "8h",
+		24 * time.Hour:                  "24h",
+		12*time.Hour + 30*time.Minute:   "12h30m",
+		15 * time.Minute:                "15m",
 	}
 	for d, want := range cases {
 		if got := formatTTL(d); got != want {
@@ -238,5 +242,65 @@ func TestBuildReasonStatesGrantScopeWhenAllowForNIsOffered(t *testing.T) {
 	r.GrantCmdPrefix = []string{"php", strings.Repeat("p", 40)}
 	if g := BuildReason(r, time.Hour); !strings.Contains(g, "php "+strings.Repeat("p", 40)+" …") {
 		t.Errorf("granted prefix truncated: %q", g)
+	}
+}
+
+func TestFormatSpan(t *testing.T) {
+	cases := map[time.Duration]string{
+		30 * 24 * time.Hour:          "30 days",
+		24 * time.Hour:               "1 day",
+		36 * time.Hour:               "1 day 12 hours",
+		8 * time.Hour:                "8 hours",
+		time.Hour:                    "1 hour",
+		90 * time.Minute:             "1 hour 30 minutes",
+		45 * time.Minute:             "45 minutes",
+		90 * 24 * time.Hour:          "90 days",
+		10 * time.Second:             "under a minute",
+		7*24*time.Hour + time.Minute: "7 days 1 minute",
+	}
+	for d, want := range cases {
+		if got := formatSpan(d); got != want {
+			t.Errorf("formatSpan(%v)=%q want %q", d, got, want)
+		}
+	}
+}
+
+func TestBuildReasonStandingGrant(t *testing.T) {
+	r := standingReq()
+	got := BuildReason(r, time.Hour) // the grantTTL argument is ignored for a standing grant
+	want := "Create standing grant for 30 days: claude-code may run `php artisan …` with DB_URL, aws/* (aws/access_key) in /Users/me/projects/foo and subfolders"
+	if got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
+	}
+	for _, bad := range []string{"wants to run", "Allow for", "approval lasts"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("standing reason contains release wording %q: %q", bad, got)
+		}
+	}
+	r.RequestedUses = 2
+	r.PolicyPresent = false
+	if got := BuildReason(r, 0); !strings.HasSuffix(got, "and subfolders (at most 2 runs) (no policy)") {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestBuildReasonStandingGrantTruncatesButKeepsScope(t *testing.T) {
+	r := standingReq()
+	r.GrantCmdPrefix = []string{"sh", strings.Repeat("x", 400)}
+	got := BuildReason(r, 0)
+	if !strings.HasPrefix(got, "Create standing grant for 30 days: ") {
+		t.Errorf("got %q", got)
+	}
+	if !strings.Contains(got, "with DB_URL, aws/* (aws/access_key)") || !strings.Contains(got, "…") {
+		t.Errorf("secrets must stay whole and argv be truncated: %q", got)
+	}
+}
+
+func TestBuildReasonUnchangedForShowAndRelease(t *testing.T) {
+	a := BuildReason(req(), 0)
+	r := req()
+	r.Kind = approve.KindShow
+	if b := BuildReason(r, 0); b != a {
+		t.Errorf("show reason changed: %q vs %q", b, a)
 	}
 }

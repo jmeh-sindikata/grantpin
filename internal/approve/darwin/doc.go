@@ -16,25 +16,47 @@
 //
 // # Choices offered
 //
-// LocalAuthentication only reports success or failure, so the three-way choice
-// is a separate native step. By default (WithChooser(true)) Ask first runs
+// LocalAuthentication only reports success or failure, so the choice is a
+// separate native step. By default (WithChooser(true)) Ask first runs
 // /usr/bin/osascript (absolute path, minimal environment, killed on ctx
-// cancellation) with a constant AppleScript `display dialog` offering
+// cancellation) with a constant AppleScript `display dialog`, caution icon,
+// giving up (= the safe button) after 120s. The dialog depends on
+// ApprovalRequest.Kind:
 //
-//	{"Deny", "Allow once", "Allow for <SuggestedTTL>"}
+//	KindRelease        {"Deny", "Allow once", "Allow for <SuggestedTTL>"}   default and cancel: Deny
+//	KindShow           {"Deny", "Reveal once"}                              default and cancel: Deny
+//	KindStandingGrant  {"Cancel", "Create standing grant"}                  default and cancel: Cancel
 //
-// default and cancel button "Deny", caution icon, giving up (= Deny) after
-// 120s. The dialog text and the third button label are passed as run-handler
-// arguments after `--`; untrusted caller/argv/cwd text is sanitised and never
+// Only a release offers "Allow for N" (and only with SuggestedTTL > 0); a show
+// never offers a duration. A standing grant has one allow button and its TTL is
+// not a choice: the dialog states RequestedTTL ("for the next 30 days"), and
+// success yields Decision{Allow: true, TTL: RequestedTTL}. Anything else is a
+// deny. The standing text is
+//
+//	Create a standing grant?
+//
+//	<caller> may run `<cmd prefix> …` with <secrets> in <cwd> and subfolders for the next 30 days, without further prompts.
+//
+//	Only continue if you just ran `grantd grants add` yourself.
+//
+// and the Touch ID reason repeats it ("Create standing grant for 30 days: …").
+// A display dialog cannot set a font size, so the duration cannot be shown in
+// large print; it is in the first sentence of the body and of the Touch ID
+// reason instead (a native alert in the planned app can do better).
+//
+// The dialog text and the button labels are passed as run-handler arguments
+// after `--`; untrusted caller/argv/cwd text is sanitised and never
 // interpolated into AppleScript source. Only the exact `button returned:` label
-// with `gave up:false` counts; any other output is Deny. Deny short-circuits
-// before LocalAuthentication. For either Allow button the LocalAuthentication
-// prompt follows, and only chosen button AND authentication success yield
-// Decision{Allow:true, TTL: 0 (once) or SuggestedTTL (Allow for N)}. With
-// SuggestedTTL == 0 the third button is not offered.
+// of the kind's allow button (or "Allow for N" for a release) with
+// `gave up:false` counts; any other output, including another kind's button
+// label, is a deny. A deny short-circuits before LocalAuthentication. For an
+// allow button the LocalAuthentication prompt follows, and only the chosen
+// button AND authentication success yield Allow.
 //
 // WithChooser(false) skips the dialog: LocalAuthentication alone, allow-once,
 // or the WithDefaultTTL duration (capped by SuggestedTTL, stated in the prompt).
+// A standing grant is then decided by Touch ID alone, whose reason states the
+// grant and its duration; a show never carries a duration.
 //
 // Residual risk: the osascript dialog is ordinary UI. A process running as the
 // same account that holds Accessibility permission could script it and click

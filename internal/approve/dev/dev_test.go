@@ -83,3 +83,40 @@ func TestOpenAndEnabled(t *testing.T) {
 		t.Fatal("Open() default must deny")
 	}
 }
+
+func TestKindIsRecordedAndStandingGrantsFollowDenyStanding(t *testing.T) {
+	a := New(true)
+	a.TTL = time.Hour
+	ctx := context.Background()
+
+	// Release: TTL applies. Show: never a TTL.
+	if d, _ := a.Ask(ctx, approve.ApprovalRequest{Kind: approve.KindRelease}); !d.Allow || d.TTL != time.Hour {
+		t.Errorf("release = %+v", d)
+	}
+	if d, _ := a.Ask(ctx, approve.ApprovalRequest{Kind: approve.KindShow}); !d.Allow || d.TTL != 0 {
+		t.Errorf("show = %+v", d)
+	}
+	// Standing: allowed with exactly the requested TTL, whatever a.TTL says.
+	st := approve.ApprovalRequest{Kind: approve.KindStandingGrant, RequestedTTL: 30 * 24 * time.Hour, RequestedUses: 2}
+	if d, _ := a.Ask(ctx, st); !d.Allow || d.TTL != 30*24*time.Hour {
+		t.Errorf("standing = %+v", d)
+	}
+
+	// DenyStanding denies standing requests only.
+	a.SetDenyStanding(true)
+	if d, _ := a.Ask(ctx, st); d.Allow || d.Reason == "" {
+		t.Errorf("standing with DenyStanding = %+v", d)
+	}
+	if d, _ := a.Ask(ctx, approve.ApprovalRequest{Kind: approve.KindRelease}); !d.Allow {
+		t.Errorf("release with DenyStanding = %+v", d)
+	}
+	if d, _ := a.Ask(ctx, approve.ApprovalRequest{Kind: approve.KindShow}); !d.Allow {
+		t.Errorf("show with DenyStanding = %+v", d)
+	}
+
+	seen := a.Requests()
+	if len(seen) != 6 || seen[0].Kind != approve.KindRelease || seen[1].Kind != approve.KindShow ||
+		seen[2].Kind != approve.KindStandingGrant || seen[2].RequestedTTL != 30*24*time.Hour || seen[2].RequestedUses != 2 {
+		t.Fatalf("seen = %+v", seen)
+	}
+}

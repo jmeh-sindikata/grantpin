@@ -155,6 +155,51 @@ func TestAskChooserDenyShortCircuits(t *testing.T) {
 	}
 }
 
+// The standing-grant paths below only exercise answers that deny BEFORE
+// LocalAuthentication; an allow answer would reach the Touch ID prompt, so no
+// test feeds one to Ask.
+func TestAskStandingGrantDeniedWithoutAPositiveAnswer(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		stdout string
+		mut    func(*approve.ApprovalRequest)
+		calls  int
+	}{
+		{"cancel", "button returned:Cancel, gave up:false\n", nil, 1},
+		{"gave up", "button returned:Create standing grant, gave up:true\n", nil, 1},
+		{"a release button does not answer it", "button returned:Allow once, gave up:false\n", nil, 1},
+		{"no duration is never asked", "button returned:Create standing grant, gave up:false\n", func(r *approve.ApprovalRequest) { r.RequestedTTL = 0 }, 0},
+	} {
+		f := &fakeExec{stdout: tc.stdout}
+		a := &Approver{cfg: newConfig(nil), choose: newFake(f), slot: make(chan struct{}, 1)}
+		r := standingReq()
+		if tc.mut != nil {
+			tc.mut(&r)
+		}
+		d, err := a.Ask(context.Background(), r)
+		if errors.Is(err, ErrNoGUISession) {
+			t.Skip("no GUI session")
+		}
+		if err != nil || d.Allow || f.calls != tc.calls {
+			t.Errorf("%s: got %+v %v calls=%d", tc.name, d, err, f.calls)
+		}
+	}
+}
+
+func TestAskShowDeniedByDeny(t *testing.T) {
+	f := &fakeExec{stdout: "button returned:Allow once, gave up:false\n"} // not the Show button
+	a := &Approver{cfg: newConfig(nil), choose: newFake(f), slot: make(chan struct{}, 1)}
+	r := req()
+	r.Kind = approve.KindShow
+	d, err := a.Ask(context.Background(), r)
+	if errors.Is(err, ErrNoGUISession) {
+		t.Skip("no GUI session")
+	}
+	if err != nil || d.Allow {
+		t.Fatalf("got %+v %v", d, err)
+	}
+}
+
 func TestAskChooserFailureIsNotAllow(t *testing.T) {
 	f := &fakeExec{code: 1, stderr: "boom"}
 	a := &Approver{cfg: newConfig(nil), choose: newFake(f), slot: make(chan struct{}, 1)}

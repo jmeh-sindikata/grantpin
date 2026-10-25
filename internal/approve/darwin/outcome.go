@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"grantd/internal/approve"
 )
 
 // Option configures New.
@@ -45,7 +47,8 @@ func newConfig(opts []Option) config {
 	return c
 }
 
-// ttlFor returns the grant TTL to disclose and return for req.
+// ttlFor returns the grant TTL to disclose and return for a release when no
+// chooser dialog is shown.
 func (c config) ttlFor(suggested time.Duration) time.Duration {
 	ttl := c.defaultTTL
 	if ttl > 0 && suggested > 0 && suggested < ttl {
@@ -53,6 +56,40 @@ func (c config) ttlFor(suggested time.Duration) time.Duration {
 	}
 	return ttl
 }
+
+// ttlNoChooser is the TTL an authentication success grants when the chooser
+// is off. A standing grant is exactly the requested duration (the Touch ID
+// reason states it); a show never has one; only a release uses the default.
+func (c config) ttlNoChooser(req approve.ApprovalRequest) time.Duration {
+	switch req.Kind {
+	case approve.KindStandingGrant:
+		return req.RequestedTTL
+	case approve.KindShow:
+		return 0
+	}
+	return c.ttlFor(req.SuggestedTTL)
+}
+
+// ttlForChoice maps the dialog answer to what authentication success grants.
+// allow is false for a deny. A standing grant is always exactly RequestedTTL,
+// a show never carries a TTL, and only a release can answer "Allow for N".
+func ttlForChoice(req approve.ApprovalRequest, ch choice, offered time.Duration) (ttl time.Duration, allow bool) {
+	switch ch {
+	case choiceOnce:
+		if req.Kind == approve.KindStandingGrant {
+			return req.RequestedTTL, true
+		}
+		return 0, true
+	case choiceFor:
+		if req.Kind == approve.KindRelease && offered > 0 {
+			return offered, true
+		}
+	}
+	return 0, false
+}
+
+// cancelTitleFor is the label of the cancel button on the system prompt.
+func cancelTitleFor(kind approve.Kind) string { return safeButton(kind) }
 
 // Typed errors. None of them is ever turned into an allow by callers.
 var (

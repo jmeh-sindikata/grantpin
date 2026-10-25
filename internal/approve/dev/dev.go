@@ -27,6 +27,9 @@ type Approver struct {
 	TTL time.Duration
 	// DenyReason is returned on deny. Defaults to "dev approver: auto-deny".
 	DenyReason string
+	// DenyStanding denies KindStandingGrant requests (and only those) while
+	// everything else follows Allow. It lets tests cover both answers.
+	DenyStanding bool
 	// Err, if non-nil, is returned from Ask instead of a Decision (simulates a
 	// prompt that failed, e.g. dialog could not be shown).
 	Err error
@@ -53,7 +56,17 @@ func (a *Approver) SetAllow(allow bool) {
 	a.mu.Unlock()
 }
 
-// Ask records req (deep-copied) and answers per configuration.
+// SetDenyStanding changes DenyStanding safely while other goroutines call Ask.
+func (a *Approver) SetDenyStanding(deny bool) {
+	a.mu.Lock()
+	a.DenyStanding = deny
+	a.mu.Unlock()
+}
+
+// Ask records req (deep-copied, Kind included) and answers per configuration.
+// Like the real approvers it answers a KindStandingGrant allow with
+// TTL == RequestedTTL and a KindShow allow with no TTL; TTL applies to
+// KindRelease only.
 func (a *Approver) Ask(ctx context.Context, req approve.ApprovalRequest) (approve.Decision, error) {
 	if err := ctx.Err(); err != nil {
 		return approve.Decision{}, err
@@ -69,7 +82,13 @@ func (a *Approver) Ask(ctx context.Context, req approve.ApprovalRequest) (approv
 	if a.Err != nil {
 		return approve.Decision{}, a.Err
 	}
-	if a.Allow {
+	if a.Allow && !(a.DenyStanding && req.Kind == approve.KindStandingGrant) {
+		switch req.Kind {
+		case approve.KindStandingGrant:
+			return approve.Decision{Allow: true, TTL: req.RequestedTTL}, nil
+		case approve.KindShow:
+			return approve.Decision{Allow: true}, nil
+		}
 		return approve.Decision{Allow: true, TTL: a.TTL}, nil
 	}
 	reason := a.DenyReason

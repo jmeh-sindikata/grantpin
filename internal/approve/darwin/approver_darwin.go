@@ -21,9 +21,6 @@ import (
 	"grantd/internal/presence"
 )
 
-// cancelTitle is the label of the cancel button on the system prompt.
-const cancelTitle = "Deny"
-
 // invalidateGrace bounds how long Ask waits for LocalAuthentication to unwind
 // after invalidating the context on ctx cancellation.
 const invalidateGrace = 5 * time.Second
@@ -58,9 +55,12 @@ type laResult struct {
 }
 
 // Ask blocks until the human answers or ctx is done. With the chooser enabled
-// (default) it first shows the Allow once / Allow for N / Deny dialog (Deny
-// short-circuits), then the system authentication prompt. Only the chosen
-// button AND a successful authentication yield Allow.
+// (default) it first shows the dialog for req.Kind (Deny / Allow once / Allow
+// for N for a release; Deny / Reveal once for a show; Cancel / Create standing
+// grant for a standing grant; Deny or Cancel short-circuits), then the system
+// authentication prompt. Only the chosen button AND a successful
+// authentication yield Allow. A standing grant is allowed with
+// TTL == RequestedTTL or not at all.
 func (a *Approver) Ask(ctx context.Context, req approve.ApprovalRequest) (approve.Decision, error) {
 	if err := ctx.Err(); err != nil {
 		return approve.Decision{}, err
@@ -76,25 +76,23 @@ func (a *Approver) Ask(ctx context.Context, req approve.ApprovalRequest) (approv
 		return approve.Decision{}, ErrNoGUISession
 	}
 
+	if req.Kind == approve.KindStandingGrant && req.RequestedTTL <= 0 {
+		return approve.Decision{Allow: false, Reason: "standing grant without a duration"}, nil
+	}
+
 	var ttl time.Duration
 	if a.choose != nil {
-		offered := req.SuggestedTTL
-		if offered < 0 {
-			offered = 0
-		}
+		offered := offeredTTL(req)
 		c, err := a.choose.ask(ctx, req, offered)
 		if err != nil {
 			return approve.Decision{}, err
 		}
-		switch c {
-		case choiceOnce:
-		case choiceFor:
-			ttl = offered
-		default:
+		var allow bool
+		if ttl, allow = ttlForChoice(req, c, offered); !allow {
 			return approve.Decision{Allow: false, Reason: "user denied"}, nil
 		}
 	} else {
-		ttl = a.cfg.ttlFor(req.SuggestedTTL)
+		ttl = a.cfg.ttlNoChooser(req)
 	}
 	return a.authenticate(ctx, req, ttl)
 }
@@ -103,7 +101,7 @@ func (a *Approver) Ask(ctx context.Context, req approve.ApprovalRequest) (approv
 func (a *Approver) authenticate(ctx context.Context, req approve.ApprovalRequest, ttl time.Duration) (approve.Decision, error) {
 	reason := BuildReason(req, ttl)
 	creason := C.CString(reason)
-	ctitle := C.CString(cancelTitle)
+	ctitle := C.CString(cancelTitleFor(req.Kind))
 	defer C.free(unsafe.Pointer(creason))
 	defer C.free(unsafe.Pointer(ctitle))
 

@@ -32,7 +32,14 @@ const (
 // grantTTL > 0 means approving will create a grant for that long, which the
 // text must disclose. All request fields are untrusted: they are sanitised and
 // the argv is truncated in the middle (never the secret names).
+//
+// For KindStandingGrant the text is different on purpose, so the Touch ID sheet
+// cannot be mistaken for a release prompt, and grantTTL is ignored in favour of
+// req.RequestedTTL:
+//
+//	Create standing grant for 30 days: <caller> may run `<cmd prefix> …` with <secrets> in <cwd> and subfolders[ (at most N runs)][ (no policy)]
 func BuildReason(req approve.ApprovalRequest, grantTTL time.Duration) string {
+	standing := req.Kind == approve.KindStandingGrant
 	caller := truncateMiddle(clean(req.Caller), maxCallerRunes)
 	if caller == "" {
 		caller = "unknown caller"
@@ -42,8 +49,12 @@ func BuildReason(req approve.ApprovalRequest, grantTTL time.Duration) string {
 		cwd = "unknown directory"
 	}
 	secrets := renderSecrets(req.Secrets, req.Expanded)
-	args := make([]string, len(req.Argv))
-	for i, a := range req.Argv {
+	cmd := req.Argv
+	if standing && len(req.GrantCmdPrefix) > 0 {
+		cmd = req.GrantCmdPrefix
+	}
+	args := make([]string, len(cmd))
+	for i, a := range cmd {
 		args[i] = strings.ReplaceAll(clean(a), "`", "'")
 	}
 	argv := strings.Join(args, " ")
@@ -52,7 +63,9 @@ func BuildReason(req approve.ApprovalRequest, grantTTL time.Duration) string {
 	}
 
 	suffix := ""
-	if scope := GrantScope(req, grantTTL); scope != "" {
+	if standing {
+		suffix += usesSuffix(req.RequestedUses)
+	} else if scope := GrantScope(req, grantTTL); scope != "" {
 		suffix += " (" + scope + ")"
 	} else if grantTTL > 0 {
 		suffix += " (approval lasts " + formatTTL(grantTTL) + ")"
@@ -62,6 +75,10 @@ func BuildReason(req approve.ApprovalRequest, grantTTL time.Duration) string {
 	}
 
 	assemble := func(argv, cwd string) string {
+		if standing {
+			return "Create standing grant for " + formatSpan(req.RequestedTTL) + ": " + caller +
+				" may run `" + argv + " …` with " + secrets + " in " + cwd + " and subfolders" + suffix
+		}
 		return caller + " wants to run `" + argv + "` with " + secrets + " in " + cwd + suffix
 	}
 	out := assemble(argv, cwd)
@@ -106,6 +123,94 @@ func GrantScope(req approve.ApprovalRequest, ttl time.Duration) string {
 		return ""
 	}
 	return "Allow for " + formatTTL(ttl) + " covers: " + cmd + " … in " + cwd + " and subfolders"
+}
+
+// StandingText is the body of the standing-grant dialog:
+//
+//	Create a standing grant?
+//
+//	<caller> may run `<cmd prefix> …` with <secrets> in <cwd> and subfolders for the next 30 days, without further prompts.
+//
+//	Only continue if you just ran `grantd grants add` yourself.
+//
+// The whole request is untrusted and sanitised like BuildReason. The command
+// prefix, secrets (with globs expanded) and directory are the scope of the
+// grant and are never truncated; the caller is shown as claimed. The last
+// line is there because any process of yours can ask for this dialog: the
+// answer is only safe when the human started the request.
+func StandingText(req approve.ApprovalRequest) string {
+	caller := truncateMiddle(clean(req.Caller), maxCallerRunes)
+	if caller == "" {
+		caller = "unknown caller"
+	}
+	cmd := req.GrantCmdPrefix
+	if len(cmd) == 0 {
+		cmd = req.Argv
+	}
+	parts := make([]string, len(cmd))
+	for i, a := range cmd {
+		parts[i] = strings.ReplaceAll(clean(a), "`", "'")
+	}
+	prefix := strings.Join(parts, " ")
+	if prefix == "" {
+		prefix = "(empty command)"
+	}
+	cwd := clean(req.GrantCwdPrefix)
+	if cwd == "" {
+		cwd = clean(req.Cwd)
+	}
+	if cwd == "" {
+		cwd = "unknown directory"
+	}
+	text := "Create a standing grant?\n\n" + caller + " may run `" + prefix + " …` with " +
+		renderSecrets(req.Secrets, req.Expanded) + " in " + cwd + " and subfolders for the next " +
+		formatSpan(req.RequestedTTL) + usesSuffix(req.RequestedUses) + ", without further prompts."
+	if !req.PolicyPresent {
+		text += " (No policy file applies.)"
+	}
+	return text + "\n\nOnly continue if you just ran `grantd grants add` yourself."
+}
+
+// usesSuffix discloses a use limit, e.g. " (at most 3 runs)"; empty when
+// unlimited.
+func usesSuffix(uses int) string {
+	switch {
+	case uses == 1:
+		return " (at most 1 run)"
+	case uses > 1:
+		return " (at most " + strconv.Itoa(uses) + " runs)"
+	}
+	return ""
+}
+
+// formatSpan renders a duration in words for the standing-grant texts:
+// "30 days", "1 day", "8 hours", "1 day 12 hours", "90 minutes". Rounded to
+// minutes.
+func formatSpan(d time.Duration) string {
+	d = d.Round(time.Minute)
+	if d < time.Minute {
+		return "under a minute"
+	}
+	unit := func(n int, one string) string {
+		if n == 1 {
+			return "1 " + one
+		}
+		return strconv.Itoa(n) + " " + one + "s"
+	}
+	days := int(d / (24 * time.Hour))
+	h := int(d % (24 * time.Hour) / time.Hour)
+	m := int(d % time.Hour / time.Minute)
+	var out []string
+	if days > 0 {
+		out = append(out, unit(days, "day"))
+	}
+	if h > 0 {
+		out = append(out, unit(h, "hour"))
+	}
+	if m > 0 {
+		out = append(out, unit(m, "minute"))
+	}
+	return strings.Join(out, " ")
 }
 
 // renderSecrets lists the requested secrets. A glob that expanded to concrete

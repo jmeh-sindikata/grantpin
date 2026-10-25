@@ -36,3 +36,18 @@ func TestDevApproverDefaultsToDeny(t *testing.T) {
 		t.Errorf("allow decision = %+v", d)
 	}
 }
+
+func TestDevApproverAllowNoStandingDeniesOnlyStandingGrants(t *testing.T) {
+	t.Setenv(devApproveEnv, "allow-no-standing")
+	ap, err := openApprover()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if d, _ := ap.Ask(ctx, approve.ApprovalRequest{}); !d.Allow {
+		t.Errorf("release = %+v", d)
+	}
+	if d, _ := ap.Ask(ctx, approve.ApprovalRequest{Kind: approve.KindStandingGrant, RequestedTTL: 1}); d.Allow {
+		t.Errorf("standing = %+v", d)
+	}
+}

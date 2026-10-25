@@ -17,24 +17,63 @@ import (
 // puts earlier on PATH can substitute for it.
 const osascriptPath = "/usr/bin/osascript"
 
-// Button labels. Exact-string compared when parsing the dialog result.
+// Button labels. Exact-string compared when parsing the dialog result. Each
+// kind of request has its own set, so a standing-grant prompt can never be
+// answered by (or confused with) a release prompt's "Allow once".
 const (
-	buttonDeny      = "Deny"
-	buttonAllowOnce = "Allow once"
-	dialogTitle     = "grantd"
+	buttonDeny           = "Deny"
+	buttonAllowOnce      = "Allow once"
+	buttonRevealOnce     = "Reveal once"
+	buttonCancel         = "Cancel"
+	buttonCreateStanding = "Create standing grant"
+	dialogTitle          = "grantd"
 )
 
 // chooserScript is a CONSTANT. Nothing from the request is ever interpolated
-// into AppleScript source (the dialog gives up after 120s, which parses as Deny): the text and the optional third button label arrive
-// as run-handler arguments (argv items 1 and 2).
+// into AppleScript source (the dialog gives up after 120s, which parses as
+// Deny): the text and the button labels arrive as run-handler arguments (argv
+// items 1 to 4: text, the safe button, the allow button, and the optional
+// "Allow for N" label). The safe button is both the default and the cancel
+// button.
 const chooserScript = `on run argv
 	set theText to item 1 of argv
-	set forLabel to item 2 of argv
-	set btns to {"Deny", "Allow once"}
-	if forLabel is not "" then set btns to {"Deny", "Allow once", forLabel}
-	set r to display dialog theText with title "grantd" buttons btns default button "Deny" cancel button "Deny" with icon caution giving up after 120
+	set safeLabel to item 2 of argv
+	set allowLabel to item 3 of argv
+	set forLabel to item 4 of argv
+	set btns to {safeLabel, allowLabel}
+	if forLabel is not "" then set btns to {safeLabel, allowLabel, forLabel}
+	set r to display dialog theText with title "grantd" buttons btns default button safeLabel cancel button safeLabel with icon caution giving up after 120
 	return r
 end run`
+
+// safeButton is the default and cancel button for kind: the answer that does
+// nothing.
+func safeButton(kind approve.Kind) string {
+	if kind == approve.KindStandingGrant {
+		return buttonCancel
+	}
+	return buttonDeny
+}
+
+// allowButton is the one button that allows (apart from "Allow for N", which
+// only a release offers).
+func allowButton(kind approve.Kind) string {
+	switch kind {
+	case approve.KindStandingGrant:
+		return buttonCreateStanding
+	case approve.KindShow:
+		return buttonRevealOnce
+	}
+	return buttonAllowOnce
+}
+
+// offeredTTL is the duration the third button offers: only a release has one.
+func offeredTTL(req approve.ApprovalRequest) time.Duration {
+	if req.Kind != approve.KindRelease {
+		return 0
+	}
+	return max(req.SuggestedTTL, 0)
+}
 
 // choice is what the human picked in the chooser dialog.
 type choice int
@@ -72,19 +111,32 @@ func allowForLabel(ttl time.Duration) string {
 
 // dialogArgs builds the osascript argument vector. The `--` ends option
 // parsing, and the text starts with trusted fixed words, so an untrusted caller
-// string such as "-e" can never be read as an osascript option.
+// string such as "-e" can never be read as an osascript option. ttl is the
+// duration the third button offers; it is ignored (no third button) for every
+// kind but KindRelease.
 func dialogArgs(req approve.ApprovalRequest, ttl time.Duration) []string {
-	text := "An agent is asking grantd to release secrets:\n\n" + BuildReason(req, 0)
-	if scope := GrantScope(req, ttl); scope != "" {
-		text += "\n\n" + scope + "."
-	} else if ttl > 0 {
-		text += "\n\n\"" + allowForLabel(ttl) + "\" lets the same request run again for that long."
+	if req.Kind != approve.KindRelease {
+		ttl = 0
 	}
-	return []string{"-e", chooserScript, "--", text, allowForLabel(ttl)}
+	var text string
+	switch req.Kind {
+	case approve.KindStandingGrant:
+		text = StandingText(req)
+	default:
+		text = "An agent is asking grantd to release secrets:\n\n" + BuildReason(req, 0)
+		if scope := GrantScope(req, ttl); scope != "" {
+			text += "\n\n" + scope + "."
+		} else if ttl > 0 {
+			text += "\n\n\"" + allowForLabel(ttl) + "\" lets the same request run again for that long."
+		}
+	}
+	return []string{"-e", chooserScript, "--", text, safeButton(req.Kind), allowButton(req.Kind), allowForLabel(ttl)}
 }
 
 // ask shows the dialog and returns the human's choice. ttl is the duration the
-// third button offers (0 = no third button). A user cancel, timeout or any
+// third button offers (0 = no third button; always none unless req.Kind is
+// KindRelease). choiceOnce is the kind's single allow button ("Allow once",
+// "Reveal once" or "Create standing grant"). A user cancel, timeout or any
 // unexpected output is choiceDeny with a nil error.
 func (c *chooser) ask(ctx context.Context, req approve.ApprovalRequest, ttl time.Duration) (choice, error) {
 	if err := ctx.Err(); err != nil {
@@ -103,16 +155,20 @@ func (c *chooser) ask(ctx context.Context, req approve.ApprovalRequest, ttl time
 		}
 		return choiceDeny, fmt.Errorf("%w: osascript exit %d: %s", ErrChooserFailed, code, clean(truncateMiddle(string(stderr), 200)))
 	}
-	return parseChoice(string(stdout), allowForLabel(ttl)), nil
+	if req.Kind != approve.KindRelease {
+		ttl = 0
+	}
+	return parseChoice(string(stdout), req.Kind, allowForLabel(ttl)), nil
 }
 
 // parseChoice parses osascript's rendering of the display-dialog record,
 //
 //	button returned:Allow once, gave up:false
 //
-// Only an exact "button returned" label with "gave up:false" allows; every
-// other shape is a Deny.
-func parseChoice(stdout, forLabel string) choice {
+// Only an exact "button returned" label of the kind's allow button (or the
+// "Allow for N" label) with "gave up:false" allows; every other shape is a
+// Deny, including another kind's allow label.
+func parseChoice(stdout string, kind approve.Kind, forLabel string) choice {
 	s := strings.TrimRight(stdout, "\r\n")
 	const prefix = "button returned:"
 	const sep = ", gave up:"
@@ -125,9 +181,9 @@ func parseChoice(stdout, forLabel string) choice {
 		return choiceDeny
 	}
 	switch button := rest[:i]; {
-	case button == buttonAllowOnce:
+	case button == allowButton(kind):
 		return choiceOnce
-	case forLabel != "" && button == forLabel:
+	case kind == approve.KindRelease && forLabel != "" && button == forLabel:
 		return choiceFor
 	}
 	return choiceDeny

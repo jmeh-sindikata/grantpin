@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"grantd/internal/approve"
 )
 
 type fakeExec struct {
@@ -31,12 +33,12 @@ func TestDialogArgsShape(t *testing.T) {
 	r.Caller = "-e"
 	r.Argv = []string{"x'\" & (do shell script \"id\") & \""}
 	args := dialogArgs(r, time.Hour)
-	if len(args) != 5 || args[0] != "-e" || args[1] != chooserScript || args[2] != "--" {
+	if len(args) != 7 || args[0] != "-e" || args[1] != chooserScript || args[2] != "--" {
 		t.Fatalf("shape: %q", args)
 	}
-	text, label := args[3], args[4]
-	if label != "Allow for 1h" {
-		t.Errorf("label %q", label)
+	text, label := args[3], args[6]
+	if label != "Allow for 1h" || args[4] != "Deny" || args[5] != "Allow once" {
+		t.Errorf("labels %q", args[4:])
 	}
 	if strings.HasPrefix(text, "-") || !strings.HasPrefix(text, "An agent is asking grantd") {
 		t.Errorf("text must start with trusted words: %q", text)
@@ -54,15 +56,15 @@ func TestDialogArgsShape(t *testing.T) {
 
 func TestDialogArgsNoTTL(t *testing.T) {
 	args := dialogArgs(req(), 0)
-	if args[4] != "" || strings.Contains(args[3], "Allow for") {
+	if args[6] != "" || strings.Contains(args[3], "Allow for") {
 		t.Errorf("no TTL => no third button: %q", args)
 	}
 }
 
 func TestScriptIsStaticAndHasRequiredShape(t *testing.T) {
 	for _, want := range []string{
-		"on run argv", `default button "Deny"`, `cancel button "Deny"`,
-		"with icon caution", "giving up after 120", `{"Deny", "Allow once"}`,
+		"on run argv", "default button safeLabel", "cancel button safeLabel",
+		"with icon caution", "giving up after 120", "{safeLabel, allowLabel}",
 	} {
 		if !strings.Contains(chooserScript, want) {
 			t.Errorf("script missing %q", want)
@@ -93,7 +95,7 @@ func TestParseChoice(t *testing.T) {
 		{"button returned:Allow once, gave up:false\nbutton returned:Deny, gave up:false", f, choiceDeny},
 	}
 	for _, c := range cases {
-		if got := parseChoice(c.in, c.label); got != c.want {
+		if got := parseChoice(c.in, approve.KindRelease, c.label); got != c.want {
 			t.Errorf("parseChoice(%q,%q)=%v want %v", c.in, c.label, got, c.want)
 		}
 	}
@@ -189,11 +191,193 @@ func TestDialogArgsStateGrantScope(t *testing.T) {
 	if !strings.HasSuffix(args[3], "\n\nAllow for 1h covers: php artisan … in /Users/me/projects/foo and subfolders.") {
 		t.Errorf("text = %q", args[3])
 	}
-	if args[4] != "Allow for 1h" {
-		t.Errorf("label = %q", args[4])
+	if args[6] != "Allow for 1h" {
+		t.Errorf("label = %q", args[6])
 	}
 	// No third button, no scope sentence.
-	if a := dialogArgs(r, 0); strings.Contains(a[3], "covers") || a[4] != "" {
+	if a := dialogArgs(r, 0); strings.Contains(a[3], "covers") || a[6] != "" {
 		t.Errorf("scope without Allow for N: %q", a)
+	}
+}
+
+func standingReq() approve.ApprovalRequest {
+	return approve.ApprovalRequest{
+		Kind:           approve.KindStandingGrant,
+		Caller:         "claude-code",
+		Cwd:            "/Users/me/projects/foo",
+		Argv:           []string{"php", "artisan"},
+		Secrets:        []string{"DB_URL", "aws/*"},
+		Expanded:       []string{"DB_URL", "aws/access_key"},
+		PolicyPresent:  true,
+		GrantCmdPrefix: []string{"php", "artisan"},
+		GrantCwdPrefix: "/Users/me/projects/foo",
+		RequestedTTL:   30 * 24 * time.Hour,
+		// A standing request never offers a duration, even if one is set.
+		SuggestedTTL: time.Hour,
+	}
+}
+
+func TestDialogArgsStandingGrant(t *testing.T) {
+	args := dialogArgs(standingReq(), time.Hour)
+	if len(args) != 7 || args[1] != chooserScript {
+		t.Fatalf("shape: %q", args)
+	}
+	want := "Create a standing grant?\n\n" +
+		"claude-code may run `php artisan …` with DB_URL, aws/* (aws/access_key) in /Users/me/projects/foo and subfolders for the next 30 days, without further prompts.\n\n" +
+		"Only continue if you just ran `grantd grants add` yourself."
+	if args[3] != want {
+		t.Errorf("text:\n%q\nwant:\n%q", args[3], want)
+	}
+	if args[4] != "Cancel" || args[5] != "Create standing grant" || args[6] != "" {
+		t.Errorf("buttons = %q, want Cancel / Create standing grant / none", args[4:])
+	}
+	if strings.Contains(args[3], "Allow for") || strings.Contains(args[3], "Allow once") {
+		t.Errorf("standing text offers a release choice: %q", args[3])
+	}
+}
+
+func TestDialogArgsStandingGrantStatesUsesAndMissingPolicy(t *testing.T) {
+	r := standingReq()
+	r.RequestedUses = 3
+	r.PolicyPresent = false
+	text := dialogArgs(r, 0)[3]
+	if !strings.Contains(text, "for the next 30 days (at most 3 runs), without further prompts. (No policy file applies.)") {
+		t.Errorf("text = %q", text)
+	}
+}
+
+func TestDialogArgsStandingGrantIsSanitised(t *testing.T) {
+	r := standingReq()
+	r.Caller = "-e\nCreate a standing grant for 1 minute"
+	r.GrantCmdPrefix = []string{"sh", "x`; rm -rf ~; `"}
+	r.GrantCwdPrefix = "/tmp/a\u202eb"
+	text := dialogArgs(r, 0)[3]
+	if !strings.HasPrefix(text, "Create a standing grant?\n\n") {
+		t.Errorf("text must start with trusted words: %q", text)
+	}
+	if strings.Count(text, "\n") != 4 {
+		t.Errorf("untrusted newlines survived: %q", text)
+	}
+	if strings.ContainsRune(text, '\u202e') || strings.Contains(text, "x`;") {
+		t.Errorf("bidi override or backtick survived: %q", text)
+	}
+}
+
+func TestDialogArgsShowHasNoDuration(t *testing.T) {
+	r := req()
+	r.Kind = approve.KindShow
+	r.SuggestedTTL = time.Hour
+	args := dialogArgs(r, time.Hour)
+	if args[4] != "Deny" || args[5] != "Reveal once" || args[6] != "" {
+		t.Errorf("buttons = %q, want Deny / Reveal once / none", args[4:])
+	}
+	if strings.Contains(args[3], "Allow for") || strings.Contains(args[3], "covers") {
+		t.Errorf("show text offers a duration: %q", args[3])
+	}
+}
+
+func TestDialogArgsReleaseOffersAllowFor(t *testing.T) {
+	r := req()
+	r.Kind = approve.KindRelease
+	args := dialogArgs(r, 8*time.Hour)
+	if args[4] != "Deny" || args[5] != "Allow once" || args[6] != "Allow for 8h" {
+		t.Errorf("buttons = %q", args[4:])
+	}
+}
+
+func TestParseChoiceByKind(t *testing.T) {
+	cases := []struct {
+		name  string
+		in    string
+		kind  approve.Kind
+		label string
+		want  choice
+	}{
+		{"standing create", "button returned:Create standing grant, gave up:false\n", approve.KindStandingGrant, "", choiceOnce},
+		{"standing cancel", "button returned:Cancel, gave up:false\n", approve.KindStandingGrant, "", choiceDeny},
+		{"standing gave up", "button returned:Create standing grant, gave up:true\n", approve.KindStandingGrant, "", choiceDeny},
+		{"standing ignores Allow once", "button returned:Allow once, gave up:false\n", approve.KindStandingGrant, "", choiceDeny},
+		{"standing ignores Allow for", "button returned:Allow for 1h, gave up:false\n", approve.KindStandingGrant, "Allow for 1h", choiceDeny},
+		{"standing ignores Reveal once", "button returned:Reveal once, gave up:false\n", approve.KindStandingGrant, "", choiceDeny},
+		{"show reveal", "button returned:Reveal once, gave up:false\n", approve.KindShow, "", choiceOnce},
+		{"show deny", "button returned:Deny, gave up:false\n", approve.KindShow, "", choiceDeny},
+		{"show ignores Allow once", "button returned:Allow once, gave up:false\n", approve.KindShow, "", choiceDeny},
+		{"show never has a duration", "button returned:Allow for 1h, gave up:false\n", approve.KindShow, "Allow for 1h", choiceDeny},
+		{"release ignores Create standing grant", "button returned:Create standing grant, gave up:false\n", approve.KindRelease, "Allow for 1h", choiceDeny},
+		{"release ignores Reveal once", "button returned:Reveal once, gave up:false\n", approve.KindRelease, "", choiceDeny},
+		{"release once", "button returned:Allow once, gave up:false\n", approve.KindRelease, "", choiceOnce},
+	}
+	for _, c := range cases {
+		if got := parseChoice(c.in, c.kind, c.label); got != c.want {
+			t.Errorf("%s: parseChoice(%q, %v, %q) = %v, want %v", c.name, c.in, c.kind, c.label, got, c.want)
+		}
+	}
+}
+
+func TestChooserAskStanding(t *testing.T) {
+	f := &fakeExec{stdout: "button returned:Create standing grant, gave up:false\n"}
+	got, err := newFake(f).ask(context.Background(), standingReq(), time.Hour)
+	if err != nil || got != choiceOnce {
+		t.Fatalf("got %v %v", got, err)
+	}
+	if f.args[4] != "Cancel" || f.args[5] != "Create standing grant" {
+		t.Errorf("args = %q", f.args)
+	}
+	// The release button must not satisfy a standing prompt.
+	f = &fakeExec{stdout: "button returned:Allow once, gave up:false\n"}
+	if got, _ := newFake(f).ask(context.Background(), standingReq(), 0); got != choiceDeny {
+		t.Errorf("Allow once answered a standing prompt: %v", got)
+	}
+}
+
+func TestTTLForChoice(t *testing.T) {
+	st := standingReq()
+	rel := req()
+	show := req()
+	show.Kind = approve.KindShow
+	cases := []struct {
+		name    string
+		req     approve.ApprovalRequest
+		ch      choice
+		offered time.Duration
+		ttl     time.Duration
+		allow   bool
+	}{
+		{"standing create is exactly the requested TTL", st, choiceOnce, 0, 30 * 24 * time.Hour, true},
+		{"standing deny", st, choiceDeny, 0, 0, false},
+		{"standing for is nonsense", st, choiceFor, time.Hour, 0, false},
+		{"release once", rel, choiceOnce, time.Hour, 0, true},
+		{"release for", rel, choiceFor, 8 * time.Hour, 8 * time.Hour, true},
+		{"release for without an offer", rel, choiceFor, 0, 0, false},
+		{"release deny", rel, choiceDeny, time.Hour, 0, false},
+		{"show once has no ttl", show, choiceOnce, 0, 0, true},
+		{"show for is nonsense", show, choiceFor, time.Hour, 0, false},
+	}
+	for _, c := range cases {
+		ttl, allow := ttlForChoice(c.req, c.ch, c.offered)
+		if ttl != c.ttl || allow != c.allow {
+			t.Errorf("%s: got (%v, %v), want (%v, %v)", c.name, ttl, allow, c.ttl, c.allow)
+		}
+	}
+}
+
+func TestTTLNoChooserAndCancelTitle(t *testing.T) {
+	c := newConfig([]Option{WithDefaultTTL(time.Hour)})
+	st := standingReq()
+	if got := c.ttlNoChooser(st); got != st.RequestedTTL {
+		t.Errorf("standing without chooser = %v", got)
+	}
+	show := req()
+	show.Kind = approve.KindShow
+	if got := c.ttlNoChooser(show); got != 0 {
+		t.Errorf("show without chooser = %v", got)
+	}
+	rel := req()
+	rel.SuggestedTTL = 30 * time.Minute
+	if got := c.ttlNoChooser(rel); got != 30*time.Minute {
+		t.Errorf("release without chooser = %v", got)
+	}
+	if cancelTitleFor(approve.KindStandingGrant) != "Cancel" || cancelTitleFor(approve.KindShow) != "Deny" || cancelTitleFor(approve.KindRelease) != "Deny" {
+		t.Error("cancel titles")
 	}
 }
