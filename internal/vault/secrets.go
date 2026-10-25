@@ -227,7 +227,7 @@ func (v *Vault) List(ctx context.Context, opts ...ListOption) ([]Meta, error) {
 		return nil, fmt.Errorf("vault: list: %w", err)
 	}
 	defer rows.Close()
-	deadline := v.cfg.now().Add(0)
+	deadline := v.cfg.now()
 	if f.within != nil {
 		deadline = deadline.Add(*f.within)
 	}

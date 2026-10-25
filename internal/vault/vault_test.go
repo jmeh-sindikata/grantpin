@@ -437,16 +437,16 @@ func TestMinTierDefaults(t *testing.T) {
 	if m, _ := v.Get(ctx, "d"); m.MinTier != presence.TierDialog {
 		t.Fatalf("default tier %v", m.MinTier)
 	}
-	if tier, err := v.MinTierFor(ctx, []string{"d", "aws/*"}); err != nil || tier != presence.TierDialog {
+	if tier, err := minTierFor(v, []string{"d", "aws/*"}); err != nil || tier != presence.TierDialog {
 		t.Fatalf("%v %v", tier, err)
 	}
-	if tier, err := v.MinTierFor(ctx, []string{"d", "h"}); err != nil || tier != presence.TierHardware {
+	if tier, err := minTierFor(v, []string{"d", "h"}); err != nil || tier != presence.TierHardware {
 		t.Fatalf("%v %v", tier, err)
 	}
-	if _, err := v.MinTierFor(ctx, []string{"nope"}); !errors.Is(err, ErrNotFound) {
+	if _, err := minTierFor(v, []string{"nope"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v", err)
 	}
-	if _, err := v.MinTierFor(ctx, []string{"zz/*"}); !errors.Is(err, ErrNotFound) {
+	if _, err := minTierFor(v, []string{"zz/*"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v", err)
 	}
 	// Persisted default is picked up by Open; an option overrides it.
@@ -800,7 +800,7 @@ func TestMinTierTamperDetected(t *testing.T) {
 	if _, err := v.Resolve(ctx, []string{"k"}); !errors.Is(err, ErrDecrypt) {
 		t.Fatalf("Resolve with lowered min_tier: %v", err)
 	}
-	if _, err := v.MinTierFor(ctx, []string{"k"}); !errors.Is(err, ErrDecrypt) {
+	if _, err := minTierFor(v, []string{"k"}); !errors.Is(err, ErrDecrypt) {
 		t.Fatalf("MinTierFor with lowered min_tier: %v", err)
 	}
 	if _, err := v.Masked(ctx, "k"); !errors.Is(err, ErrDecrypt) {
@@ -808,7 +808,7 @@ func TestMinTierTamperDetected(t *testing.T) {
 	}
 	// Out-of-range tier values never authenticate either.
 	_, _ = v.db.Exec(`UPDATE secrets SET min_tier = 1000 WHERE name = 'k'`)
-	if _, err := v.MinTierFor(ctx, []string{"k"}); !errors.Is(err, ErrDecrypt) {
+	if _, err := minTierFor(v, []string{"k"}); !errors.Is(err, ErrDecrypt) {
 		t.Fatalf("out-of-range tier: %v", err)
 	}
 }
@@ -826,7 +826,7 @@ func TestSetOverwriteChangesTierAndReencrypts(t *testing.T) {
 	if bytes.Equal(c1, c2) {
 		t.Fatal("ciphertext unchanged")
 	}
-	if tier, err := v.MinTierFor(ctx, []string{"k"}); err != nil || tier != presence.TierDialog {
+	if tier, err := minTierFor(v, []string{"k"}); err != nil || tier != presence.TierDialog {
 		t.Fatalf("%v %v", tier, err)
 	}
 }
@@ -838,5 +838,51 @@ func TestAADEncoding(t *testing.T) {
 	}
 	if bytes.Equal(aad("a", presence.TierNone), aad("a", presence.TierHardware)) || bytes.Equal(aad("a", 300), aad("a", 44)) {
 		t.Fatal("aad collision")
+	}
+}
+
+// minTierFor expands patterns and returns the highest min_tier among them.
+func minTierFor(v *Vault, patterns []string) (presence.PresenceTier, error) {
+	names, err := v.ExpandNames(ctx, patterns)
+	if err != nil {
+		return presence.TierNone, err
+	}
+	return v.CheckNames(ctx, names, time.Now())
+}
+
+func TestCheckNamesAndResolveNames(t *testing.T) {
+	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	v, _, _ := newVault(t, WithClock(func() time.Time { return now }))
+	past := now.Add(-time.Minute)
+	_ = v.Set(ctx, Meta{Name: "x/old", ExpiresAt: &past, MinTier: presence.TierDialog}, []byte("old-value"), false)
+	_ = v.Set(ctx, Meta{Name: "x/new", MinTier: presence.TierHardware}, []byte("new-value"), false)
+
+	if tier, err := v.CheckNames(ctx, []string{"x/new"}, now); err != nil || tier != presence.TierHardware {
+		t.Fatalf("%v %v", tier, err)
+	}
+	if _, err := v.CheckNames(ctx, []string{"x/new", "x/old"}, now); !errors.Is(err, ErrExpired) || !strings.Contains(err.Error(), "x/old") {
+		t.Fatalf("expired: %v", err)
+	}
+	// Expiry is judged at the given instant, not the vault clock.
+	if _, err := v.CheckNames(ctx, []string{"x/old"}, past.Add(-time.Hour)); err != nil {
+		t.Fatalf("not yet expired at that instant: %v", err)
+	}
+	for _, bad := range [][]string{{}, {"x/*"}, {"bad name"}} {
+		if _, err := v.CheckNames(ctx, bad, now); err == nil {
+			t.Errorf("CheckNames(%v) accepted", bad)
+		}
+		if _, err := v.ResolveNames(ctx, bad); err == nil {
+			t.Errorf("ResolveNames(%v) accepted", bad)
+		}
+	}
+	if _, err := v.CheckNames(ctx, []string{"nope"}, now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing: %v", err)
+	}
+	got, err := v.ResolveNames(ctx, []string{"x/new"})
+	if err != nil || string(got["x/new"]) != "new-value" || len(got) != 1 {
+		t.Fatalf("ResolveNames = %v %v", got, err)
+	}
+	if got, err := v.ResolveNames(ctx, []string{"x/new", "x/old"}); !errors.Is(err, ErrExpired) || got != nil {
+		t.Fatalf("expired must return nothing: %v %v", got, err)
 	}
 }

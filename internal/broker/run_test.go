@@ -276,6 +276,9 @@ func TestRunExpiredSecret(t *testing.T) {
 	e.advance(2 * time.Hour)
 	w := e.do(e.run([]string{"OLD"}, "true"))
 	wantFail(t, w, proto.ErrRefused, proto.ReasonSecretExpired)
+	if w.final.Message != "OLD" {
+		t.Errorf("message = %q, want the secret's name", w.final.Message)
+	}
 	if e.ap.calls() != 0 {
 		t.Fatal("approver asked")
 	}

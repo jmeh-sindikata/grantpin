@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -81,28 +82,21 @@ func (b *Broker) handleRun(ctx context.Context, req *proto.Request, w daemon.Res
 		}
 	}
 
-	// 3. Names, env names, expiry, tier.
+	// 3. Names (one expansion, nothing decrypted), env names, then expiry and
+	// tier. CheckNames decrypts each secret once to authenticate its metadata
+	// and discards the plaintext: values are decrypted again, for the release,
+	// only after a grant or the human has approved (see release).
 	names, err := b.d.Vault.ExpandNames(ctx, req.Secrets)
 	if err != nil {
 		b.runLookupFailure(ctx, rc, err)
 		return
 	}
-	if _, err := runner.EnvNames(names, req.EnvPrefix); err != nil {
+	envNames, err := runner.EnvNames(names, req.EnvPrefix)
+	if err != nil {
 		rc.refuse(ctx, audit.DecisionError, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())
 		return
 	}
-	for _, n := range names {
-		m, err := b.d.Vault.Get(ctx, n)
-		if err != nil {
-			b.runLookupFailure(ctx, rc, err)
-			return
-		}
-		if m.Expired(b.now()) {
-			rc.refuse(ctx, audit.DecisionError, proto.ErrRefused, proto.ReasonSecretExpired, n)
-			return
-		}
-	}
-	required, err := b.d.Vault.MinTierFor(ctx, names)
+	required, err := b.d.Vault.CheckNames(ctx, names, b.now())
 	if err != nil {
 		b.runLookupFailure(ctx, rc, err)
 		return
@@ -133,7 +127,7 @@ func (b *Broker) handleRun(ctx context.Context, req *proto.Request, w daemon.Res
 	}
 
 	// 6. Release.
-	b.release(ctx, rc, req, cwd, names, decision, grantID)
+	b.release(ctx, rc, req, cwd, names, envNames, decision, grantID)
 }
 
 // runLookupFailure maps a vault lookup error during a run to a response.
@@ -142,7 +136,8 @@ func (b *Broker) runLookupFailure(ctx context.Context, rc *runCtx, err error) {
 	case errors.Is(err, vault.ErrNotFound):
 		rc.refuse(ctx, audit.DecisionError, proto.ErrNotFound, proto.ReasonSecretNotFound, err.Error())
 	case errors.Is(err, vault.ErrExpired):
-		rc.refuse(ctx, audit.DecisionError, proto.ErrRefused, proto.ReasonSecretExpired, "")
+		rc.refuse(ctx, audit.DecisionError, proto.ErrRefused, proto.ReasonSecretExpired,
+			strings.TrimPrefix(err.Error(), vault.ErrExpired.Error()+": "))
 	case errors.Is(err, vault.ErrInvalidName):
 		rc.refuse(ctx, audit.DecisionError, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())
 	case ctx.Err() != nil:
@@ -295,12 +290,20 @@ const ReasonReleased = "released"
 // are decrypted but before the command is spawned, then exactly one
 // "completed" row when the command ends. Both rows are scrubbed with the
 // redactor built from the resolved values. A failure before the released row
-// (resolve, env names) leaves a single "error" row; if the released row cannot
-// be written the plaintext is zeroed, nothing is spawned and no completed row
-// follows.
-func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cwd string, names []string, decision, grantID string) {
+// (resolve) leaves a single "error" row; if the released row cannot be written
+// the plaintext is zeroed, nothing is spawned and no completed row follows. A
+// release under a finite-use grant takes its use (Grants.Consume) right after
+// the released row is written; if the use is gone by then (a concurrent run
+// took it, or the grant was revoked) a completed row closes the bracket and
+// nothing is spawned.
+//
+// Secrets are decrypted twice per run, on purpose: CheckNames (before any
+// grant or prompt) decrypts and discards each value to authenticate its tier
+// and expiry, and release decrypts again only once the release is approved, so
+// no plaintext exists while a human is deciding.
+func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cwd string, names []string, envNames map[string]string, decision, grantID string) {
 	rc.entry.GrantID = grantID
-	values, err := b.d.Vault.Resolve(ctx, names)
+	values, err := b.d.Vault.ResolveNames(ctx, names)
 	if err != nil {
 		b.runLookupFailure(ctx, rc, err)
 		return
@@ -310,11 +313,6 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 			zero(v)
 		}
 	}()
-	envNames, err := runner.EnvNames(names, req.EnvPrefix)
-	if err != nil {
-		rc.refuse(ctx, audit.DecisionError, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())
-		return
-	}
 	// Plaintext as strings is required by runner.Spec; Go cannot zero these.
 	env := make(map[string]string, len(values))
 	labels := make(map[string]string, len(values))

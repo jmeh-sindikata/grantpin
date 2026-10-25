@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
 
@@ -93,15 +94,48 @@ func (v *Vault) Resolve(ctx context.Context, names []string) (map[string][]byte,
 	if err != nil {
 		return nil, err
 	}
+	return v.resolveExact(ctx, resolved)
+}
+
+// ResolveNames is Resolve for names that ExpandNames already produced: it does
+// not expand again, so each name must be an exact stored name (a pattern is an
+// ErrInvalidName, a missing name ErrNotFound). Same contract otherwise: the
+// result is internal, callers zero it, and on any error nothing is returned.
+func (v *Vault) ResolveNames(ctx context.Context, names []string) (map[string][]byte, error) {
+	unlock, err := v.rlock()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+	if err := validateExact(names); err != nil {
+		return nil, err
+	}
+	return v.resolveExact(ctx, names)
+}
+
+func validateExact(names []string) error {
+	if len(names) == 0 {
+		return fmt.Errorf("vault: no secret names given")
+	}
+	for _, n := range names {
+		if err := ValidateName(n); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// resolveExact decrypts exact names; the caller holds the read lock.
+func (v *Vault) resolveExact(ctx context.Context, names []string) (map[string][]byte, error) {
 	now := v.cfg.now()
-	out := make(map[string][]byte, len(resolved))
+	out := make(map[string][]byte, len(names))
 	fail := func(err error) (map[string][]byte, error) {
 		for _, b := range out {
 			zero(b)
 		}
 		return nil, err
 	}
-	for _, n := range resolved {
+	for _, n := range names {
 		pt, m, err := v.decrypt(ctx, n)
 		if err != nil {
 			return fail(err)
@@ -115,28 +149,37 @@ func (v *Vault) Resolve(ctx context.Context, names []string) (map[string][]byte,
 	return out, nil
 }
 
-// MinTierFor expands names like Resolve and returns the highest min_tier among
-// the matched secrets. It does not decrypt. An unmatched literal or glob is an
-// error, so a caller can never under-estimate the required tier.
-func (v *Vault) MinTierFor(ctx context.Context, names []string) (presence.PresenceTier, error) {
+// CheckNames is the pre-release check for names that ExpandNames already
+// produced (exact names, no expansion): it returns the highest min_tier among
+// them and fails with ErrExpired if any is expired at now. Each secret is
+// decrypted only to authenticate its metadata (the tier and the name are bound
+// into the GCM AAD, so a tampered min_tier fails with ErrDecrypt) and the
+// plaintext is zeroed at once; nothing is returned. This is the one decrypt
+// that happens before the human or a grant has approved the release.
+func (v *Vault) CheckNames(ctx context.Context, names []string, now time.Time) (presence.PresenceTier, error) {
 	unlock, err := v.rlock()
 	if err != nil {
 		return presence.TierNone, err
 	}
 	defer unlock()
-	resolved, err := v.expand(ctx, names)
-	if err != nil {
+	if err := validateExact(names); err != nil {
 		return presence.TierNone, err
 	}
+	return v.checkExact(ctx, names, now)
+}
+
+// checkExact decrypts-and-discards each name; the caller holds the read lock.
+func (v *Vault) checkExact(ctx context.Context, names []string, now time.Time) (presence.PresenceTier, error) {
 	highest := presence.TierNone
-	for _, n := range resolved {
-		// Decrypt so the tier is authenticated (it is bound into the GCM AAD);
-		// a tampered min_tier column fails with ErrDecrypt.
+	for _, n := range names {
 		pt, m, err := v.decrypt(ctx, n)
 		if err != nil {
 			return presence.TierNone, err
 		}
 		zero(pt)
+		if m.Expired(now) {
+			return presence.TierNone, fmt.Errorf("%w: %s", ErrExpired, n)
+		}
 		if m.MinTier > highest {
 			highest = m.MinTier
 		}

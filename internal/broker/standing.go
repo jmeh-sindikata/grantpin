@@ -101,18 +101,7 @@ func (b *Broker) handleGrantAdd(ctx context.Context, req *proto.Request, w daemo
 		b.runLookupFailure(ctx, rc, err)
 		return
 	}
-	for _, n := range names {
-		m, err := b.d.Vault.Get(ctx, n)
-		if err != nil {
-			b.runLookupFailure(ctx, rc, err)
-			return
-		}
-		if m.Expired(b.now()) {
-			refuse(audit.DecisionError, proto.ErrRefused, proto.ReasonSecretExpired, n)
-			return
-		}
-	}
-	required, err := b.d.Vault.MinTierFor(ctx, names)
+	required, err := b.d.Vault.CheckNames(ctx, names, b.now())
 	if err != nil {
 		b.runLookupFailure(ctx, rc, err)
 		return
