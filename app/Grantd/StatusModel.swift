@@ -1,46 +1,32 @@
 import Foundation
-import Observation
 import GrantdKit
 
-/// Polls the daemon's `status` op. The stub polls every 5 seconds for as long
-/// as the app runs; the real Monitor (UI-SPEC 2.4) adapts the interval to what
-/// is visible.
-@Observable
-@MainActor
-final class StatusModel {
-    private(set) var line = "Checking…"
-    let developmentSocket: String?
-
-    private let client: Client
-    private var poller: Task<Void, Never>?  // lives as long as the app
-
-    init(client: Client = Client()) {
-        self.client = client
-        developmentSocket = SocketPath.isDevelopment() ? client.socketPath : nil
-        poller = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.refresh()
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-            }
+/// Plain-text rendering of the daemon's connection state for the stub popover
+/// (docs/UI-SPEC.md 3.1). The real status header, with colours and actions,
+/// arrives with the shell step; this only proves `DaemonMonitor` is wired up.
+enum StatusText {
+    static func headline(_ state: ConnectionState?) -> String {
+        switch state {
+        case nil: return "Checking…"
+        case .notRunning?: return "grantd is not running"
+        case .locked?: return "Waiting for the vault key"
+        case .notInitialized?: return "grantd is running · no vault yet"
+        case .ready(let s)?:
+            let secrets = s.secrets == 1 ? "1 secret" : "\(s.secrets) secrets"
+            let grants = s.activeGrants == 1 ? "1 active grant" : "\(s.activeGrants) active grants"
+            return "grantd is running · \(secrets) · \(grants)"
         }
     }
 
-    func refresh() async {
-        do {
-            let s = try await client.status()
-            line = Self.describe(s)
-        } catch let e as DaemonError {
-            line = e == .notRunning ? "grantd is not running" : "grantd did not answer"
-        } catch {
-            line = "grantd did not answer"
+    /// A second line, or nil. Daemon text is untrusted: it goes through the sanitiser.
+    static func detail(_ state: ConnectionState?) -> String? {
+        switch state {
+        case .locked(let lastError)?:
+            let base = "The Mac may be locked. grantd keeps trying."
+            guard let lastError, !lastError.isEmpty else { return base }
+            return base + " " + DisplayText.sanitise(lastError)
+        default:
+            return nil
         }
-    }
-
-    static func describe(_ s: StatusResult) -> String {
-        if !s.vaultInitialized { return "grantd is running · no vault yet" }
-        if s.vaultLocked { return "grantd is running · waiting for the vault key (locked session)" }
-        let secrets = s.secrets == 1 ? "1 secret" : "\(s.secrets) secrets"
-        let grants = s.activeGrants == 1 ? "1 active grant" : "\(s.activeGrants) active grants"
-        return "grantd is running · \(secrets) · \(grants)"
     }
 }
