@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist TEMPLATE (LSUIElement true = agent app: no Dock icon, no menu bar) for dist/grantd.app (make bundle). The @NAME@ tokens are
+  filled in by the Makefile; this file is not a valid Info.plist until then.
+
+    @BUNDLE_ID@     Makefile BUNDLE_ID (default dev.grantd.app). The one place the
+                    bundle identifier lives; rename the project here. It must
+                    match the App ID in the Apple developer portal and the
+                    com.apple.application-identifier entitlement.
+    @VERSION@       Makefile VERSION (git describe), shown as the version.
+    @BUILD@         Makefile BUILD_NUMBER (git commit count), CFBundleVersion.
+    @MIN_MACOS@     lowest macOS the embedded binary supports.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>@BUNDLE_ID@</string>
+	<key>CFBundleName</key>
+	<string>grantd</string>
+	<key>CFBundleDisplayName</key>
+	<string>grantd</string>
+	<key>CFBundleExecutable</key>
+	<string>grantd</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@BUILD@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>@MIN_MACOS@</string>
+	<key>LSUIElement</key>
+	<true/>
+</dict>
+</plist>

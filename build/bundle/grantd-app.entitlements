@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements TEMPLATE for the Developer ID signed bundle (make sign-bundle).
+
+  codesign does NOT expand $(TeamIdentifierPrefix): that is an Xcode build
+  setting, substituted by Xcode's entitlements processing. `codesign
+  with an entitlements file` embeds the file verbatim, so a literal "$(TeamIdentifierPrefix)"
+  would end up in the signature and never match the provisioning profile.
+  `make sign-bundle` therefore expands the file into dist/ first:
+
+    $(TeamIdentifierPrefix)   ->  "<TEAM_ID>."   (note the trailing dot)
+    @BUNDLE_ID@               ->  Makefile BUNDLE_ID      (dev.grantd.app)
+    @KEYCHAIN_GROUP@          ->  Makefile KEYCHAIN_GROUP (dev.grantd)
+
+  Both keys are restricted: they only take effect (and AMFI only lets the
+  process launch) if the embedded provisioning profile authorises them.
+  keychain-access-groups is what unlocks the data-protection keychain and so
+  the Secure Enclave key (docs/MANUAL-TEST-MACOS.md 2a and 2c). The profile must
+  carry a keychain-access-groups entry covering TEAMID.dev.grantd (either that
+  exact group or the wildcard TEAMID.*; verify with `security cms -D -i`).
+
+  With a single group listed, it is also the default group new keychain items
+  are written to; internal/keystore/darwin sets no kSecAttrAccessGroup.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.application-identifier</key>
+	<string>$(TeamIdentifierPrefix)@BUNDLE_ID@</string>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(TeamIdentifierPrefix)@KEYCHAIN_GROUP@</string>
+	</array>
+</dict>
+</plist>
