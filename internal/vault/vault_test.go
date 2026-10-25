@@ -788,3 +788,55 @@ func TestOddPaths(t *testing.T) {
 		t.Fatal("lost secret")
 	}
 }
+
+func TestMinTierTamperDetected(t *testing.T) {
+	v, _, _ := newVault(t)
+	if err := v.Set(ctx, Meta{Name: "k", MinTier: presence.TierHardware}, []byte("a-secret-value"), false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := v.db.Exec(`UPDATE secrets SET min_tier = ? WHERE name = 'k'`, int(presence.TierNone)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := v.Resolve(ctx, []string{"k"}); !errors.Is(err, ErrDecrypt) {
+		t.Fatalf("Resolve with lowered min_tier: %v", err)
+	}
+	if _, err := v.MinTierFor(ctx, []string{"k"}); !errors.Is(err, ErrDecrypt) {
+		t.Fatalf("MinTierFor with lowered min_tier: %v", err)
+	}
+	if _, err := v.Masked(ctx, "k"); !errors.Is(err, ErrDecrypt) {
+		t.Fatalf("Masked with lowered min_tier: %v", err)
+	}
+	// Out-of-range tier values never authenticate either.
+	_, _ = v.db.Exec(`UPDATE secrets SET min_tier = 1000 WHERE name = 'k'`)
+	if _, err := v.MinTierFor(ctx, []string{"k"}); !errors.Is(err, ErrDecrypt) {
+		t.Fatalf("out-of-range tier: %v", err)
+	}
+}
+
+func TestSetOverwriteChangesTierAndReencrypts(t *testing.T) {
+	v, _, _ := newVault(t)
+	_ = v.Set(ctx, Meta{Name: "k", MinTier: presence.TierHardware}, []byte("value"), false)
+	var c1 []byte
+	_ = v.db.QueryRow(`SELECT ciphertext FROM secrets WHERE name='k'`).Scan(&c1)
+	if err := v.Set(ctx, Meta{Name: "k", MinTier: presence.TierDialog}, []byte("value"), true); err != nil {
+		t.Fatal(err)
+	}
+	var c2 []byte
+	_ = v.db.QueryRow(`SELECT ciphertext FROM secrets WHERE name='k'`).Scan(&c2)
+	if bytes.Equal(c1, c2) {
+		t.Fatal("ciphertext unchanged")
+	}
+	if tier, err := v.MinTierFor(ctx, []string{"k"}); err != nil || tier != presence.TierDialog {
+		t.Fatalf("%v %v", tier, err)
+	}
+}
+
+func TestAADEncoding(t *testing.T) {
+	got := aad("a/b", presence.TierDialog)
+	if string(got) != "grantd.secret.v1\x00a/b\x00\x01" {
+		t.Fatalf("%q", got)
+	}
+	if bytes.Equal(aad("a", presence.TierNone), aad("a", presence.TierHardware)) || bytes.Equal(aad("a", 300), aad("a", 44)) {
+		t.Fatal("aad collision")
+	}
+}

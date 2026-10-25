@@ -2,7 +2,6 @@ package vault
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"sort"
 
@@ -131,16 +130,15 @@ func (v *Vault) MinTierFor(ctx context.Context, names []string) (presence.Presen
 	}
 	highest := presence.TierNone
 	for _, n := range resolved {
-		var t int
-		err := v.db.QueryRowContext(ctx, `SELECT min_tier FROM secrets WHERE name = ?`, n).Scan(&t)
-		if err == sql.ErrNoRows {
-			return presence.TierNone, fmt.Errorf("%w: %s", ErrNotFound, n)
-		}
+		// Decrypt so the tier is authenticated (it is bound into the GCM AAD);
+		// a tampered min_tier column fails with ErrDecrypt.
+		pt, m, err := v.decrypt(ctx, n)
 		if err != nil {
-			return presence.TierNone, fmt.Errorf("vault: read tier: %w", err)
+			return presence.TierNone, err
 		}
-		if pt := presence.PresenceTier(t); pt > highest {
-			highest = pt
+		zero(pt)
+		if m.MinTier > highest {
+			highest = m.MinTier
 		}
 	}
 	return highest, nil

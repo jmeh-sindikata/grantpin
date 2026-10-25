@@ -56,7 +56,7 @@ CREATE TABLE vault_meta (
 );
 CREATE TABLE secrets (
 	name       TEXT    PRIMARY KEY,
-	ciphertext BLOB    NOT NULL,       -- AES-256-GCM(value), AAD = name
+	ciphertext BLOB    NOT NULL,       -- AES-256-GCM(value), AAD = "grantd.secret.v1\0" name "\0" byte(min_tier)
 	nonce      BLOB    NOT NULL,       -- 12 random bytes, fresh per write
 	tags       TEXT    NOT NULL DEFAULT '[]', -- JSON array of strings
 	url        TEXT    NOT NULL DEFAULT '',

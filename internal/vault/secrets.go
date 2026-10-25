@@ -129,7 +129,7 @@ func (v *Vault) setTx(ctx context.Context, ex execer, m Meta, value []byte, over
 		return fmt.Errorf("vault: lookup: %w", err)
 	}
 
-	ct, nonce, err := seal(v.key, m.Name, value)
+	ct, nonce, err := seal(v.key, m.Name, tier, value)
 	if err != nil {
 		return err
 	}
@@ -359,7 +359,7 @@ func (v *Vault) decrypt(ctx context.Context, name string) ([]byte, Meta, error) 
 		m.ExpiresAt = &t
 	}
 	m.MinTier = presence.PresenceTier(tier)
-	pt, err := open(v.key, name, ct, nonce)
+	pt, err := open(v.key, name, m.MinTier, ct, nonce)
 	if err != nil {
 		return nil, Meta{}, fmt.Errorf("%w: %s", err, name)
 	}
