@@ -144,7 +144,7 @@ Advice: create standing grants for narrow command prefixes in specific directori
 - **Presence enforced by the approver, not by the key.** The Secure Enclave key has no presence flag; the Touch ID prompt is a gate in the daemon's code. It is a real gate against everything that goes through the daemon.
 - **Audit-before-spawn.** The `allowed` row (reason `released`) is written after the secrets have been decrypted in the daemon's memory and before the command is started, and a failed write means nothing is started, so the log cannot lag behind a release. A crash between the two rows leaves a `released` row with no `completed` row. Both rows are scrubbed of injected values.
 - **Metadata is plaintext.** Secret names, tags, URLs, notes and expiries are visible to anyone who can read `vault.db`. The names appear in the audit log, the dialog, MCP `secret_list` and the daemon log.
-- **Daemon log contents.** Operational logs include `argv` and `cwd` of every request. They never include request bodies or values, but an agent that puts a credential on a command line puts it in the log.
+- **Daemon log contents.** Operational logs include the op, caller, `cwd`, the number of argv elements and the outcome of every request. They never include request bodies, values or `argv` (the daemon has no redactor; the audit table keeps `argv` with injected values scrubbed). An agent that puts a credential on a command line still puts it in the audit table if it is not a value grantd injected.
 - **`masked` leaks.** Four characters of a 12-or-more-character value are returned to any socket client with no prompt. For a low-entropy or structured secret that can matter.
 
 ## 6. What the key controls do and do not stop (summary)

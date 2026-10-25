@@ -738,7 +738,7 @@ Resolution order for the **socket**: `$GRANTD_SOCKET`, then `$XDG_RUNTIME_DIR/gr
 | `~/Library/Application Support/grantd/vault.db` (+ `-wal`, `-shm`) | The vault: secrets, grants, audit log. Directory 0700 if grantd created it, file 0600. The daemon refuses to open a vault file that is group- or world-accessible. |
 | `~/Library/Application Support/grantd/grantd.sock` | The daemon socket, mode 0600, same-UID peers only. Removed on clean shutdown; a stale one is replaced at start. |
 | `~/Library/LaunchAgents/dev.grantd.daemon.plist` | The service definition (label `dev.grantd.daemon`). |
-| `~/Library/Logs/grantd/daemon.out.log`, `daemon.err.log` | Service logs (`--log-dir` changes it). The daemon logs op, caller, cwd, argv and outcome for every request: command lines are in there, secret values are not. |
+| `~/Library/Logs/grantd/daemon.out.log`, `daemon.err.log` | Service logs (`--log-dir` changes it). The daemon logs op, caller, cwd, the number of argv elements and the outcome for every request: command lines and secret values are not in there (the audit log has the command lines). |
 | Keychain: key tag `dev.grantd.vault-kek` | The Secure Enclave P-256 key that wraps the vault key. It lives in the data-protection keychain and is invisible to `security` and Keychain Access. |
 | Keychain: generic password, service `dev.grantd`, account `vault-kek` | Only with the Keychain fallback: the 32-byte key-encryption key. `security find-generic-password -s dev.grantd -a vault-kek` finds it (add `-g` to print it; don't). |
 | `<project>/.grantd.yml` | Per-repo policy. |
@@ -862,7 +862,7 @@ Every decision is appended to an audit table in the vault database: time, caller
 
 A `released` row with no `completed` row after it means the daemon died mid-run. Refusals, denials and failures before the release (an unknown secret, an expired secret, a failed decryption) are one row each (`denied_user`, `refused_policy`, `refused_tier`, `error`). `set`, `delete` and `show` are recorded too, as `allowed_once` with the verb as the reason.
 
-**Integrity.** Rows are chained: `HMAC_n = HMAC-SHA256(key, canonical(row_n) || HMAC_{n-1})`, with a key derived from the vault key (HKDF, label `audit-hmac`) that the daemon holds. `grantd audit verify` recomputes the whole chain and reports the first bad row. The table has triggers that abort `UPDATE` and `DELETE`.
+**Integrity.** Rows are chained: `HMAC_n = HMAC-SHA256(key, canonical(row_n) || HMAC_{n-1})`, with a key derived from the vault key (HKDF, label `audit-hmac`) that the daemon holds. `grantd audit verify` recomputes the whole chain and reports the first bad row. The table has triggers that abort `UPDATE` and `DELETE`. Each row records its encoding version (`enc`): rows written before the expanded names existed are version 1 and still verify; new rows are version 2 (tag `grantd.audit.v2`, expanded names after the secrets). The version tag is inside the HMAC, so relabelling a row fails verification.
 
 **What this does not give you.**
 
@@ -870,7 +870,7 @@ A `released` row with no `completed` row after it means the daemon died mid-run.
 - **Truncation is not detected.** Deleting the newest rows leaves a valid chain; there is no external anchor (a signed head, a remote log). An attacker who can write the file can erase their most recent activity.
 - The audit log and the grants table are independent: a replayed genuine grant row (see Grants) is not visible in the audit log except as repeated `allowed_grant` rows for a grant you had revoked.
 
-`grantd audit export` prints the log as CSV (`id, ts, caller, cwd, argv, secrets, decision, grant_id, reason, exit_code, duration_ms`); `argv` and `secrets` are JSON arrays. Exports larger than 1 MiB are refused over the socket; use `audit list --limit`.
+`grantd audit export` prints the log as CSV (`id, ts, caller, cwd, argv, secrets, expanded, decision, grant_id, reason, exit_code, duration_ms`); `argv`, `secrets` and `expanded` are JSON arrays. `secrets` is what the request asked for (`aws/*`), `expanded` the concrete names it released. Exports whose encoded size does not fit in one protocol line (a little under 4 MiB) are refused over the socket; use `audit list --limit`. `grantd audit` shows `aws/* → aws/a, aws/b` in its SECRETS column when a glob expanded, and says so when a page was cut to fit.
 
 ## Manual testing on a Mac
 

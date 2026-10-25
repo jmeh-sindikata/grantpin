@@ -114,6 +114,7 @@ For `run`, zero or more frames arrive before the final response:
 | `timeout` | failed | The connection deadline expired (command budget plus approval grace), for example while waiting for the human. A command that merely overran its own `timeout_s` is a **successful** response with `exit_code` 124 and `reason: "timeout"`. |
 | `canceled` | failed | The client went away or the daemon is shutting down. |
 | `internal` | failed | Unexpected error. The cause goes to the daemon log, not to the client. |
+| `response_too_large` | failed | The result would not fit in one protocol line (`list`, `audit export`, `show`). Narrow the request. If a handler's response cannot be encoded within the line limit the daemon itself answers `failed` / `internal` with the message "response too large". |
 
 ## Ops
 
@@ -150,7 +151,7 @@ Elements are `{name, tags?, url?, notes?, expires_at?, min_tier, created_at, upd
 
 ### `set`
 
-Request fields: `name`, `value`, optionally `tags`, `url`, `notes`, `expires`, `min_tier`, `overwrite`. Not presence-gated. Success: `{"ok":true,"audit_id":"10"}`. Failures: `secret_exists` if the name exists and `overwrite` is not set, `bad_request` for an empty or oversized value, a bad name, an invalid tier or a past expiry.
+Request fields: `name`, `value`, optionally `tags`, `url`, `notes`, `expires`, `min_tier`, `overwrite`. Not presence-gated. Success: `{"ok":true,"audit_id":"10"}`. Failures: `secret_exists` if the name exists and `overwrite` is not set, `bad_request` for an empty or oversized value, a `url` or `notes` over 2 KiB, a bad name, an invalid tier or a past expiry.
 
 ```
 >> {"v":1,"op":"set","name":"tmp/x","value":"<value>","tags":["t"]}
@@ -209,8 +210,8 @@ A refusal by naming a secret that does not exist:
 
 Notes:
 
-- `exit_code` is the command's own status, `128+N` if a signal killed it, `124` on timeout, `127` if `argv[0]` was not found (with `message` "command not found: ..."), `126` if it could not be executed. If the process could not be started at all the response is `failed` / `internal` with no `exit_code`.
-- A failure while resolving the secrets (for example one vanished between approval and release) is answered with the `error` and `reason` it would have had and leaves one `error` audit row. If the process cannot be started after the `released` row was written, the response is `failed` / `internal` with `message` "command could not be started: ..." and the log gets a `completed` row whose reason starts `not started:`.
+- `exit_code` is the command's own status, `128+N` if a signal killed it, `124` on timeout, `127` if `argv[0]` was not found (with `message` "command not found: ..."), `126` if it could not be executed. If the process could not be started at all the response is `failed` / `internal` with no `exit_code`, or `failed` / `canceled` or `timeout` when the client went away or the deadline passed first. A run is refused with `bad_request` when argv, `cwd` or `caller` contains a control character (a byte below 0x20 other than tab, so no newlines in argv), or when argv totals more than 256 KiB.
+- A failure while resolving the secrets (for example one vanished between approval and release) is answered with the `error` and `reason` it would have had and leaves one `error` audit row. If the process cannot be started after the `released` row was written, the response is `failed` / `internal` with `message` "command could not be started: ..." and the log gets a `completed` row whose reason starts `not started:` (reason `canceled` or `timeout` when the context ended first). A grant with a use limit pays for a run only when the release goes ahead, right after the `released` row is written; if a concurrent run took the last use by then, the `completed` row says `not started: no_grant` and nothing runs.
 - If the client disconnects, the command is stopped and the daemon tries to send `failed` / `canceled` to whoever is left.
 - Environment variable names are derived by the daemon from the secret names (last path segment, uppercased; full name on collision); the request does not carry an environment.
 
@@ -236,12 +237,12 @@ Notes:
 >> {"v":1,"op":"audit","action":"verify"}
 << {"ok":true,"result":{"ok":true,"entries":9}}
 >> {"v":1,"op":"audit","action":"list","limit":2}
-<< {"ok":true,"result":[{"id":"9","ts":"2026-10-25T14:03:04.312789Z","caller":"claude-code","cwd":"/home/me/proj","argv":["sleep","5"],"secrets":["API_KEY"],"decision":"completed","exit_code":124,"duration_ms":1004,"reason":"timeout"},{"id":"8","ts":"2026-10-25T14:03:04.312789Z","caller":"claude-code","cwd":"/home/me/proj","argv":["sleep","5"],"secrets":["API_KEY"],"decision":"allowed_once","reason":"released"}]}
+<< {"ok":true,"result":{"entries":[{"id":"9","ts":"2026-10-25T14:03:04.312789Z","caller":"claude-code","cwd":"/home/me/proj","argv":["sleep","5"],"secrets":["API_KEY"],"decision":"completed","exit_code":124,"duration_ms":1004,"reason":"timeout"},{"id":"8","ts":"2026-10-25T14:03:04.312789Z","caller":"claude-code","cwd":"/home/me/proj","argv":["sleep","5"],"secrets":["API_KEY"],"decision":"allowed_once","reason":"released"}]}}
 ```
 
-- `list`: newest first; each element `{id, ts, caller, cwd, argv, secrets, decision, grant_id?, exit_code?, duration_ms?, reason?}`. `decision` is one of `allowed_grant`, `allowed_once`, `allowed_new_grant`, `completed`, `denied_user`, `refused_policy`, `refused_tier`, `error`.
+- `list`: `{entries, truncated?}`, newest first; each entry `{id, ts, caller, cwd, argv, secrets, expanded?, decision, grant_id?, exit_code?, duration_ms?, reason?}`. `secrets` is what the request asked for (globs included); `expanded` is the concrete names it resolved to (absent on rows written before the request was expanded). `truncated: true` means fewer rows than `limit` were returned because the page would not fit in one line; ask for a smaller `limit`. `decision` is one of `allowed_grant`, `allowed_once`, `allowed_new_grant`, `completed`, `denied_user`, `refused_policy`, `refused_tier`, `error`.
 - `verify`: `{ok, entries, first_bad_id?}`. `ok:false` means the chain is broken at `first_bad_id` (the response itself is still `ok:true`; the CLI exits 1).
-- `export`: `{"csv":"..."}`, all rows oldest first. Answers `failed` / `internal` if the CSV would exceed 1 MiB.
+- `export`: `{"csv":"..."}`, all rows oldest first (columns `id, ts, caller, cwd, argv, secrets, expanded, decision, grant_id, reason, exit_code, duration_ms`). Answers `failed` / `response_too_large` if the JSON-encoded CSV would not fit in one line (a little under 4 MiB).
 
 ### Errors on any op
 
