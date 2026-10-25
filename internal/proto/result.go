@@ -70,6 +70,12 @@ type AuditInfo struct {
 	GrantID    string    `json:"grant_id,omitempty"`
 	ExitCode   *int      `json:"exit_code,omitempty"`
 	DurationMS int64     `json:"duration_ms,omitempty"`
+	Reason     string    `json:"reason,omitempty"`
+}
+
+// AuditExportResult is the OpAudit export result: the whole log as CSV text.
+type AuditExportResult struct {
+	CSV string `json:"csv"`
 }
 
 // AuditVerifyResult is the OpAudit verify result.
@@ -90,6 +96,7 @@ type StatusResult struct {
 	ApproverTier     presence.PresenceTier `json:"approver_tier"`
 	Secrets          int                   `json:"secrets"`
 	ActiveGrants     int                   `json:"active_grants"`
+	Socket           string                `json:"socket,omitempty"` // path the daemon listens on
 }
 
 // NewResult marshals v into a Response.Result payload.

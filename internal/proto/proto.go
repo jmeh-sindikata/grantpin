@@ -70,6 +70,7 @@ const (
 	ReasonUnknownOp           = "unknown_op"            // (bad_request)
 	ReasonSecretNotFound      = "secret_not_found"      // (not_found)
 	ReasonGrantNotFound       = "grant_not_found"       // (not_found)
+	ReasonSecretExists        = "secret_exists"         // (bad_request) set without overwrite on an existing name
 	ReasonSecretExpired       = "secret_expired"        // (refused) secret past expires_at
 	ReasonVaultNotInitialized = "vault_not_initialized" // (failed)
 	ReasonTimeout             = "timeout"               // (failed) command exceeded timeout_s
@@ -155,13 +156,18 @@ type StreamFrame struct {
 // ExitCode is a pointer so that exit code 0 is distinguishable from "no exit
 // code" (non-run ops and failures before the command started).
 type Response struct {
-	OK       bool            `json:"ok"`
-	ExitCode *int            `json:"exit_code,omitempty"`
-	GrantID  string          `json:"grant_id,omitempty"`
-	AuditID  string          `json:"audit_id,omitempty"`
-	Error    string          `json:"error,omitempty"`  // Err* category
-	Reason   string          `json:"reason,omitempty"` // Reason* cause
-	Result   json.RawMessage `json:"result,omitempty"` // op-specific payload (see result.go)
+	OK       bool   `json:"ok"`
+	ExitCode *int   `json:"exit_code,omitempty"`
+	GrantID  string `json:"grant_id,omitempty"`
+	AuditID  string `json:"audit_id,omitempty"`
+	Error    string `json:"error,omitempty"`  // Err* category
+	Reason   string `json:"reason,omitempty"` // Reason* cause
+	// Message is optional human-readable detail for Error/Reason (for example
+	// the policy item that was refused). It is already redacted by the daemon,
+	// never carries a secret value, and is for display only: programs branch on
+	// Error and Reason.
+	Message string          `json:"message,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"` // op-specific payload (see result.go)
 }
 
 // IntPtr is a small helper for Response.ExitCode.
