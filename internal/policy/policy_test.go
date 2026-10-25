@@ -377,3 +377,65 @@ func TestEmptyListsAllowNothing(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestMaxStandingGrantTTL(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want time.Duration
+		ok   bool
+	}{
+		{"absent key", "version: 1\nmax_grant_ttl: 4h\n", 0, false},
+		{"days", "version: 1\nmax_standing_grant_ttl: 30d\n", 30 * 24 * time.Hour, true},
+		{"hours", "version: 1\nmax_standing_grant_ttl: 12h\n", 12 * time.Hour, true},
+		{"independent of max_grant_ttl", "version: 1\nmax_grant_ttl: 10m\nmax_standing_grant_ttl: 7d\n", 7 * 24 * time.Hour, true},
+	}
+	for _, c := range cases {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, FileName), []byte(c.body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		p, err := Load(dir)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		got, ok := p.MaxStandingGrantTTL()
+		if got != c.want || ok != c.ok {
+			t.Errorf("%s: MaxStandingGrantTTL() = %v, %v; want %v, %v", c.name, got, ok, c.want, c.ok)
+		}
+	}
+	// max_grant_ttl does not leak into the standing ceiling, nor the reverse.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte("version: 1\nmax_standing_grant_ttl: 30d\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := Load(dir)
+	if p.MaxGrantTTL() != DefaultMaxGrantTTL {
+		t.Errorf("MaxGrantTTL = %v, want the default %v", p.MaxGrantTTL(), DefaultMaxGrantTTL)
+	}
+	// Absent policy and nil policy declare nothing.
+	if _, ok := (&Policy{}).MaxStandingGrantTTL(); ok {
+		t.Error("absent policy declared a standing ceiling")
+	}
+	var nilp *Policy
+	if _, ok := nilp.MaxStandingGrantTTL(); ok {
+		t.Error("nil policy declared a standing ceiling")
+	}
+}
+
+func TestMaxStandingGrantTTLInvalid(t *testing.T) {
+	for _, body := range []string{
+		"version: 1\nmax_standing_grant_ttl: 0s\n",
+		"version: 1\nmax_standing_grant_ttl: -1d\n",
+		"version: 1\nmax_standing_grant_ttl: forever\n",
+		"version: 1\nmax_standing_grant_ttl: xd\n",
+	} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, FileName), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(dir); !errors.Is(err, ErrInvalidPolicy) {
+			t.Errorf("%q: err = %v, want ErrInvalidPolicy", body, err)
+		}
+	}
+}

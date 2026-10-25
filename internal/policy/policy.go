@@ -83,6 +83,10 @@ type Policy struct {
 	secrets     []string
 	commands    [][]string
 	maxGrantTTL time.Duration
+	// maxStandingTTL is the declared max_standing_grant_ttl; hasStandingTTL
+	// says whether the file declared it at all.
+	maxStandingTTL time.Duration
+	hasStandingTTL bool
 }
 
 // file is the on-disk shape. Unknown keys are rejected.
@@ -91,6 +95,8 @@ type file struct {
 	Secrets     []string   `yaml:"secrets"`
 	Commands    [][]string `yaml:"commands"`
 	MaxGrantTTL string     `yaml:"max_grant_ttl"`
+	// MaxStandingGrantTTL is optional; see Policy.MaxStandingGrantTTL.
+	MaxStandingGrantTTL string `yaml:"max_standing_grant_ttl"`
 }
 
 // currentUID is overridable in tests.
@@ -192,13 +198,21 @@ func parse(path string, data []byte) (*Policy, error) {
 		}
 		ttl = d
 	}
-	return &Policy{
+	pol := &Policy{
 		present:     true,
 		path:        path,
 		secrets:     slices.Clone(f.Secrets),
 		commands:    cloneCommands(f.Commands),
 		maxGrantTTL: ttl,
-	}, nil
+	}
+	if f.MaxStandingGrantTTL != "" {
+		d, err := parseTTL(f.MaxStandingGrantTTL)
+		if err != nil {
+			return nil, bad("max_standing_grant_ttl: %v", err)
+		}
+		pol.maxStandingTTL, pol.hasStandingTTL = d, true
+	}
+	return pol, nil
 }
 
 // parseTTL accepts Go durations ("90m", "4h") plus a whole-number day suffix
@@ -258,6 +272,21 @@ func (p *Policy) MaxGrantTTL() time.Duration {
 		return DefaultMaxGrantTTL
 	}
 	return p.maxGrantTTL
+}
+
+// MaxStandingGrantTTL is the policy's optional cap on standing grants (the
+// ones the human creates with `grantd grants add`). ok is false when there is
+// no policy or it does not declare max_standing_grant_ttl; the caller then
+// applies only its own global ceiling. The value can only lower that ceiling,
+// never raise it.
+//
+// max_grant_ttl deliberately does NOT apply to standing grants; see the
+// package comment.
+func (p *Policy) MaxStandingGrantTTL() (d time.Duration, ok bool) {
+	if !p.Present() || !p.hasStandingTTL {
+		return 0, false
+	}
+	return p.maxStandingTTL, true
 }
 
 // Secrets returns a copy of the allowed secret globs.
