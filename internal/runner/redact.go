@@ -96,7 +96,7 @@ func (r *Redactor) scan(dst, buf []byte, final bool) (out []byte, hold int) {
 			continue
 		}
 		rest := buf[i:]
-		matched := -1  // index into r.pairs of the longest complete match
+		matched := -1    // index into r.pairs of the longest complete match
 		partial := false // some value could still match, longer than what we have
 		for k := range r.pairs {
 			v := r.pairs[k].value
