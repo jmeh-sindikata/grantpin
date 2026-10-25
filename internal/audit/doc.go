@@ -11,9 +11,16 @@
 //	HMAC_n = HMAC-SHA256(key, canonical(entry_n) || HMAC_{n-1})
 //	HMAC_0 (genesis prev) = 32 zero bytes
 //
-// # Canonical encoding (version 1)
+// # Canonical encoding
 //
-// canonical(entry) is the concatenation of, in this order:
+// Every row records its encoding version in the enc column and is verified
+// with that version's encoder. Version 1 is the original encoding; rows that
+// predate Expanded are enc 1 (the default Migrate gives them) and keep
+// verifying. Rows written now are enc 2. The version tag is part of the HMAC
+// input, so changing a row's enc column makes it fail verification, as does an
+// unknown enc value or an expansion attached to a v1 row.
+//
+// Version 1: canonical(entry) is the concatenation of, in this order:
 //
 //	"grantd.audit.v1\x00"            domain/version tag (16 bytes)
 //	id        uint64 big-endian      row id (so rows cannot be re-numbered)
@@ -31,6 +38,10 @@
 // where "string" is a uint64 big-endian byte length followed by the bytes.
 // Length prefixes make the encoding injective (no field-boundary ambiguity).
 // A nil and an empty slice encode identically.
+//
+// Version 2 uses the tag "grantd.audit.v2\x00" and adds one field, expanded
+// (a list encoded like secrets: the concrete names after glob expansion),
+// directly after secrets. Everything else is as in version 1.
 //
 // # Limits
 //

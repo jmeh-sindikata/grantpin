@@ -47,11 +47,146 @@ func TestGoldenCanonicalHMAC(t *testing.T) {
 	e := sample(3)
 	e.Reason = "r"
 	ts := e.TS.UTC().Format(time.RFC3339Nano)
-	canon := canonical(7, ts, &e)
+	canon := canonicalV1(7, ts, &e)
 	got := hex.EncodeToString(l.mac(canon, make([]byte, 32)))
 	const want = "ae0373c4242f70d0d55c9cd9d59f7d1dd28e350795779bdff0ae577f9c510a22"
 	if got != want {
-		t.Fatalf("canonical encoding changed: got %s", got)
+		t.Fatalf("v1 canonical encoding changed (existing rows would stop verifying): got %s", got)
+	}
+}
+
+func TestGoldenCanonicalHMACV2(t *testing.T) {
+	l := &Log{key: testKey}
+	e := sample(3)
+	e.Reason = "r"
+	e.Expanded = []string{"aws/key", "aws/secret"}
+	ts := e.TS.UTC().Format(time.RFC3339Nano)
+	canon := canonicalV2(7, ts, &e)
+	if !bytes.HasPrefix(canon, []byte("grantd.audit.v2\x00")) {
+		t.Fatalf("v2 tag missing: %q", canon[:16])
+	}
+	got := hex.EncodeToString(l.mac(canon, make([]byte, 32)))
+	const want = "f8dfb7c509fb87957dfa910d86e8cdbd785fc9a684db81ed3898013c38889114"
+	if got != want {
+		t.Fatalf("v2 canonical encoding changed: got %s", got)
+	}
+}
+
+// oldSchemaLog builds a database exactly as a pre-Expanded grantd left it: the
+// original table (no enc/expanded columns) with rows written by the v1 encoder.
+func oldSchemaLog(t *testing.T, n int) (*sql.DB, *Log) {
+	t.Helper()
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "old.db")+"?_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(4)
+	t.Cleanup(func() { db.Close() })
+	if _, err := db.ExecContext(ctx, DDL); err != nil {
+		t.Fatal(err)
+	}
+	l := &Log{db: db, key: testKey}
+	prev := make([]byte, hmacLen)
+	for i := 1; i <= n; i++ {
+		e := sample(i)
+		ts := e.TS.UTC().Format(time.RFC3339Nano)
+		sum := l.mac(canonicalV1(int64(i), ts, &e), prev)
+		_, err := db.ExecContext(ctx, `INSERT INTO audit
+(id, ts, caller, cwd, argv, secrets, decision, grant_id, reason, exit_code, duration_ns, prev_hmac, hmac)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, i, ts, e.Caller, e.Cwd, `["php","artisan","migrate x"]`, `["aws/key","DB_URL"]`,
+			e.Decision, e.GrantID, e.Reason, int64(*e.ExitCode), int64(e.Duration), prev, sum)
+		if err != nil {
+			t.Fatal(err)
+		}
+		prev = sum
+	}
+	return db, l
+}
+
+func TestMixedV1V2Verify(t *testing.T) {
+	ctx := context.Background()
+	db, l := oldSchemaLog(t, 3)
+	if res, err := l.Verify(ctx); err == nil {
+		t.Fatalf("verify on the old schema should not know the enc column: %+v", res)
+	}
+	for i := 0; i < 2; i++ { // idempotent
+		if err := Migrate(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if res, err := l.Verify(ctx); err != nil || !res.OK || res.Entries != 3 {
+		t.Fatalf("v1 rows after migrate = %+v %v", res, err)
+	}
+	for i := 0; i < 3; i++ {
+		e := sample(10 + i)
+		e.Expanded = []string{"aws/key", "aws/other"}
+		if _, err := l.Append(ctx, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := l.Verify(ctx)
+	if err != nil || !res.OK || res.Entries != 6 {
+		t.Fatalf("mixed verify = %+v %v", res, err)
+	}
+	var encs []int
+	rows, _ := db.Query(`SELECT enc FROM audit ORDER BY id`)
+	for rows.Next() {
+		var v int
+		rows.Scan(&v)
+		encs = append(encs, v)
+	}
+	rows.Close()
+	if len(encs) != 6 || encs[0] != 1 || encs[2] != 1 || encs[3] != 2 || encs[5] != 2 {
+		t.Fatalf("enc column = %v", encs)
+	}
+	list, _ := l.List(ctx, 1, 0)
+	if len(list[0].Expanded) != 2 || list[0].Expanded[1] != "aws/other" {
+		t.Fatalf("expanded round trip: %+v", list[0])
+	}
+	old, _ := l.List(ctx, 1, 5)
+	if len(old[0].Expanded) != 0 {
+		t.Fatalf("v1 row has expanded: %+v", old[0])
+	}
+}
+
+func TestVerifyDetectsEncAndExpandedTamper(t *testing.T) {
+	ctx := context.Background()
+	for name, stmt := range map[string]string{
+		"v1 row claims v2":          `UPDATE audit SET enc=2 WHERE id=2`,
+		"v2 row claims v1":          `UPDATE audit SET enc=1 WHERE id=5`,
+		"unknown enc":               `UPDATE audit SET enc=3 WHERE id=5`,
+		"expanded added to v1 row":  `UPDATE audit SET expanded='["x"]' WHERE id=2`,
+		"expanded edited on v2 row": `UPDATE audit SET expanded='["x"]' WHERE id=5`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			db, l := oldSchemaLog(t, 3)
+			if err := Migrate(ctx, db); err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < 3; i++ {
+				e := sample(i)
+				e.Expanded = []string{"aws/key"}
+				if _, err := l.Append(ctx, e); err != nil {
+					t.Fatal(err)
+				}
+			}
+			db.Exec(`DROP TRIGGER audit_no_update`)
+			if _, err := db.Exec(stmt); err != nil {
+				t.Fatal(err)
+			}
+			res, err := l.Verify(ctx)
+			if err != nil || res.OK {
+				t.Fatalf("tamper undetected: %+v %v", res, err)
+			}
+			want := "2"
+			if strings.Contains(name, "v2 row") || name == "unknown enc" {
+				want = "5"
+			}
+			if res.FirstBadID != want {
+				t.Fatalf("FirstBadID = %q want %q", res.FirstBadID, want)
+			}
+		})
 	}
 }
 
@@ -234,6 +369,7 @@ func TestExportCSV(t *testing.T) {
 	l, _ := newLog(t)
 	e := sample(2)
 	e.Argv = []string{"echo", `a "q", b`}
+	e.Expanded = []string{"aws/key", "DB_URL"}
 	l.Append(ctx, e)
 	l.Append(ctx, Entry{Decision: DecisionDeniedUser, Reason: "no"})
 	var buf bytes.Buffer
@@ -245,7 +381,8 @@ func TestExportCSV(t *testing.T) {
 		t.Fatalf("%v %v", recs, err)
 	}
 	if recs[0][0] != "id" || recs[1][4] != `["echo","a \"q\", b"]` || recs[1][5] != `["aws/key","DB_URL"]` ||
-		recs[1][9] != "2" || recs[1][10] != "1500" || recs[2][4] != "[]" || recs[2][9] != "" {
+		recs[1][6] != `["aws/key","DB_URL"]` || recs[2][6] != "[]" ||
+		recs[1][10] != "2" || recs[1][11] != "1500" || recs[2][4] != "[]" || recs[2][10] != "" {
 		t.Fatalf("csv = %q", recs)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -42,8 +43,16 @@ var validDecisions = map[string]bool{
 // ErrInvalid is returned for malformed entries or constructor arguments.
 var ErrInvalid = errors.New("audit: invalid argument")
 
+// Per-row encoding versions (the enc column). Each version has its own
+// domain tag, which is part of the HMAC input, so a row whose enc column was
+// flipped no longer verifies. Rows written before Expanded existed are enc 1
+// (the column's default for them); everything written now is enc 2.
 const (
+	encV1 = 1
+	encV2 = 2
+
 	tagV1       = "grantd.audit.v1\x00"
+	tagV2       = "grantd.audit.v2\x00"
 	hmacLen     = sha256.Size
 	defaultList = 100
 )
@@ -80,7 +89,11 @@ type Entry struct {
 	Caller   string
 	Cwd      string
 	Argv     []string
-	Secrets  []string // names requested, never values
+	Secrets  []string // names requested as written (may contain globs), never values
+	// Expanded is the concrete names Secrets resolved to after glob expansion
+	// (equal to Secrets when there are no globs). Empty on rows written before
+	// the request was expanded (validation or policy refusals).
+	Expanded []string
 	Decision string   // one of the Decision* constants
 	GrantID  string
 	ExitCode *int
@@ -108,13 +121,46 @@ type Log struct {
 // several Log values over one DB) cannot fork the chain.
 var appendMu sync.Mutex
 
-// Migrate idempotently creates the audit table and its append-only triggers.
+// addedColumns are columns added after the first release, applied by Migrate
+// with ALTER TABLE when missing. Existing rows get the defaults, which is what
+// they mean: enc 1 (v1 canonical encoding) and no expansion recorded.
+var addedColumns = []struct{ name, ddl string }{
+	{"enc", `ALTER TABLE audit ADD COLUMN enc INTEGER NOT NULL DEFAULT 1`},
+	{"expanded", `ALTER TABLE audit ADD COLUMN expanded TEXT NOT NULL DEFAULT '[]'`},
+}
+
+// Migrate idempotently creates the audit table and its append-only triggers,
+// and adds the columns introduced after the first release (enc, expanded).
 func Migrate(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return fmt.Errorf("%w: nil db", ErrInvalid)
 	}
 	if _, err := db.ExecContext(ctx, DDL); err != nil {
 		return fmt.Errorf("audit: migrate: %w", err)
+	}
+	have := map[string]bool{}
+	rows, err := db.QueryContext(ctx, `SELECT name FROM pragma_table_info('audit')`)
+	if err != nil {
+		return fmt.Errorf("audit: migrate: %w", err)
+	}
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			rows.Close()
+			return fmt.Errorf("audit: migrate: %w", err)
+		}
+		have[n] = true
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("audit: migrate: %w", err)
+	}
+	for _, c := range addedColumns {
+		if have[c.name] {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, c.ddl); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("audit: migrate: %w", err)
+		}
 	}
 	return nil
 }
@@ -143,8 +189,10 @@ func putList(b []byte, l []string) []byte {
 	return b
 }
 
-// canonical returns the version-1 canonical encoding (see package comment).
-func canonical(seq int64, ts string, e *Entry) []byte {
+// canonicalV1 returns the version-1 canonical encoding (see package comment).
+// It is only used to verify rows written before Expanded existed; new rows use
+// canonicalV2.
+func canonicalV1(seq int64, ts string, e *Entry) []byte {
 	b := []byte(tagV1)
 	b = binary.BigEndian.AppendUint64(b, uint64(seq))
 	b = putStr(b, ts)
@@ -152,6 +200,24 @@ func canonical(seq int64, ts string, e *Entry) []byte {
 	b = putStr(b, e.Cwd)
 	b = putList(b, e.Argv)
 	b = putList(b, e.Secrets)
+	return putTail(b, e)
+}
+
+// canonicalV2 is canonicalV1 under the v2 tag with Expanded after Secrets.
+func canonicalV2(seq int64, ts string, e *Entry) []byte {
+	b := []byte(tagV2)
+	b = binary.BigEndian.AppendUint64(b, uint64(seq))
+	b = putStr(b, ts)
+	b = putStr(b, e.Caller)
+	b = putStr(b, e.Cwd)
+	b = putList(b, e.Argv)
+	b = putList(b, e.Secrets)
+	b = putList(b, e.Expanded)
+	return putTail(b, e)
+}
+
+// putTail encodes the fields that follow the name lists in every version.
+func putTail(b []byte, e *Entry) []byte {
 	b = putStr(b, e.Decision)
 	b = putStr(b, e.GrantID)
 	b = putStr(b, e.Reason)
@@ -162,6 +228,22 @@ func canonical(seq int64, ts string, e *Entry) []byte {
 		b = binary.BigEndian.AppendUint64(b, uint64(int64(*e.ExitCode)))
 	}
 	return binary.BigEndian.AppendUint64(b, uint64(int64(e.Duration)))
+}
+
+// canonicalFor encodes e with the encoding its enc column names. ok is false
+// for an unknown version, or a v1 row that carries an expansion (v1 cannot
+// authenticate it), both of which mean the row was tampered with.
+func canonicalFor(enc int, seq int64, ts string, e *Entry) (canon []byte, ok bool) {
+	switch enc {
+	case encV1:
+		if len(e.Expanded) != 0 {
+			return nil, false
+		}
+		return canonicalV1(seq, ts, e), true
+	case encV2:
+		return canonicalV2(seq, ts, e), true
+	}
+	return nil, false
 }
 
 func (l *Log) mac(canon, prev []byte) []byte {
@@ -182,18 +264,15 @@ func (l *Log) Append(ctx context.Context, e Entry) (string, error) {
 		e.TS = time.Now()
 	}
 	ts := e.TS.UTC().Format(time.RFC3339Nano)
-	argv, secrets := e.Argv, e.Secrets
-	if argv == nil {
-		argv = []string{}
-	}
-	if secrets == nil {
-		secrets = []string{}
-	}
-	argvJSON, err := json.Marshal(argv)
+	argvJSON, err := json.Marshal(nonNil(e.Argv))
 	if err != nil {
 		return "", err
 	}
-	secJSON, err := json.Marshal(secrets)
+	secJSON, err := json.Marshal(nonNil(e.Secrets))
+	if err != nil {
+		return "", err
+	}
+	expJSON, err := json.Marshal(nonNil(e.Expanded))
 	if err != nil {
 		return "", err
 	}
@@ -217,17 +296,17 @@ func (l *Log) Append(ctx context.Context, e Entry) (string, error) {
 		prev = lastHMAC
 	}
 	seq := lastID + 1
-	sum := l.mac(canonical(seq, ts, &e), prev)
+	sum := l.mac(canonicalV2(seq, ts, &e), prev)
 
 	var exit any
 	if e.ExitCode != nil {
 		exit = int64(*e.ExitCode)
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO audit
-(id, ts, caller, cwd, argv, secrets, decision, grant_id, reason, exit_code, duration_ns, prev_hmac, hmac)
-VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		seq, ts, e.Caller, e.Cwd, string(argvJSON), string(secJSON), e.Decision, e.GrantID, e.Reason,
-		exit, int64(e.Duration), prev, sum)
+(id, ts, caller, cwd, argv, secrets, expanded, decision, grant_id, reason, exit_code, duration_ns, prev_hmac, hmac, enc)
+VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		seq, ts, e.Caller, e.Cwd, string(argvJSON), string(secJSON), string(expJSON), e.Decision, e.GrantID, e.Reason,
+		exit, int64(e.Duration), prev, sum, encV2)
 	if err != nil {
 		return "", fmt.Errorf("audit: insert: %w", err)
 	}
@@ -237,19 +316,19 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 	return strconv.FormatInt(seq, 10), nil
 }
 
-const selectCols = `id, ts, caller, cwd, argv, secrets, decision, grant_id, reason, exit_code, duration_ns, prev_hmac, hmac`
+const selectCols = `id, ts, caller, cwd, argv, secrets, expanded, decision, grant_id, reason, exit_code, duration_ns, prev_hmac, hmac, enc`
 
-// scan reads a row; it returns the stored ts string for exact HMAC recompute.
-func scan(rows *sql.Rows) (Entry, string, error) {
+// scan reads a row; it returns the stored ts string and the enc column for
+// exact HMAC recompute.
+func scan(rows *sql.Rows) (e Entry, ts string, enc int, err error) {
 	var (
-		e          Entry
-		ts, av, sv string
+		av, sv, xv string
 		exit       sql.NullInt64
 		dur        int64
 	)
-	if err := rows.Scan(&e.Seq, &ts, &e.Caller, &e.Cwd, &av, &sv, &e.Decision, &e.GrantID, &e.Reason,
-		&exit, &dur, &e.PrevHMAC, &e.HMAC); err != nil {
-		return e, "", err
+	if err := rows.Scan(&e.Seq, &ts, &e.Caller, &e.Cwd, &av, &sv, &xv, &e.Decision, &e.GrantID, &e.Reason,
+		&exit, &dur, &e.PrevHMAC, &e.HMAC, &enc); err != nil {
+		return e, "", 0, err
 	}
 	e.ID = strconv.FormatInt(e.Seq, 10)
 	if t, err := time.Parse(time.RFC3339Nano, ts); err == nil {
@@ -258,12 +337,13 @@ func scan(rows *sql.Rows) (Entry, string, error) {
 	// Corrupt JSON is left as nil lists; Verify will then flag the row.
 	_ = json.Unmarshal([]byte(av), &e.Argv)
 	_ = json.Unmarshal([]byte(sv), &e.Secrets)
+	_ = json.Unmarshal([]byte(xv), &e.Expanded)
 	if exit.Valid {
 		v := int(exit.Int64)
 		e.ExitCode = &v
 	}
 	e.Duration = time.Duration(dur)
-	return e, ts, nil
+	return e, ts, enc, nil
 }
 
 // List returns entries newest first. limit <= 0 uses a default of 100.
@@ -281,7 +361,7 @@ func (l *Log) List(ctx context.Context, limit, offset int) ([]Entry, error) {
 	defer rows.Close()
 	var out []Entry
 	for rows.Next() {
-		e, _, err := scan(rows)
+		e, _, _, err := scan(rows)
 		if err != nil {
 			return nil, fmt.Errorf("audit: list: %w", err)
 		}
@@ -300,14 +380,14 @@ func (l *Log) Verify(ctx context.Context) (VerifyResult, error) {
 	res := VerifyResult{OK: true}
 	prev := make([]byte, hmacLen)
 	for rows.Next() {
-		e, ts, err := scan(rows)
+		e, ts, enc, err := scan(rows)
 		if err != nil {
 			return VerifyResult{}, fmt.Errorf("audit: verify: %w", err)
 		}
 		res.Entries++
 		if res.OK {
-			want := l.mac(canonical(e.Seq, ts, &e), prev)
-			if !hmac.Equal(e.PrevHMAC, prev) || !hmac.Equal(e.HMAC, want) {
+			canon, known := canonicalFor(enc, e.Seq, ts, &e)
+			if !known || !hmac.Equal(e.PrevHMAC, prev) || !hmac.Equal(e.HMAC, l.mac(canon, prev)) {
 				res.OK = false
 				res.FirstBadID = e.ID
 			}
@@ -329,19 +409,20 @@ func (l *Log) ExportCSV(ctx context.Context, w io.Writer) error {
 	}
 	defer rows.Close()
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"id", "ts", "caller", "cwd", "argv", "secrets", "decision", "grant_id", "reason", "exit_code", "duration_ms"})
+	_ = cw.Write([]string{"id", "ts", "caller", "cwd", "argv", "secrets", "expanded", "decision", "grant_id", "reason", "exit_code", "duration_ms"})
 	for rows.Next() {
-		e, ts, err := scan(rows)
+		e, ts, _, err := scan(rows)
 		if err != nil {
 			return fmt.Errorf("audit: export: %w", err)
 		}
 		a, _ := json.Marshal(nonNil(e.Argv))
 		s, _ := json.Marshal(nonNil(e.Secrets))
+		x, _ := json.Marshal(nonNil(e.Expanded))
 		exit := ""
 		if e.ExitCode != nil {
 			exit = strconv.Itoa(*e.ExitCode)
 		}
-		_ = cw.Write([]string{e.ID, ts, e.Caller, e.Cwd, string(a), string(s), e.Decision, e.GrantID, e.Reason,
+		_ = cw.Write([]string{e.ID, ts, e.Caller, e.Cwd, string(a), string(s), string(x), e.Decision, e.GrantID, e.Reason,
 			exit, strconv.FormatInt(e.Duration.Milliseconds(), 10)})
 	}
 	if err := rows.Err(); err != nil {
