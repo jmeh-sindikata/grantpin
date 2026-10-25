@@ -11,9 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"grantd/internal/approve"
 	devap "grantd/internal/approve/dev"
 	"grantd/internal/audit"
 	"grantd/internal/broker"
@@ -28,11 +30,27 @@ import (
 
 const apiKey = "sk_live_0123456789_SUPERSECRET"
 
+// slowApprover delays every answer, standing in for a human who takes a while.
+type slowApprover struct {
+	*devap.Approver
+	delay atomic.Int64 // nanoseconds
+}
+
+func (s *slowApprover) Ask(ctx context.Context, req approve.ApprovalRequest) (approve.Decision, error) {
+	select {
+	case <-time.After(time.Duration(s.delay.Load())):
+	case <-ctx.Done():
+		return approve.Decision{}, ctx.Err()
+	}
+	return s.Approver.Ask(ctx, req)
+}
+
 // rig is a running daemon plus handles to its approver.
 type rig struct {
 	t    *testing.T
 	sock string
 	ap   *devap.Approver
+	slow *slowApprover
 	cwd  string
 }
 
@@ -66,7 +84,8 @@ func newRig(t *testing.T) *rig {
 		t.Fatal(err)
 	}
 	ap := devap.New(true)
-	b, err := broker.New(broker.Deps{Vault: v, Grants: grant.NewStore(v.DB()), Audit: al, Approver: ap, KeyStoreTier: ks.Tier()})
+	slow := &slowApprover{Approver: ap}
+	b, err := broker.New(broker.Deps{Vault: v, Grants: grant.NewStore(v.DB()), Audit: al, Approver: slow, KeyStoreTier: ks.Tier()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +115,7 @@ func newRig(t *testing.T) *rig {
 	if err := os.Mkdir(proj, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	return &rig{t: t, sock: sock, ap: ap, cwd: proj}
+	return &rig{t: t, sock: sock, ap: ap, slow: slow, cwd: proj}
 }
 
 // call drives the wire protocol directly and records the raw bytes.
@@ -190,6 +209,21 @@ func lastAudit(t *testing.T, r *rig) proto.AuditInfo {
 	return l[0]
 }
 
+// lastPair returns the released and completed rows of the newest run.
+func lastPair(t *testing.T, r *rig) (released, completed proto.AuditInfo) {
+	t.Helper()
+	l := result[[]proto.AuditInfo](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 2}))
+	if len(l) != 2 {
+		t.Fatalf("audit list = %+v", l)
+	}
+	released, completed = l[1], l[0]
+	if released.Reason != broker.ReasonReleased || released.ExitCode != nil || released.GrantID != completed.GrantID ||
+		completed.Decision != audit.DecisionCompleted || completed.ExitCode == nil {
+		t.Fatalf("not a released+completed pair: %+v / %+v", released, completed)
+	}
+	return released, completed
+}
+
 func TestRunRedactsBothStreamsAndNeverLeaksOnTheWire(t *testing.T) {
 	r := newRig(t)
 	r.set("API_KEY", apiKey)
@@ -229,7 +263,9 @@ func TestRunRedactsBothStreamsAndNeverLeaksOnTheWire(t *testing.T) {
 	}
 	// The audit log never holds it either (argv containing the value was scrubbed).
 	for _, e := range result[[]proto.AuditInfo](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 100})) {
-		if strings.Contains(strings.Join(e.Argv, " ")+e.Reason, apiKey) {
+		// The released row is written before decryption and records argv as
+		// sent; everything else must be clean.
+		if strings.Contains(e.Reason, apiKey) || (e.Decision == audit.DecisionCompleted && strings.Contains(strings.Join(e.Argv, " "), apiKey)) {
 			t.Errorf("audit entry holds the value: %+v", e)
 		}
 	}
@@ -263,8 +299,9 @@ func TestAllowForAnHourCreatesAGrantUsedWithoutAsking(t *testing.T) {
 	if !first.resp.OK || first.resp.GrantID == "" {
 		t.Fatalf("first = %+v", first.resp)
 	}
-	if got := lastAudit(t, r); got.Decision != audit.DecisionAllowedNewGrant || got.GrantID != first.resp.GrantID {
-		t.Fatalf("audit = %+v", got)
+	rel, done := lastPair(t, r)
+	if rel.Decision != audit.DecisionAllowedNewGrant || rel.GrantID != first.resp.GrantID || first.resp.AuditID != done.ID {
+		t.Fatalf("audit = %+v / %+v", rel, done)
 	}
 	if r.asked() != 1 {
 		t.Fatalf("asked %d", r.asked())
@@ -277,8 +314,8 @@ func TestAllowForAnHourCreatesAGrantUsedWithoutAsking(t *testing.T) {
 	if r.asked() != 1 {
 		t.Fatalf("grant not used: approver asked %d times", r.asked())
 	}
-	if got := lastAudit(t, r); got.Decision != audit.DecisionAllowedGrant {
-		t.Fatalf("audit = %+v", got)
+	if rel, _ := lastPair(t, r); rel.Decision != audit.DecisionAllowedGrant {
+		t.Fatalf("audit = %+v", rel)
 	}
 
 	// Different cwd: asked again.
@@ -409,8 +446,34 @@ func TestTimeoutExits124(t *testing.T) {
 	if d := time.Since(start); d > 4*time.Second {
 		t.Errorf("took %s", d)
 	}
-	if a := lastAudit(t, r); a.ExitCode == nil || *a.ExitCode != 124 {
+	if _, a := lastPair(t, r); *a.ExitCode != 124 || a.Reason != proto.ReasonTimeout {
 		t.Fatalf("audit = %+v", a)
+	}
+}
+
+// timeout_s budgets the command only: a slow human does not eat into it.
+func TestSlowApprovalDoesNotConsumeTheCommandTimeout(t *testing.T) {
+	r := newRig(t)
+	r.set("API_KEY", apiKey)
+	r.slow.delay.Store(int64(2500 * time.Millisecond))
+	start := time.Now()
+	rep := r.call(&proto.Request{Op: proto.OpRun, Caller: "e2e", Cwd: r.cwd,
+		Argv: []string{"sh", "-c", "sleep 1; echo done"}, Secrets: []string{"API_KEY"}, TimeoutS: 2})
+	if !rep.resp.OK || *rep.resp.ExitCode != 0 || rep.stdout != "done\n" {
+		t.Fatalf("response = %+v stdout=%q (approval time must not count against timeout_s)", rep.resp, rep.stdout)
+	}
+	if d := time.Since(start); d < 3*time.Second {
+		t.Errorf("finished in %s; the approval delay did not happen", d)
+	}
+	// ... while the command itself is still bounded by it.
+	start = time.Now()
+	rep = r.call(&proto.Request{Op: proto.OpRun, Caller: "e2e", Cwd: r.cwd,
+		Argv: []string{"sleep", "10"}, Secrets: []string{"API_KEY"}, TimeoutS: 1})
+	if !rep.resp.OK || *rep.resp.ExitCode != 124 {
+		t.Fatalf("response = %+v", rep.resp)
+	}
+	if d := time.Since(start); d > 6*time.Second {
+		t.Errorf("took %s", d)
 	}
 }
 
@@ -458,7 +521,7 @@ func TestStatusAndAuditVerifyAfterEverything(t *testing.T) {
 	r.call(&proto.Request{Op: proto.OpDelete, Name: "API_KEY"})
 
 	v := result[proto.AuditVerifyResult](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionVerify}))
-	if !v.OK || v.Entries != 6 {
+	if !v.OK || v.Entries != 7 {
 		t.Fatalf("verify = %+v", v)
 	}
 	csv := result[proto.AuditExportResult](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionExport})).CSV

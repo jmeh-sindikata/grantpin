@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -14,6 +15,11 @@ import (
 func newAuditCmd() *cobra.Command {
 	var socket string
 	var limit int
+	// A run that was released appears as two rows, newest first: "completed"
+	// (exit code, duration, reason such as timeout or canceled) above the
+	// allowed_* row with reason "released" that was written before the
+	// secrets were decrypted. A released row with no completed row above it
+	// means the daemon died mid-run.
 	list := func(cmd *cobra.Command, _ []string) error {
 		resp, err := simpleCall(cmd.Context(), socket, &proto.Request{Op: proto.OpAudit, Caller: "cli", Action: proto.ActionList, Limit: limit})
 		if err != nil {
@@ -24,14 +30,21 @@ func newAuditCmd() *cobra.Command {
 			return err
 		}
 		tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "ID\tTIME\tDECISION\tCALLER\tCOMMAND\tSECRETS\tEXIT\tREASON")
+		fmt.Fprintln(tw, "ID\tTIME\tDECISION\tCALLER\tCOMMAND\tSECRETS\tGRANT\tEXIT\tTOOK\tREASON")
 		for _, e := range es {
-			exit := "-"
+			exit, took := "-", "-"
 			if e.ExitCode != nil {
 				exit = strconv.Itoa(*e.ExitCode)
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.ID, e.TS.Local().Format("2006-01-02 15:04:05"),
-				e.Decision, e.Caller, strings.Join(e.Argv, " "), strings.Join(e.Secrets, ","), exit, dash(e.Reason))
+			if e.DurationMS > 0 {
+				took = (time.Duration(e.DurationMS) * time.Millisecond).String()
+			}
+			grant := "-"
+			if e.GrantID != "" {
+				grant = e.GrantID[:min(8, len(e.GrantID))]
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.ID, e.TS.Local().Format("2006-01-02 15:04:05"),
+				e.Decision, e.Caller, strings.Join(e.Argv, " "), strings.Join(e.Secrets, ","), grant, exit, took, dash(e.Reason))
 		}
 		return tw.Flush()
 	}
@@ -41,7 +54,7 @@ func newAuditCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE:  list, // bare `audit` behaves like `audit list`
 	}
-	listCmd := &cobra.Command{Use: "list", Short: "List recent audit entries (newest first)", Args: cobra.NoArgs, RunE: list}
+	listCmd := &cobra.Command{Use: "list", Short: "List recent audit entries (newest first; a run is a completed row above its released row)", Args: cobra.NoArgs, RunE: list}
 	for _, x := range []*cobra.Command{c, listCmd} {
 		x.Flags().IntVar(&limit, "limit", 0, "maximum entries to show (default 100)")
 	}

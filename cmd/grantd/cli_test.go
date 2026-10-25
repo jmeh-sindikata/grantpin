@@ -142,10 +142,10 @@ func TestCLIEndToEnd(t *testing.T) {
 		}
 	}
 
-	if o := mustCLI(t, "", "audit"); !strings.Contains(o, "allowed_once") || !strings.Contains(o, "denied_user") || !strings.Contains(o, "refused_policy") {
+	if o := mustCLI(t, "", "audit"); !strings.Contains(o, "allowed_once") || !strings.Contains(o, "completed") || !strings.Contains(o, "released") || !strings.Contains(o, "denied_user") || !strings.Contains(o, "refused_policy") {
 		t.Errorf("audit output = %q", o)
 	}
-	if o := mustCLI(t, "", "audit", "list", "--limit", "1"); strings.Count(o, "\n") != 2 {
+	if o := mustCLI(t, "", "audit", "list", "--limit", "1"); strings.Count(o, "\n") != 2 || !strings.Contains(o, "TOOK") {
 		t.Errorf("audit list --limit 1 = %q", o)
 	}
 	if o := mustCLI(t, "", "audit", "verify"); !strings.Contains(o, "audit chain ok") {

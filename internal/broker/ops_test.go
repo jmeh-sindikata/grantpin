@@ -265,18 +265,19 @@ func TestAuditOps(t *testing.T) {
 		e.do(e.run([]string{"API_KEY"}, "true"))
 	}
 	l := decode[[]proto.AuditInfo](t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 2}))
-	if len(l) != 2 || l[0].Decision != audit.DecisionAllowedOnce || l[0].ExitCode == nil {
+	if len(l) != 2 || l[0].Decision != audit.DecisionCompleted || l[0].ExitCode == nil ||
+		l[1].Decision != audit.DecisionAllowedOnce || l[1].Reason != ReasonReleased || l[1].ExitCode != nil {
 		t.Fatalf("audit list = %+v", l)
 	}
-	if l := decode[[]proto.AuditInfo](t, e.do(&proto.Request{Op: proto.OpAudit})); len(l) != 3 {
+	if l := decode[[]proto.AuditInfo](t, e.do(&proto.Request{Op: proto.OpAudit})); len(l) != 6 {
 		t.Fatalf("bare list = %d", len(l))
 	}
 	v := decode[proto.AuditVerifyResult](t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionVerify}))
-	if !v.OK || v.Entries != 3 {
+	if !v.OK || v.Entries != 6 {
 		t.Fatalf("verify = %+v", v)
 	}
 	csv := decode[proto.AuditExportResult](t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionExport})).CSV
-	if !strings.Contains(csv, "allowed_once") || strings.Count(csv, "\n") != 4 {
+	if !strings.Contains(csv, "allowed_once") || !strings.Contains(csv, "completed") || strings.Count(csv, "\n") != 7 {
 		t.Fatalf("csv = %q", csv)
 	}
 	wantFail(t, e.do(&proto.Request{Op: proto.OpAudit, Action: "bogus"}), proto.ErrBadRequest, proto.ReasonBadRequest)

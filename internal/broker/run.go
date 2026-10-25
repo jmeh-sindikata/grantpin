@@ -122,7 +122,7 @@ func (b *Broker) handleRun(ctx context.Context, req *proto.Request, w daemon.Res
 		decision, grantID = audit.DecisionAllowedGrant, g.ID
 	case errors.Is(err, grant.ErrNoMatch):
 		// 5. Ask the human.
-		decision, grantID = b.approveRun(ctx, rc, req, pol, caller, cwd)
+		decision, grantID = b.approveRun(ctx, rc, req, pol, caller, cwd, names)
 		if decision == "" {
 			return // approveRun already responded
 		}
@@ -210,7 +210,7 @@ func policyItem(err error) string {
 
 // approveRun asks the human (serialised). It returns the audit decision and
 // grant ID to proceed with, or an empty decision after having responded.
-func (b *Broker) approveRun(ctx context.Context, rc *runCtx, req *proto.Request, pol *policy.Policy, caller, cwd string) (decision, grantID string) {
+func (b *Broker) approveRun(ctx context.Context, rc *runCtx, req *proto.Request, pol *policy.Policy, caller, cwd string, names []string) (decision, grantID string) {
 	suggested := b.d.DefaultGrantTTL
 	maxTTL := b.d.DefaultGrantTTL
 	if pol.Present() {
@@ -222,6 +222,7 @@ func (b *Broker) approveRun(ctx context.Context, rc *runCtx, req *proto.Request,
 		Cwd:           cwd,
 		Argv:          slices.Clone(req.Argv),
 		Secrets:       slices.Clone(req.Secrets),
+		Expanded:      slices.Clone(names),
 		PolicyPresent: pol.Present(),
 		SuggestedTTL:  suggested,
 	}
@@ -274,12 +275,27 @@ func matchedPrefix(pol *policy.Policy, argv []string) []string {
 	return best
 }
 
-// release resolves the secrets, runs the command and answers.
+// ReasonReleased marks the audit row written before secrets are decrypted.
+const ReasonReleased = "released"
+
+// release writes the pre-release audit row, resolves the secrets, runs the
+// command and answers. Every release is bracketed in the audit log: an
+// allowed_* row (reason "released", no exit code) before anything is
+// decrypted, then exactly one "completed" row when the command ends or fails
+// to start. If the pre-release row cannot be written nothing is released.
 func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cwd string, names []string, decision, grantID string) {
 	rc.entry.GrantID = grantID
+	rel := rc.entry
+	rel.Decision, rel.Reason = decision, ReasonReleased
+	if _, err := b.recordStrict(ctx, rel); err != nil {
+		b.log.Error("audit append failed; refusing to release", "err", err.Error())
+		fail(rc.w, proto.ErrFailed, proto.ReasonInternal, "audit log unavailable")
+		return
+	}
+
 	values, err := b.d.Vault.Resolve(ctx, names)
 	if err != nil {
-		b.runLookupFailure(ctx, rc, err)
+		b.releaseFailure(ctx, rc, grantID, err)
 		return
 	}
 	defer func() {
@@ -289,7 +305,7 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 	}()
 	envNames, err := runner.EnvNames(names, req.EnvPrefix)
 	if err != nil {
-		rc.refuse(ctx, audit.DecisionError, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())
+		rc.completeFailure(ctx, grantID, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())
 		return
 	}
 	// Plaintext as strings is required by runner.Spec; Go cannot zero these.
@@ -315,7 +331,7 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 		Cwd:       cwd,
 		Env:       env,
 		Labels:    labels,
-		Timeout:   time.Duration(req.TimeoutS) * time.Second,
+		Timeout:   commandTimeout(ctx, req),
 		KillGrace: killGrace,
 	}
 	res, runErr := runner.Run(runCtx, spec, rso, rse)
@@ -325,39 +341,28 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 	_ = so.Close()
 	_ = se.Close()
 
-	e := rc.entryNow()
-	e.Decision = decision
-	e.Duration = res.Duration
 	exit := res.ExitCode
 	resp := &proto.Response{OK: true, GrantID: grantID}
+	reason := ""
 	switch {
 	case exit == runner.ExitNotStarted:
-		e.Decision = audit.DecisionError
-		e.Reason = rc.scrub("run failed: " + errText(runErr))
-		e.Duration = b.now().Sub(rc.started)
-		resp = daemon.Failure(proto.ErrFailed, proto.ReasonInternal)
-		resp.Message = "command could not be started"
-		if ctx.Err() != nil {
-			resp.Reason = ctxFailure(ctx)
-		}
-		resp.AuditID = b.record(ctx, e)
-		resp.GrantID = grantID
-		_ = rc.w.Finish(resp)
+		rc.completeFailure(ctx, grantID, proto.ErrFailed, proto.ReasonInternal, "command could not be started: "+errText(runErr))
 		return
 	case res.TimedOut || errors.Is(ctx.Err(), context.DeadlineExceeded):
 		exit = runner.ExitTimeout
-		e.Reason = proto.ReasonTimeout
+		reason = proto.ReasonTimeout
 		resp.Reason = proto.ReasonTimeout
 	case ctx.Err() != nil || runCtx.Err() != nil:
-		e.Reason = proto.ReasonCanceled
+		reason = proto.ReasonCanceled
 	case errors.Is(runErr, runner.ErrCommandNotFound):
-		e.Reason = "command not found"
+		reason = "command not found"
 		resp.Message = "command not found: " + rc.scrub(req.Argv[0])
 	case errors.Is(runErr, runner.ErrCannotExecute):
-		e.Reason = "cannot execute command"
+		reason = "cannot execute command"
 		resp.Message = "cannot execute command: " + rc.scrub(req.Argv[0])
 	}
-	e.ExitCode = &exit
+	e := rc.entryNow()
+	e.Decision, e.Reason, e.Duration, e.ExitCode = audit.DecisionCompleted, reason, res.Duration, &exit
 	resp.ExitCode = proto.IntPtr(exit)
 	resp.AuditID = b.record(ctx, e)
 	if ctx.Err() != nil && !errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -368,6 +373,40 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 		return
 	}
 	_ = rc.w.Finish(resp)
+}
+
+// releaseFailure maps a vault error after the pre-release row to a response
+// and closes the audit bracket.
+func (b *Broker) releaseFailure(ctx context.Context, rc *runCtx, grantID string, err error) {
+	switch {
+	case errors.Is(err, vault.ErrNotFound):
+		rc.completeFailure(ctx, grantID, proto.ErrNotFound, proto.ReasonSecretNotFound, err.Error())
+	case errors.Is(err, vault.ErrExpired):
+		rc.completeFailure(ctx, grantID, proto.ErrRefused, proto.ReasonSecretExpired, "")
+	case ctx.Err() != nil:
+		rc.completeFailure(ctx, grantID, proto.ErrFailed, ctxFailure(ctx), "")
+	default:
+		b.log.Error("resolving secrets failed", "err", err.Error())
+		rc.completeFailure(ctx, grantID, proto.ErrFailed, proto.ReasonInternal, "")
+	}
+}
+
+// completeFailure closes the audit bracket for a release whose command never
+// ran: a completed row with no exit code and the cause as its reason.
+func (rc *runCtx) completeFailure(ctx context.Context, grantID, category, reason, msg string) {
+	msg = rc.scrub(msg)
+	e := rc.entryNow()
+	e.Decision = audit.DecisionCompleted
+	e.Reason = "not started: " + reason
+	if msg != "" {
+		e.Reason += ": " + msg
+	}
+	e.Duration = rc.b.now().Sub(rc.started)
+	r := daemon.Failure(category, reason)
+	r.Message = msg
+	r.GrantID = grantID
+	r.AuditID = rc.b.record(ctx, e)
+	_ = rc.w.Finish(r)
 }
 
 // entryNow returns the audit identity with injected values removed from argv
@@ -453,4 +492,15 @@ func incompleteTail(b []byte) int {
 		}
 	}
 	return 0
+}
+
+// commandTimeout is the budget for the command alone. The daemon's connection
+// deadline also covers the wait for human approval (ApprovalGrace), so the
+// command's timeout comes from CommandTimeout, which excludes it. Without a
+// daemon context (unit tests) the request's own timeout_s is used.
+func commandTimeout(ctx context.Context, req *proto.Request) time.Duration {
+	if d, ok := daemon.CommandTimeout(ctx); ok {
+		return d
+	}
+	return time.Duration(req.TimeoutS) * time.Second
 }

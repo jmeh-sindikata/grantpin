@@ -38,6 +38,7 @@ type fakeApprover struct {
 	ttl      time.Duration
 	reason   string
 	err      error
+	onAsk    func()        // if non-nil, called inside Ask
 	block    chan struct{} // if non-nil, Ask waits for it (or ctx)
 	reqs     []approve.ApprovalRequest
 	inFlight int
@@ -54,6 +55,9 @@ func (f *fakeApprover) Ask(ctx context.Context, r approve.ApprovalRequest) (appr
 	block, err, allow, ttl, reason := f.block, f.err, f.allow, f.ttl, f.reason
 	f.mu.Unlock()
 	defer func() { f.mu.Lock(); f.inFlight--; f.mu.Unlock() }()
+	if f.onAsk != nil {
+		f.onAsk()
+	}
 	if block != nil {
 		select {
 		case <-block:
@@ -206,6 +210,22 @@ func (e *env) lastAudit() audit.Entry {
 		e.t.Fatalf("audit list: %v %v", es, err)
 	}
 	return es[0]
+}
+
+// lastPair returns the released and completed rows of the newest run, and
+// fails the test if the newest two rows are not such a pair.
+func (e *env) lastPair() (released, completed audit.Entry) {
+	e.t.Helper()
+	es, err := e.a.List(context.Background(), 2, 0)
+	if err != nil || len(es) < 2 {
+		e.t.Fatalf("audit list: %v %v", es, err)
+	}
+	released, completed = es[1], es[0]
+	if released.Reason != ReasonReleased || released.ExitCode != nil ||
+		completed.Decision != audit.DecisionCompleted || released.GrantID != completed.GrantID {
+		e.t.Fatalf("not a released+completed pair: %+v / %+v", released, completed)
+	}
+	return released, completed
 }
 
 func (e *env) auditCount() int {

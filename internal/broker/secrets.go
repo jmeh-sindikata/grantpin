@@ -198,7 +198,7 @@ func (b *Broker) handleShow(ctx context.Context, req *proto.Request, w daemon.Re
 
 	dec, err := b.ask(ctx, approve.ApprovalRequest{
 		Caller: caller, Cwd: req.Cwd, Argv: []string{"grantd", "show", req.Name},
-		Secrets: []string{req.Name},
+		Secrets: []string{req.Name}, Expanded: []string{req.Name},
 	})
 	switch {
 	case err != nil && ctx.Err() != nil:

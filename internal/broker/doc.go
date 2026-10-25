@@ -33,9 +33,27 @@
 //	human allows with a TTL                     (runs, grant stored)           allowed_new_grant
 //	human allows once                           (runs)                         allowed_once
 //	storing the new grant failed                failed/internal                error
-//	resolving/decrypting failed                 failed/internal                error
-//	process could not be started                failed/internal                error
-//	command ran                                 ok, exit_code                  the allow decision
+//	resolving/decrypting failed                 failed/internal|not_found...   completed (no exit code)
+//	audit row before release cannot be written failed/internal                (nothing released)
+//	process could not be started                failed/internal                completed (no exit code)
+//	command ran                                 ok, exit_code                  completed
+//
+// # Audit bracket
+//
+// A release writes two rows. Immediately after approval or grant match, and
+// before any secret is decrypted, an allowed_grant / allowed_once /
+// allowed_new_grant row with reason "released", the grant ID and no exit code.
+// When the command ends (or fails to start) a "completed" row with the same
+// grant ID, the exit code, the duration and, for timeout/canceled/not-found
+// outcomes, a reason. The response's audit_id is the completed row. A released
+// row with nothing after it means the daemon died mid-run. If the released row
+// cannot be written, nothing is released.
+//
+// # Timeouts
+//
+// timeout_s budgets the command only: runner.Spec.Timeout comes from
+// daemon.CommandTimeout, while the daemon's connection deadline adds
+// ApprovalGrace on top so a slow human does not eat into it.
 //
 // A timed-out command reports ok with exit_code 124 and reason "timeout"; a
 // command that is not found or cannot be executed reports ok with exit_code

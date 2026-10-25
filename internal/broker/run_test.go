@@ -2,6 +2,7 @@ package broker
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -34,9 +35,9 @@ func TestRunAllowOnceRedactsAndAudits(t *testing.T) {
 	if b, _ := marshalAll(w); strings.Contains(b, e.secret) {
 		t.Error("value present in frames/response")
 	}
-	a := e.lastAudit()
-	if a.Decision != audit.DecisionAllowedOnce || a.ExitCode == nil || *a.ExitCode != 0 || a.GrantID != "" {
-		t.Errorf("audit = %+v", a)
+	rel, a := e.lastPair()
+	if rel.Decision != audit.DecisionAllowedOnce || a.ExitCode == nil || *a.ExitCode != 0 || a.GrantID != "" || a.Duration <= 0 {
+		t.Errorf("audit = %+v / %+v", rel, a)
 	}
 	if w.final.AuditID != a.ID {
 		t.Errorf("audit id %q != %q", w.final.AuditID, a.ID)
@@ -94,16 +95,16 @@ func TestRunNewGrantThenGrantMatch(t *testing.T) {
 	if w.final.GrantID == "" {
 		t.Fatal("no grant id")
 	}
-	if a := e.lastAudit(); a.Decision != audit.DecisionAllowedNewGrant || a.GrantID != w.final.GrantID {
-		t.Errorf("audit = %+v", a)
+	if rel, a := e.lastPair(); rel.Decision != audit.DecisionAllowedNewGrant || rel.GrantID != w.final.GrantID || a.GrantID != w.final.GrantID {
+		t.Errorf("audit = %+v / %+v", rel, a)
 	}
 	w2 := e.do(e.run([]string{"API_KEY"}, "sh", "-c", "exit 0"))
 	wantOK(t, w2)
 	if e.ap.calls() != 1 {
 		t.Errorf("approver asked %d times, want 1", e.ap.calls())
 	}
-	if a := e.lastAudit(); a.Decision != audit.DecisionAllowedGrant || a.GrantID != w.final.GrantID {
-		t.Errorf("audit = %+v", a)
+	if rel, a := e.lastPair(); rel.Decision != audit.DecisionAllowedGrant || a.GrantID != w.final.GrantID {
+		t.Errorf("audit = %+v / %+v", rel, a)
 	}
 	// Different cwd: asked again.
 	other, _ := filepath.EvalSymlinks(t.TempDir())
@@ -524,8 +525,71 @@ func TestRunMessagesAreScrubbed(t *testing.T) {
 	}
 	es, _ := e.a.List(context.Background(), 10, 0)
 	for _, en := range es {
-		if strings.Contains(en.Reason, e.secret) || strings.Contains(strings.Join(en.Argv, " "), e.secret) {
-			t.Errorf("audit entry leaked value: %+v", en)
+		if strings.Contains(en.Reason, e.secret) {
+			t.Errorf("audit reason leaked value: %+v", en)
 		}
+		// The pre-release row is written before anything is decrypted, so it
+		// records argv as sent (an agent that knows the value already has it);
+		// the completed row is scrubbed.
+		if en.Decision == audit.DecisionCompleted && strings.Contains(strings.Join(en.Argv, " "), e.secret) {
+			t.Errorf("completed row leaked value: %+v", en)
+		}
+	}
+}
+
+func TestRunAuditBracketWhenResolveFails(t *testing.T) {
+	e := newEnv(t)
+	// The secret disappears between approval and release.
+	e.ap.onAsk = func() { _ = e.v.Delete(context.Background(), "API_KEY") }
+	w := e.do(e.run([]string{"API_KEY"}, "true"))
+	wantFail(t, w, proto.ErrNotFound, proto.ReasonSecretNotFound)
+	rel, done := e.lastPair()
+	if rel.Decision != audit.DecisionAllowedOnce || done.ExitCode != nil || !strings.HasPrefix(done.Reason, "not started: secret_not_found") {
+		t.Errorf("audit = %+v / %+v", rel, done)
+	}
+	if w.final.AuditID != done.ID {
+		t.Errorf("audit id %q != completed row %q", w.final.AuditID, done.ID)
+	}
+}
+
+func TestRunNothingReleasedWhenPreReleaseAuditFails(t *testing.T) {
+	e := newEnv(t)
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "a.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken, err := audit.New(context.Background(), db, make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close() // every Append now fails
+	b, err := New(Deps{Vault: e.v, Grants: e.g, Audit: broken, Approver: e.ap})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.b = b
+	marker := filepath.Join(e.cwd, "ran")
+	w := e.do(e.run([]string{"API_KEY"}, "sh", "-c", "touch "+marker))
+	wantFail(t, w, proto.ErrFailed, proto.ReasonInternal)
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("command ran although the pre-release audit row could not be written")
+	}
+}
+
+func TestRunApprovalRequestCarriesExpandedNames(t *testing.T) {
+	e := newEnv(t)
+	for _, n := range []string{"aws/b", "aws/a"} {
+		if err := e.v.Set(context.Background(), vault.Meta{Name: n}, []byte("value-"+n+"-xx"), false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantOK(t, e.do(e.run([]string{"aws/*"}, "true")))
+	r := e.ap.last()
+	if strings.Join(r.Secrets, ",") != "aws/*" || strings.Join(r.Expanded, ",") != "aws/a,aws/b" {
+		t.Errorf("approval request = %+v", r)
+	}
+	wantOK(t, e.do(e.run([]string{"API_KEY"}, "true")))
+	if r := e.ap.last(); strings.Join(r.Expanded, ",") != "API_KEY" {
+		t.Errorf("literal request Expanded = %v", r.Expanded)
 	}
 }
