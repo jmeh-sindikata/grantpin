@@ -52,6 +52,10 @@ public struct AuditEvent: Equatable, Identifiable, Sendable {
     public var result: Result
     /// One line for lists: `Ran "php artisan" (DB_URL) · exit 0 · 1.2 s`.
     public var summary: String
+    /// The `decision` of the event's first row (`allowed_once`, `denied_user`, ...).
+    public var decision: String = ""
+    /// The `reason` of the first row, sanitised.
+    public var reason: String = ""
 }
 
 public enum AuditPairing {
@@ -95,19 +99,25 @@ public enum AuditPairing {
         var events = [AuditEvent]()
         var open = [Open]()
 
+        func tagged(_ e: AuditEvent, _ entry: AuditEntry) -> AuditEvent {
+            var e = e
+            e.decision = entry.decision
+            e.reason = DisplayText.sanitise(entry.reason)
+            return e
+        }
         for entry in oldestFirst {
             if isReleased(entry) {
-                events.append(event(for: entry, now: now))
+                events.append(tagged(event(for: entry, now: now), entry))
                 open.append(Open(index: events.count - 1, entry: entry))
             } else if entry.decision == "completed" {
                 if let k = open.firstIndex(where: { sameRun($0.entry, entry) }) {
                     let o = open.remove(at: k)
-                    events[o.index] = merged(released: o.entry, completed: entry)
+                    events[o.index] = tagged(merged(released: o.entry, completed: entry), o.entry)
                 } else {
-                    events.append(resultOnly(entry, windowIsComplete: windowIsComplete))
+                    events.append(tagged(resultOnly(entry, windowIsComplete: windowIsComplete), entry))
                 }
             } else {
-                events.append(event(for: entry, now: now))
+                events.append(tagged(event(for: entry, now: now), entry))
             }
         }
         return events.reversed()

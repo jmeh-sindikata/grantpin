@@ -137,6 +137,22 @@ public protocol DaemonActions: Sendable {
     func createVault() async -> ActionResult
 }
 
+/// Everything the Settings, onboarding and uninstall screens make the helper
+/// do (docs/UI-SPEC.md 2.6). `HelperActions` is the real one; tests use a fake.
+public protocol ServiceControl: Sendable {
+    /// `service status`. Throws `ServiceStatus.ParseError` when it fails.
+    func serviceStatus() async throws -> ServiceStatus
+    /// `service install --exe <app> --path <PATH>`. A nil `path` detects the
+    /// login shell's PATH first.
+    func installService(path: String?) async -> ActionResult
+    /// `service uninstall`.
+    func uninstallService() async -> ActionResult
+    /// `--version`, the text after "grantd version ", or nil.
+    func helperVersion() async -> String?
+    /// `init`, or `init --keychain-fallback` (the weaker Keychain protection).
+    func initVault(keychainFallback: Bool) async -> ActionResult
+}
+
 /// Runs the signed helper bundled in the app.
 ///
 /// **This is the only way the app starts the daemon** (docs/UI-SPEC.md 2.2):
@@ -148,9 +164,10 @@ public protocol DaemonActions: Sendable {
 ///
 /// The environment of the helper is replaced, not inherited (`HOME`, `USER`,
 /// `LOGNAME`, `TMPDIR`, `LANG`, `PATH=/usr/bin:/bin`).
-public struct HelperActions: DaemonActions {
+public struct HelperActions: DaemonActions, ServiceControl {
     public static let installTimeout: TimeInterval = 20
     public static let initTimeout: TimeInterval = 30
+    public static let shortTimeout: TimeInterval = 10
 
     public let helper: URL
     public let appBundle: URL
@@ -170,9 +187,14 @@ public struct HelperActions: DaemonActions {
         ["service", "install", "--exe", appBundle.path, "--path", path]
     }
 
-    public func startService() async -> ActionResult {
-        let path = await pathDetector.detect()
-        let args = Self.installArguments(appBundle: appBundle, path: path)
+    public func startService() async -> ActionResult { await installService(path: nil) }
+
+    public func createVault() async -> ActionResult { await initVault(keychainFallback: false) }
+
+    public func installService(path: String?) async -> ActionResult {
+        let resolved: String
+        if let path { resolved = path } else { resolved = await pathDetector.detect() }
+        let args = Self.installArguments(appBundle: appBundle, path: resolved)
         let out: HelperOutput
         do {
             out = try await HelperProcess.run(executable: helper, arguments: args, environment: environment,
@@ -183,10 +205,36 @@ public struct HelperActions: DaemonActions {
         return Self.interpretInstall(out)
     }
 
-    public func createVault() async -> ActionResult {
+    public func uninstallService() async -> ActionResult {
         let out: HelperOutput
         do {
-            out = try await HelperProcess.run(executable: helper, arguments: ["init"], environment: environment,
+            out = try await HelperProcess.run(executable: helper, arguments: ["service", "uninstall"], environment: environment,
+                                              standardInput: nil, timeout: Self.shortTimeout)
+        } catch {
+            return ActionResult(outcome: .failed, summary: "The background service could not be stopped: the helper did not run.")
+        }
+        return Self.interpretUninstall(out)
+    }
+
+    public func serviceStatus() async throws -> ServiceStatus {
+        let out = try await HelperProcess.run(executable: helper, arguments: ["service", "status"], environment: environment,
+                                              standardInput: nil, timeout: Self.shortTimeout)
+        if out.timedOut { throw ServiceStatus.ParseError.failed(exitCode: -1) }
+        return try ServiceStatus.parse(stdout: out.stdout, exitCode: out.exitCode)
+    }
+
+    public func helperVersion() async -> String? {
+        guard let out = try? await HelperProcess.run(executable: helper, arguments: ["--version"], environment: environment,
+                                                     standardInput: nil, timeout: Self.shortTimeout),
+              out.succeeded else { return nil }
+        return Self.parseVersion(out.stdout)
+    }
+
+    public func initVault(keychainFallback: Bool) async -> ActionResult {
+        let args = keychainFallback ? ["init", "--keychain-fallback"] : ["init"]
+        let out: HelperOutput
+        do {
+            out = try await HelperProcess.run(executable: helper, arguments: args, environment: environment,
                                               standardInput: nil, timeout: Self.initTimeout)
         } catch {
             return ActionResult(outcome: .failed, summary: "The vault could not be created: the helper did not run.")
@@ -207,6 +255,26 @@ public struct HelperActions: DaemonActions {
             return ActionResult(outcome: .startedNotAnswering, summary: "Started, but grantd has not answered yet.")
         }
         return ActionResult(outcome: .succeeded, summary: "grantd is running in the background.")
+    }
+
+    static func interpretUninstall(_ out: HelperOutput) -> ActionResult {
+        if out.timedOut {
+            return ActionResult(outcome: .failed, summary: "Stopping the background service took too long.", detail: tail(out.stderr))
+        }
+        guard out.exitCode == 0 else {
+            return ActionResult(outcome: .failed, summary: "The background service could not be stopped.",
+                                detail: tail(out.stderr.isEmpty ? out.stdout : out.stderr))
+        }
+        return ActionResult(outcome: .succeeded, summary: "The background service was stopped and removed.")
+    }
+
+    /// `grantd version 0.2.0` -> `0.2.0`.
+    static func parseVersion(_ text: String) -> String? {
+        let line = text.split(whereSeparator: \.isNewline).first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
+        let prefix = "grantd version "
+        guard line.hasPrefix(prefix) else { return nil }
+        let v = String(line.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        return v.isEmpty ? nil : v
     }
 
     static func interpretInit(_ out: HelperOutput) -> ActionResult {

@@ -3,8 +3,7 @@ import Foundation
 /// What the Secrets screens need from the daemon. `Client` is the real one;
 /// tests use a fake. All members are the protocol ops of the same name
 /// (docs/PROTOCOL.md); the app never sends `show` or `run`, so neither exists here.
-public protocol SecretsService: Sendable {
-    func listSecrets() async throws -> [SecretInfo]
+public protocol SecretsService: SecretsListing {
     func masked(_ name: String) async throws -> String
     @discardableResult
     func set(name: String, value: inout Data, tags: [String], url: String?, notes: String?,
