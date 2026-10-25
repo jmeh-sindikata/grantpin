@@ -26,6 +26,31 @@
 // start (and every Unwrap) pop Touch ID. Consequence: Tier() = TierHardware here
 // means "key is hardware-bound and non-exportable", not "Unwrap prompts".
 //
+// # Keychain access group
+//
+// The Secure Enclave key and the data-protection-keychain fallback item are
+// created and looked up without kSecAttrAccessGroup, on purpose. For
+// SecItemAdd and SecKeyCreateRandomKey the system then uses the first entry of
+// the binary's keychain-access-groups entitlement (the
+// com.apple.application-identifier group if there is no such entitlement), and
+// queries search every group the binary has. The signed bundle
+// (build/bundle/grantd-app.entitlements, docs/MANUAL-TEST-MACOS.md 2c) lists
+// exactly one group, <TEAMID>.dev.grantd, so the default is that group and an
+// explicit attribute would only repeat it. The team prefix is not known to the
+// source, so setting it would need a build-time constant that is easy to get
+// wrong and impossible to test without the signing identity. If a future
+// entitlement lists several groups, keep the one that must own the vault key
+// first, or add an option that passes kSecAttrAccessGroup to gd_se_create,
+// gd_se_find and the gd_kc_* queries.
+//
+// Without a profile-backed entitlement (any plain build, or ad-hoc signing)
+// the data-protection keychain refuses the Secure Enclave key with OSStatus
+// -34018; see docs/MANUAL-TEST-MACOS.md 2a (outcome D). A legacy fallback item
+// created in the login keychain by an earlier unsigned build is still found
+// (kcGet falls back to the login keychain), but macOS may ask once whether the
+// newly signed binary may use it, because that keychain's ACL names the old
+// binary.
+//
 // # Blob format
 //
 // Wrap output is: 1 byte mode | 1 byte format version | payload. See the
