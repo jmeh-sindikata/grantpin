@@ -111,6 +111,8 @@ type StatusResult struct {
 	PID              int                   `json:"pid"`
 	StartedAt        time.Time             `json:"started_at"`
 	VaultInitialized bool                  `json:"vault_initialized"`
+	VaultLocked      bool                  `json:"vault_locked,omitempty"`       // vault exists but the key store is unavailable; the daemon is retrying
+	VaultLockedError string                `json:"vault_locked_error,omitempty"` // last error of the retry (no secret material)
 	KeyStoreTier     presence.PresenceTier `json:"keystore_tier"`
 	ApproverTier     presence.PresenceTier `json:"approver_tier"`
 	Secrets          int                   `json:"secrets"`

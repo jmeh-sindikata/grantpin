@@ -74,6 +74,7 @@ const (
 	ReasonSecretExists        = "secret_exists"         // (bad_request) set without overwrite on an existing name
 	ReasonSecretExpired       = "secret_expired"        // (refused) secret past expires_at
 	ReasonVaultNotInitialized = "vault_not_initialized" // (failed)
+	ReasonVaultLocked         = "vault_locked"          // (failed) vault exists but its key store is unavailable right now (screen locked); the daemon retries
 	ReasonTimeout             = "timeout"               // (failed) command exceeded timeout_s
 	ReasonCanceled            = "canceled"              // (failed) client went away / daemon shutting down
 	ReasonInternal            = "internal"              // (failed) message must not contain secret values

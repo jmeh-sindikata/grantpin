@@ -2,6 +2,7 @@ package keystore
 
 import (
 	"context"
+	"errors"
 
 	"grantd/internal/presence"
 )
@@ -23,4 +24,21 @@ type KeyStore interface {
 	Unwrap(ctx context.Context, wrapped []byte) ([]byte, error)
 	// Tier reports what Unwrap requires of the human.
 	Tier() presence.PresenceTier
+}
+
+// Transient is implemented by keystore errors that mean "the key material is
+// temporarily out of reach, retry later" rather than "this vault can never be
+// opened with this keystore". The typical case is a locked session, where the
+// OS refuses to use the protected key until the user unlocks.
+type Transient interface {
+	Transient() bool
+}
+
+// IsTransient reports whether err (or any error it wraps) is a transient
+// keystore failure that a later attempt may overcome without any change of
+// configuration. Callers keep running and retry; every other keystore error
+// (wrong mode, malformed blob, downgraded tier, missing key) is permanent.
+func IsTransient(err error) bool {
+	var t Transient
+	return errors.As(err, &t) && t.Transient()
 }
