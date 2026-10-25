@@ -33,7 +33,14 @@ func newStatusCmd() *cobra.Command {
 			fmt.Fprintf(out, "version:      %s (protocol v%d)\n", st.Version, st.ProtoV)
 			fmt.Fprintf(out, "socket:       %s\n", path)
 			fmt.Fprintf(out, "uptime:       %s\n", time.Since(st.StartedAt).Round(time.Second))
-			fmt.Fprintf(out, "vault:        %s\n", map[bool]string{true: "initialized", false: "not initialized"}[st.VaultInitialized])
+			switch {
+			case st.VaultLocked:
+				fmt.Fprintf(out, "vault:        locked (retrying, last error: %s)\n", st.VaultLockedError)
+			case st.VaultInitialized:
+				fmt.Fprintf(out, "vault:        initialized\n")
+			default:
+				fmt.Fprintf(out, "vault:        not initialized\n")
+			}
 			fmt.Fprintf(out, "keystore:     %s\n", st.KeyStoreTier)
 			fmt.Fprintf(out, "approver:     %s\n", st.ApproverTier)
 			fmt.Fprintf(out, "secrets:      %d\n", st.Secrets)

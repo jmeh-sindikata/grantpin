@@ -73,7 +73,30 @@ type brokerHolder struct {
 	mu sync.Mutex
 	v  *vault.Vault
 	b  *broker.Broker
+
+	// Locked state: the vault file exists but the keystore transiently refuses
+	// to unwrap the data key (screen locked, session not unlocked yet).
+	lockedErr string         // last transient error; "" when not locked
+	retrying  bool           // a background retry goroutine is running
+	wg        sync.WaitGroup // background retry goroutines
+
+	bg                     context.Context // ends the background retry (close)
+	stopBG                 context.CancelFunc
+	backoffMin, backoffMax time.Duration
 }
+
+// Background retry schedule while the keystore is unavailable.
+var (
+	retryBackoffMin = time.Second
+	retryBackoffMax = 30 * time.Second
+)
+
+// errVaultLocked means the vault exists but the keystore is temporarily
+// unavailable. It wraps the keystore's error for the log and status.
+type errVaultLocked struct{ cause error }
+
+func (e *errVaultLocked) Error() string { return "vault keystore unavailable: " + e.cause.Error() }
+func (e *errVaultLocked) Unwrap() error { return e.cause }
 
 func newBrokerHolder(be backends, socket string, logger *slog.Logger) (*brokerHolder, error) {
 	path, err := vault.DefaultPath()
@@ -83,11 +106,15 @@ func newBrokerHolder(be backends, socket string, logger *slog.Logger) (*brokerHo
 	if logger == nil {
 		logger = slog.New(slog.DiscardHandler)
 	}
-	return &brokerHolder{be: be, path: path, logger: logger, socket: socket}, nil
+	bg, stopBG := context.WithCancel(context.Background())
+	return &brokerHolder{be: be, path: path, logger: logger, socket: socket,
+		bg: bg, stopBG: stopBG, backoffMin: retryBackoffMin, backoffMax: retryBackoffMax}, nil
 }
 
 // get returns the broker, opening the vault on first use. A vault that exists
-// but cannot be opened is an error (it is not silently treated as missing).
+// but cannot be opened is an error (it is not silently treated as missing). If
+// the keystore is only transiently unavailable the error is an *errVaultLocked
+// and the next call tries again.
 func (h *brokerHolder) get(ctx context.Context) (*broker.Broker, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -95,10 +122,15 @@ func (h *brokerHolder) get(ctx context.Context) (*broker.Broker, error) {
 		return h.b, nil
 	}
 	if _, err := os.Stat(h.path); errors.Is(err, os.ErrNotExist) {
+		h.lockedErr = ""
 		return nil, errVaultMissing
 	}
 	v, err := vault.Open(ctx, h.path, h.be.ks)
 	if err != nil {
+		if keystore.IsTransient(err) && h.bg.Err() == nil {
+			h.markLocked(err)
+			return nil, &errVaultLocked{cause: err}
+		}
 		return nil, err
 	}
 	closeVault := func() { _ = v.Close() }
@@ -134,7 +166,71 @@ func (h *brokerHolder) get(ctx context.Context) (*broker.Broker, error) {
 		return nil, err
 	}
 	h.v, h.b = v, b
+	if h.lockedErr != "" {
+		h.lockedErr = ""
+		h.logger.Info("vault keystore available again; vault opened")
+	}
 	return b, nil
+}
+
+// markLocked records a transient keystore failure. The caller holds h.mu. It
+// logs once when the vault becomes locked; later failures only update the
+// message shown by status.
+func (h *brokerHolder) markLocked(err error) {
+	if h.lockedErr == "" {
+		h.logger.Warn("vault keystore unavailable (screen locked?); retrying in the background", "err", err.Error())
+	}
+	h.lockedErr = err.Error()
+}
+
+// lockedState returns the last transient error, or "" if the vault is not locked.
+func (h *brokerHolder) lockedState() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.lockedErr
+}
+
+// startRetry begins retrying the vault open in the background with exponential
+// backoff until it succeeds, fails permanently, or ctx ends. Requests retry on
+// their own as well; this makes the vault usable (and status accurate) without
+// waiting for one. At most one retry loop runs. close stops it.
+func (h *brokerHolder) startRetry() {
+	ctx := h.bg
+	h.mu.Lock()
+	if h.retrying || h.b != nil {
+		h.mu.Unlock()
+		return
+	}
+	h.retrying = true
+	h.wg.Add(1)
+	h.mu.Unlock()
+	go func() {
+		defer h.wg.Done()
+		defer func() { h.mu.Lock(); h.retrying = false; h.mu.Unlock() }()
+		delay := h.backoffMin
+		for {
+			t := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return
+			case <-t.C:
+			}
+			_, err := h.get(ctx)
+			var locked *errVaultLocked
+			switch {
+			case err == nil, errors.Is(err, errVaultMissing), ctx.Err() != nil:
+				return
+			case errors.As(err, &locked):
+				delay = min(delay*2, h.backoffMax)
+			default:
+				// Permanent now (for example the file changed): stop retrying;
+				// requests report it as they always did.
+				h.logger.Error("opening vault failed", "err", err.Error())
+				return
+			}
+		}
+	}()
 }
 
 // loaded returns the broker if it has been built, without opening anything.
@@ -144,7 +240,10 @@ func (h *brokerHolder) loaded() *broker.Broker {
 	return h.b
 }
 
+// close stops the background retry and releases the vault.
 func (h *brokerHolder) close() {
+	h.stopBG()
+	h.wg.Wait()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.v != nil {
@@ -156,7 +255,15 @@ func (h *brokerHolder) close() {
 // handle serves one request, failing cleanly while the vault is unavailable.
 func (h *brokerHolder) handle(ctx context.Context, req *proto.Request, w daemon.ResponseWriter) {
 	b, err := h.get(ctx)
+	var locked *errVaultLocked
 	switch {
+	case errors.As(err, &locked):
+		// Already logged when the state changed; one line per request would
+		// flood the log while the Mac stays locked.
+		h.startRetry()
+		r := daemon.Failure(proto.ErrFailed, proto.ReasonVaultLocked)
+		r.Message = "vault keystore unavailable (screen locked?); retrying"
+		_ = w.Finish(r)
 	case errors.Is(err, errVaultMissing):
 		r := daemon.Failure(proto.ErrFailed, proto.ReasonVaultNotInitialized)
 		r.Message = "vault not initialized; run `grantd init`"
@@ -194,6 +301,8 @@ func (h *brokerHolder) statusFunc() daemon.StatusFunc {
 		}
 		if b := h.loaded(); b != nil {
 			b.StatusFunc()(ctx, st)
+		} else if msg := h.lockedState(); msg != "" {
+			st.VaultLocked, st.VaultLockedError = true, msg
 		}
 	}
 }

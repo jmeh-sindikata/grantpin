@@ -44,15 +44,23 @@ func runDaemon(ctx context.Context, socket string, logger *slog.Logger) error {
 }
 
 // serveDaemon wires vault, broker and socket server together and serves until
-// ctx is cancelled. If the vault already exists it is opened up front, so an
-// unusable vault stops the daemon at start instead of at the first request.
+// ctx is cancelled. If the vault already exists it is opened up front, so a
+// permanently unusable vault (wrong keystore mode, tampered file, downgraded
+// tier) stops the daemon at start instead of at the first request. A keystore
+// that is only transiently unavailable (screen locked, session not unlocked
+// yet after login) does not: the daemon listens anyway, answers vault_locked and
+// keeps retrying, because exiting would only make launchd respawn it into the
+// same failure while the socket never appears.
 func serveDaemon(ctx context.Context, socket string, logger *slog.Logger, be backends) error {
 	h, err := newBrokerHolder(be, socket, logger)
 	if err != nil {
 		return err
 	}
 	defer h.close()
-	if _, err := h.get(ctx); err != nil && !errors.Is(err, errVaultMissing) {
+	var locked *errVaultLocked
+	if _, err := h.get(ctx); errors.As(err, &locked) {
+		h.startRetry()
+	} else if err != nil && !errors.Is(err, errVaultMissing) {
 		return fmt.Errorf("start daemon: open vault %s: %w", h.path, err)
 	}
 	srv, err := daemon.New(daemon.Config{
