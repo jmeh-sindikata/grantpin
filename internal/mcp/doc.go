@@ -3,6 +3,6 @@
 //
 // Exactly four tools exist: secret_list, secret_exists, secret_masked and
 // secret_run. Each is a translation to one proto.Request sent through
-// internal/client. See README.md in this directory for the Claude Code
+// internal/client. See docs/README.md#mcp-server for the Claude Code
 // configuration and how to try it.
 package mcp
