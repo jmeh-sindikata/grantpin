@@ -39,7 +39,7 @@ func (b *Broker) vaultFail(ctx context.Context, w daemon.ResponseWriter, op stri
 		fail(w, proto.ErrBadRequest, proto.ReasonSecretExists, "secret already exists (overwrite to replace)")
 	case errors.Is(err, vault.ErrExpired):
 		fail(w, proto.ErrRefused, proto.ReasonSecretExpired, "")
-	case errors.Is(err, vault.ErrInvalidName):
+	case errors.Is(err, vault.ErrInvalidName), errors.Is(err, vault.ErrInvalidTag):
 		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())
 	case ctx.Err() != nil:
 		fail(w, proto.ErrFailed, ctxFailure(ctx), "")
@@ -92,7 +92,7 @@ func (b *Broker) handleMasked(ctx context.Context, req *proto.Request, w daemon.
 	ok(w, proto.MaskedResult{Masked: m})
 }
 
-// lifecycleEntry is the audit entry for a set/delete/show of one secret. The
+// lifecycleEntry is the audit entry for a set/delete/update/show of one secret. The
 // audit vocabulary has no decision for these, so they are recorded as
 // allowed_once with the verb as the reason (argv shows the equivalent CLI).
 func (b *Broker) lifecycleEntry(req *proto.Request, verb string) audit.Entry {
@@ -157,6 +157,84 @@ func (b *Broker) handleDelete(ctx context.Context, req *proto.Request, w daemon.
 		return
 	}
 	id := b.record(ctx, b.lifecycleEntry(req, "delete"))
+	_ = w.Finish(&proto.Response{OK: true, AuditID: id})
+}
+
+// handleUpdate changes the metadata of an existing secret and never touches
+// its value: any subset of tags, url, notes, expires and min_tier, plus Clear
+// to reset tags, url, notes or the expiry. Same validation as set. Not
+// presence-gated (the same class as set and delete), audited as allowed_once
+// with reason "update". A min_tier change re-encrypts inside the vault because
+// the tier is bound into the ciphertext's additional data.
+func (b *Broker) handleUpdate(ctx context.Context, req *proto.Request, w daemon.ResponseWriter) {
+	if nameFail(w, req.Name) {
+		return
+	}
+	bad := func(msg string) { fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, msg) }
+	var patch vault.MetaPatch
+	clr := map[string]bool{}
+	for _, f := range req.Clear {
+		switch f {
+		case "tags", "url", "notes", "expires":
+			clr[f] = true
+		default:
+			bad("unknown field to clear (want tags, url, notes or expires)")
+			return
+		}
+	}
+	switch {
+	case req.Value != "":
+		bad("update does not change the value; use set with overwrite")
+		return
+	case req.Overwrite:
+		bad("overwrite does not apply to update")
+		return
+	case clr["tags"] && req.Tags != nil, clr["url"] && req.URL != "", clr["notes"] && req.Notes != "", clr["expires"] && req.Expires != nil:
+		bad("a field cannot be both set and cleared")
+		return
+	case len(req.URL) > maxURLBytes:
+		bad(fmt.Sprintf("url too long (max %d bytes)", maxURLBytes))
+		return
+	case len(req.Notes) > maxNotesBytes:
+		bad(fmt.Sprintf("notes too long (max %d bytes)", maxNotesBytes))
+		return
+	case req.MinTier != nil && !req.MinTier.Valid():
+		bad("invalid min_tier")
+		return
+	case req.Expires != nil && !req.Expires.After(b.now()):
+		bad("expires must be in the future")
+		return
+	}
+	switch {
+	case clr["tags"]:
+		patch.Tags = &[]string{}
+	case req.Tags != nil:
+		patch.Tags = &req.Tags
+	}
+	switch {
+	case clr["url"]:
+		patch.URL = new(string)
+	case req.URL != "":
+		patch.URL = &req.URL
+	}
+	switch {
+	case clr["notes"]:
+		patch.Notes = new(string)
+	case req.Notes != "":
+		patch.Notes = &req.Notes
+	}
+	patch.ClearExpires = clr["expires"]
+	patch.ExpiresAt = req.Expires
+	patch.MinTier = req.MinTier
+	if patch.Empty() {
+		bad("nothing to update")
+		return
+	}
+	if err := b.d.Vault.UpdateMeta(ctx, req.Name, patch); err != nil {
+		b.vaultFail(ctx, w, req.Op, err)
+		return
+	}
+	id := b.record(ctx, b.lifecycleEntry(req, "update"))
 	_ = w.Finish(&proto.Response{OK: true, AuditID: id})
 }
 

@@ -254,7 +254,7 @@ func TestDaemonRefusesUnusableVault(t *testing.T) {
 func TestNotRunningExitCode(t *testing.T) {
 	t.Setenv("GRANTD_SOCKET", shortSocket(t))
 	for _, args := range [][]string{
-		{"list"}, {"masked", "A"}, {"delete", "A"}, {"grants"}, {"audit"}, {"audit", "verify"},
+		{"list"}, {"masked", "A"}, {"delete", "A"}, {"update", "A", "--notes", "x"}, {"grants"}, {"audit"}, {"audit", "verify"},
 		{"run", "--secrets", "A", "--", "true"}, {"set", "A"}, {"import", "-"}, {"status"},
 	} {
 		_, _, err := cli(t, "A=bbbbbbbbbbbb\n", args...)

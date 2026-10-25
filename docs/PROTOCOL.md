@@ -28,20 +28,21 @@ Every field except `v` and `op` is optional on the wire (`omitempty`); which are
 | Field | Type | Used by | Meaning |
 |---|---|---|---|
 | `v` | int | all | Protocol version; must be `1`. |
-| `op` | string | all | `run`, `list`, `exists`, `masked`, `set`, `delete`, `show`, `grants`, `audit`, `status`. |
+| `op` | string | all | `run`, `list`, `exists`, `masked`, `set`, `delete`, `update`, `show`, `grants`, `audit`, `status`. |
 | `caller` | string | all | Informational, **untrusted** label (`claude-code`, `cli`, ...). Used in the dialog, in grant matching and in the audit log. At most 64 bytes with no control or non-printing characters; otherwise `run` and `show` are rejected (`bad_request`). Defaults to `cli`. |
 | `cwd` | string | run, show | Absolute path. For `run` it must exist and be a directory; the daemon resolves symlinks and uses the real path. For `show` it is only displayed. |
 | `argv` | string[] | run | The command and arguments, executed directly (no shell). Non-empty, `argv[0]` non-empty, at most 4096 elements. |
 | `secrets` | string[] | run | Secret names or doublestar globs (`aws/*`, `aws/**`). Non-empty, no empty entries, at most 256. |
 | `env_prefix` | string | run | Prepended verbatim to each injected variable name. |
 | `timeout_s` | int | run, all | Command budget in seconds. `0` or absent: the daemon's cap, 1 hour. Larger values are capped at 1 hour. Negative: `bad_request`. It bounds the command only. The connection deadline is this budget **plus 10 minutes** for the human to answer the prompt. |
-| `name` | string | exists, masked, set, delete, show | Secret name: `[A-Za-z0-9_/.-]+`, at most 256 bytes, no empty segments, no `..`, no leading or trailing `/`. |
+| `name` | string | exists, masked, set, delete, update, show | Secret name: `[A-Za-z0-9_/.-]+`, at most 256 bytes, no empty segments, no `..`, no leading or trailing `/`. |
 | `value` | string | set | The secret. The only request field that carries a secret. Non-empty, at most 1 MiB. |
-| `tags` | string[] | set | Tags (`[A-Za-z0-9_.:-]`, at most 64 characters each, at most 32). |
-| `url`, `notes` | string | set | Free-form metadata, stored unencrypted. |
-| `expires` | RFC 3339 time | set | Absolute expiry; must be in the future. (The CLI converts `30d`.) |
-| `min_tier` | `"none"`, `"dialog"`, `"hardware"` | set | Minimum presence tier. Absent or `"none"`: the vault default. |
+| `tags` | string[] | set, update | Tags (`[A-Za-z0-9_.:-]`, at most 64 characters each, at most 32). |
+| `url`, `notes` | string | set, update | Free-form metadata, stored unencrypted. |
+| `expires` | RFC 3339 time | set, update | Absolute expiry; must be in the future. (The CLI converts `30d`.) |
+| `min_tier` | `"none"`, `"dialog"`, `"hardware"` | set, update | Minimum presence tier. Absent: `set` uses the vault default, `update` leaves it as it is. `"none"`: the vault default. |
 | `overwrite` | bool | set | Replace an existing secret. |
+| `clear` | string[] | update | Fields to reset: any of `tags`, `url`, `notes`, `expires`. Needed because an empty value cannot be told from an absent one on the wire. |
 | `tag` | string | list | Only secrets with this tag. |
 | `expiring_within_s` | int | list | Only secrets that expire within this many seconds (already-expired ones included). |
 | `action` | string | grants, audit | grants: `list` (default), `add`, `revoke`, `revoke_all`. audit: `list` (default), `verify`, `export`. Anything else: `bad_request`. |
@@ -164,6 +165,19 @@ Request fields: `name`, `value`, optionally `tags`, `url`, `notes`, `expires`, `
 ### `delete`
 
 `{"v":1,"op":"delete","name":"tmp/x"}` gives `{"ok":true,"audit_id":"11"}` or `not_found` / `secret_not_found`. Not presence-gated.
+
+### `update`
+
+Changes the metadata of an existing secret without touching its value. Request fields: `name`, and any subset of `tags`, `url`, `notes`, `expires`, `min_tier`, plus `clear` to reset `tags`, `url`, `notes` or `expires`. A field that is absent (and not named in `clear`) is left as it is; `tags` replaces the whole list. There is no `value` (sending one is `bad_request`; use `set` with `overwrite`) and `overwrite` does not apply. At least one field must change, and a field cannot be both set and cleared. Validation is the same as for `set`: bad name, a `url` or `notes` over 2 KiB, an invalid tag or tier, a past `expires`, all `bad_request`; a missing name is `not_found` / `secret_not_found`. An expired secret can be updated (that is how its expiry is extended). `updated_at` changes, `created_at` does not.
+
+Changing `min_tier` re-encrypts the stored value under the new tier (the tier is bound into the ciphertext's authenticated data), in the same transaction as the metadata change; the value is never sent or logged. `"none"` means the vault default, as in `set`. Not presence-gated, the same class as `set` and `delete`. Audited as `allowed_once` with reason `update` and `argv` `["grantd","update",<name>]`. Not exposed over MCP. Success: `{"ok":true,"audit_id":"12"}`.
+
+```
+>> {"v":1,"op":"update","name":"tmp/x","tags":["a","b"],"clear":["notes"],"min_tier":"dialog"}
+<< {"ok":true,"audit_id":"12"}
+>> {"v":1,"op":"update","name":"tmp/x"}
+<< {"ok":false,"error":"bad_request","reason":"bad_request","message":"nothing to update"}
+```
 
 ### `show`
 

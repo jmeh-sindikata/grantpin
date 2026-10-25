@@ -84,12 +84,12 @@ func validatePattern(p string) error {
 
 func validateTag(t string) error {
 	if t == "" || len(t) > maxTagLen {
-		return fmt.Errorf("vault: invalid tag (length)")
+		return fmt.Errorf("%w (length)", ErrInvalidTag)
 	}
 	for i := 0; i < len(t); i++ {
 		c := t[i]
 		if !(nameChar(c) && c != '/' || c == ':') {
-			return fmt.Errorf("vault: invalid tag (characters must be A-Z a-z 0-9 _ . - :)")
+			return fmt.Errorf("%w (characters must be A-Z a-z 0-9 _ . - :)", ErrInvalidTag)
 		}
 	}
 	return nil

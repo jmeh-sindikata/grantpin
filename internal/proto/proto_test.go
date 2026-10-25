@@ -191,3 +191,25 @@ func TestReaderEdgeCases(t *testing.T) {
 		t.Fatal("expected oversize read error")
 	}
 }
+
+func TestUpdateRequestWire(t *testing.T) {
+	exp := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	tier := presence.TierDialog
+	in := Request{V: Version, Op: OpUpdate, Caller: "grantd-app", Name: "aws/key",
+		Tags: []string{"a"}, URL: "https://x", Notes: "n", Expires: &exp, MinTier: &tier, Clear: []string{"notes"}}
+	var buf bytes.Buffer
+	if err := Write(&buf, in); err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"v":1,"op":"update","caller":"grantd-app","name":"aws/key","tags":["a"],"url":"https://x","notes":"n","expires":"2026-11-01T12:00:00Z","min_tier":"dialog","clear":["notes"]}` + "\n"
+	if buf.String() != want {
+		t.Errorf("wire form\n got %s want %s", buf.String(), want)
+	}
+	out, err := NewReader(&buf).ReadRequest()
+	if err != nil || !reflect.DeepEqual(*out, in) {
+		t.Fatalf("round trip: %+v, %v", out, err)
+	}
+	if err := out.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}

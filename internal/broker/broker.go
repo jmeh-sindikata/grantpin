@@ -104,7 +104,7 @@ func New(d Deps) (*Broker, error) {
 // Ops lists the ops the broker serves (everything but status).
 var Ops = []string{
 	proto.OpRun, proto.OpList, proto.OpExists, proto.OpMasked, proto.OpSet,
-	proto.OpDelete, proto.OpShow, proto.OpGrants, proto.OpAudit,
+	proto.OpDelete, proto.OpUpdate, proto.OpShow, proto.OpGrants, proto.OpAudit,
 }
 
 // Register installs the broker's handlers on r.
@@ -130,6 +130,8 @@ func (b *Broker) Handle(ctx context.Context, req *proto.Request, w daemon.Respon
 		b.handleSet(ctx, req, w)
 	case proto.OpDelete:
 		b.handleDelete(ctx, req, w)
+	case proto.OpUpdate:
+		b.handleUpdate(ctx, req, w)
 	case proto.OpShow:
 		b.handleShow(ctx, req, w)
 	case proto.OpGrants:

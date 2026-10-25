@@ -886,3 +886,184 @@ func TestCheckNamesAndResolveNames(t *testing.T) {
 		t.Fatalf("expired must return nothing: %v %v", got, err)
 	}
 }
+
+func strp(s string) *string { return &s }
+
+func TestUpdateMetaKeepsValueAndCiphertext(t *testing.T) {
+	v, _, _ := newVault(t)
+	exp := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Millisecond)
+	if err := v.Set(ctx, Meta{Name: "k", Tags: []string{"a"}, URL: "u", Notes: "n", ExpiresAt: &exp, MinTier: presence.TierHardware}, []byte("a-secret-value-1234"), false); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := v.Get(ctx, "k")
+	var ct1, n1 []byte
+	_ = v.db.QueryRow(`SELECT ciphertext, nonce FROM secrets WHERE name='k'`).Scan(&ct1, &n1)
+
+	tags := []string{"z", "b", "z"}
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{Tags: &tags, URL: strp("https://new"), Notes: strp("")}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := v.Get(ctx, "k")
+	if strings.Join(got.Tags, ",") != "b,z" || got.URL != "https://new" || got.Notes != "" {
+		t.Errorf("meta = %+v", got)
+	}
+	if got.ExpiresAt == nil || !got.ExpiresAt.Equal(exp) || got.MinTier != presence.TierHardware {
+		t.Errorf("untouched fields changed: %+v", got)
+	}
+	if !got.CreatedAt.Equal(before.CreatedAt) || got.UpdatedAt.Before(before.UpdatedAt) {
+		t.Errorf("timestamps: before %+v after %+v", before, got)
+	}
+	var ct2, n2 []byte
+	_ = v.db.QueryRow(`SELECT ciphertext, nonce FROM secrets WHERE name='k'`).Scan(&ct2, &n2)
+	if !bytes.Equal(ct1, ct2) || !bytes.Equal(n1, n2) {
+		t.Error("metadata-only update re-encrypted the value")
+	}
+	if m, err := v.Masked(ctx, "k"); err != nil || m != "****1234" {
+		t.Errorf("masked = %q, %v", m, err)
+	}
+
+	// clear the expiry; set a new one
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{ClearExpires: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := v.Get(ctx, "k"); got.ExpiresAt != nil {
+		t.Errorf("expiry not cleared: %v", got.ExpiresAt)
+	}
+	later := time.Now().Add(72 * time.Hour).UTC().Truncate(time.Millisecond)
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{ExpiresAt: &later}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := v.Get(ctx, "k"); got.ExpiresAt == nil || !got.ExpiresAt.Equal(later) {
+		t.Errorf("expiry = %v", got.ExpiresAt)
+	}
+	// clear tags
+	empty := []string{}
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{Tags: &empty}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := v.Get(ctx, "k"); got.Tags == nil || len(got.Tags) != 0 {
+		t.Errorf("tags = %#v", got.Tags)
+	}
+}
+
+func TestUpdateMetaTierChangeReencrypts(t *testing.T) {
+	v, _, _ := newVault(t)
+	if err := v.Set(ctx, Meta{Name: "k", MinTier: presence.TierHardware}, []byte("a-secret-value-WXYZ"), false); err != nil {
+		t.Fatal(err)
+	}
+	var ct1, n1 []byte
+	_ = v.db.QueryRow(`SELECT ciphertext, nonce FROM secrets WHERE name='k'`).Scan(&ct1, &n1)
+
+	// same tier: nothing re-encrypted
+	hw := presence.TierHardware
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{MinTier: &hw}); err != nil {
+		t.Fatal(err)
+	}
+	var ct2, n2 []byte
+	_ = v.db.QueryRow(`SELECT ciphertext, nonce FROM secrets WHERE name='k'`).Scan(&ct2, &n2)
+	if !bytes.Equal(ct1, ct2) || !bytes.Equal(n1, n2) {
+		t.Error("unchanged tier re-encrypted")
+	}
+
+	dialog := presence.TierDialog
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{MinTier: &dialog, Notes: strp("lowered")}); err != nil {
+		t.Fatal(err)
+	}
+	var ct3, n3 []byte
+	_ = v.db.QueryRow(`SELECT ciphertext, nonce FROM secrets WHERE name='k'`).Scan(&ct3, &n3)
+	if bytes.Equal(ct1, ct3) || bytes.Equal(n1, n3) {
+		t.Error("tier change did not re-encrypt under a fresh nonce")
+	}
+	if tier, err := minTierFor(v, []string{"k"}); err != nil || tier != presence.TierDialog {
+		t.Fatalf("tier = %v, %v", tier, err)
+	}
+	got, _ := v.Get(ctx, "k")
+	if got.MinTier != presence.TierDialog || got.Notes != "lowered" {
+		t.Errorf("meta = %+v", got)
+	}
+	// the value survives and still decrypts under the new tier
+	if m, err := v.Masked(ctx, "k"); err != nil || m != "****WXYZ" {
+		t.Errorf("masked = %q, %v", m, err)
+	}
+	vals, err := v.Resolve(ctx, []string{"k"})
+	if err != nil || string(vals["k"]) != "a-secret-value-WXYZ" {
+		t.Errorf("resolve = %q, %v", vals["k"], err)
+	}
+	// raising it again works too
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{MinTier: &hw}); err != nil {
+		t.Fatal(err)
+	}
+	if tier, err := minTierFor(v, []string{"k"}); err != nil || tier != presence.TierHardware {
+		t.Fatalf("tier = %v, %v", tier, err)
+	}
+	if m, err := v.Masked(ctx, "k"); err != nil || m != "****WXYZ" {
+		t.Errorf("masked after raise = %q, %v", m, err)
+	}
+}
+
+func TestUpdateMetaTierNoneMeansVaultDefault(t *testing.T) {
+	v, _, _ := newVault(t, WithDefaultMinTier(presence.TierDialog))
+	_ = v.Set(ctx, Meta{Name: "k", MinTier: presence.TierHardware}, []byte("a-secret-value"), false)
+	none := presence.TierNone
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{MinTier: &none}); err != nil {
+		t.Fatal(err)
+	}
+	if tier, err := minTierFor(v, []string{"k"}); err != nil || tier != presence.TierDialog {
+		t.Fatalf("tier = %v, %v", tier, err)
+	}
+}
+
+func TestUpdateMetaErrors(t *testing.T) {
+	v, _, _ := newVault(t)
+	_ = v.Set(ctx, Meta{Name: "k", Tags: []string{"keep"}, MinTier: presence.TierHardware}, []byte("a-secret-value"), false)
+	hw := presence.TierDialog
+	if err := v.UpdateMeta(ctx, "nope", MetaPatch{MinTier: &hw}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("missing name: %v", err)
+	}
+	if err := v.UpdateMeta(ctx, "a//b", MetaPatch{URL: strp("x")}); !errors.Is(err, ErrInvalidName) {
+		t.Errorf("bad name: %v", err)
+	}
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{}); err == nil {
+		t.Error("empty patch accepted")
+	}
+	exp := time.Now().Add(time.Hour)
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{ExpiresAt: &exp, ClearExpires: true}); err == nil {
+		t.Error("set+clear expiry accepted")
+	}
+	badTier := presence.PresenceTier(9)
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{MinTier: &badTier}); err == nil {
+		t.Error("invalid tier accepted")
+	}
+	badTags := []string{"bad tag"}
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{Tags: &badTags}); err == nil {
+		t.Error("invalid tag accepted")
+	}
+	// a failed update changes nothing, including the tier of a tampered row
+	if got, _ := v.Get(ctx, "k"); strings.Join(got.Tags, ",") != "keep" || got.MinTier != presence.TierHardware {
+		t.Errorf("failed updates changed the secret: %+v", got)
+	}
+	if _, err := v.db.Exec(`UPDATE secrets SET min_tier = ? WHERE name = 'k'`, int(presence.TierNone)); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{MinTier: &hw}); !errors.Is(err, ErrDecrypt) {
+		t.Errorf("tampered tier: %v", err)
+	}
+	if got, _ := v.Get(ctx, "k"); got.MinTier != presence.TierNone {
+		t.Errorf("failed re-encrypt was not rolled back: %+v", got)
+	}
+}
+
+func TestUpdateMetaExpiredSecretCanBeFixed(t *testing.T) {
+	now := time.Now()
+	v, _, _ := newVault(t, WithClock(func() time.Time { return now }))
+	exp := now.Add(time.Hour)
+	_ = v.Set(ctx, Meta{Name: "k", ExpiresAt: &exp, MinTier: presence.TierHardware}, []byte("a-secret-value"), false)
+	now = now.Add(2 * time.Hour)
+	later := now.Add(24 * time.Hour)
+	if err := v.UpdateMeta(ctx, "k", MetaPatch{ExpiresAt: &later}); err != nil {
+		t.Fatalf("update of an expired secret: %v", err)
+	}
+	if _, err := v.Resolve(ctx, []string{"k"}); err != nil {
+		t.Errorf("resolve after extending: %v", err)
+	}
+}

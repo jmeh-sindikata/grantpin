@@ -41,7 +41,7 @@ The full analysis is in [THREAT-MODEL.md](THREAT-MODEL.md). The short version:
 - **Code that already runs as you with full control of your account.** Presence is enforced by the daemon's logic, not by cryptography on the key. Forged grant rows are rejected, but a process running as you can still delete the vault, replace the `grantd` binary or the launchd plist, write `.grantd.yml` files, replay a previously captured genuine grant row within its lifetime, or (with the Keychain fallback) read the key. grantd is a defence for the agent-with-a-shell case where you are watching prompts, not for an attacker who owns your user account.
 - **Redaction misses.** Redaction is exact byte match of the injected value. Base64, hex, URL-encoding, substrings, hashes and reversed output pass through unchanged.
 - **A compromised account or a fallback key store.** With a vault created by `grantd init --keychain-fallback` the vault key is readable by anything running as you. With the Secure Enclave key there is no per-use Touch ID on the key (by design); see the threat model for what that means.
-- **Secrets set, overwritten or deleted by the agent.** `set`, `delete` and overwrite are not presence-gated. A same-user process can destroy or replace a secret (a denial-of-service and integrity risk, not a disclosure).
+- **Secrets set, overwritten, deleted or edited by the agent.** `set`, `delete`, overwrite and `update` are not presence-gated. A same-user process can destroy or replace a secret, or change its expiry or minimum protection level (a denial-of-service and integrity risk, not a disclosure).
 
 The one real security boundary is **human presence at release time**: the dialog that shows the exact command, and the Touch ID prompt behind it. Everything else is defence in depth.
 
@@ -352,6 +352,31 @@ Usage:
 Flags:
   -h, --help            help for delete
       --socket string   socket path (default: $GRANTD_SOCKET or the platform default)
+```
+
+### `grantd update`
+
+Changes a secret's metadata without touching its value: any subset of `--tags`, `--url`, `--notes`, `--expires` and `--min-tier`. Fields you leave out stay as they are. An empty `--tags ""`, `--url ""` or `--notes ""` clears that field and `--clear-expires` removes the expiry. `--expires 30d` is counted from now. Changing `--min-tier` re-encrypts the stored value (the protection level is part of its authenticated data). `none` means the vault default. Fails with `secret_not_found` if the name is absent. **Not presence-gated**, audited as `allowed_once` with reason `update`.
+
+```
+Change the tags, URL, notes, expiry or minimum presence tier of an existing secret. The value is never read or sent. Give any subset of the flags; fields you leave out stay as they are. An empty --tags, --url or --notes clears that field, and --clear-expires removes the expiry. Changing --min-tier re-encrypts the stored value.
+
+Usage:
+  grantd update NAME [flags]
+
+Examples:
+  grantd update API_KEY --tags prod,billing --expires 90d
+  grantd update API_KEY --url "" --clear-expires
+
+Flags:
+      --clear-expires     remove the expiry
+      --expires string    new expiry from now, e.g. 30d
+  -h, --help              help for update
+      --min-tier string   minimum presence tier: none, dialog, hardware (none means the vault default); re-encrypts the value
+      --notes string      replace the notes (empty clears them)
+      --socket string     socket path (default: $GRANTD_SOCKET or the platform default)
+      --tags strings      replace the tags (comma-separated; empty clears them)
+      --url string        replace the URL (empty clears it)
 ```
 
 ### `grantd show`
@@ -706,7 +731,7 @@ Flags:
 | `secret_masked` | `name` | `{masked}`: `****WXYZ` (last four characters) for values of 12 or more characters, `********` otherwise. |
 | `secret_run` | `argv[]`, `secrets[]` (both required), `cwd?` (absolute), `timeout_s?` | `{exit_code, stdout, stderr, grant_id}` |
 
-There is deliberately no tool that returns a value, and no `show`, `set`, `delete` or `grants` over MCP. `TestSourceNeverReferencesShow` fails if the `internal/mcp` package ever mentions the `show` op. (This is a property of the shim, not of the daemon: anything that can reach the socket can send a `show` request, which still needs your approval. See the threat model.)
+There is deliberately no tool that returns a value, and no `show`, `set`, `delete`, `update` or `grants` over MCP. `TestSourceNeverReferencesShow` fails if the `internal/mcp` package ever mentions the `show` op. (This is a property of the shim, not of the daemon: anything that can reach the socket can send a `show` request, which still needs your approval. See the threat model.)
 
 - **Errors.** A daemon refusal (`denied`, `refused`, `not_found`, ...) comes back as an MCP tool error (`isError: true`) with text such as `denied: user_denied`, never as a protocol error.
 - **Output.** `stdout` and `stderr` are already redacted by the daemon and are each capped at 1 MiB with a truncation marker.
@@ -861,7 +886,7 @@ Every decision is appended to an audit table in the vault database: time, caller
 1. the allow decision (`allowed_once`, `allowed_new_grant` or `allowed_grant`) with reason `released`, written after the secrets are decrypted in the daemon and **before the command is spawned**. If this row cannot be written, nothing is started. Both rows have any injected value scrubbed from `argv`, so a caller that puts a value on the command line does not leave it in the audit table.
 2. a `completed` row with the exit code, duration and the same grant ID, written when the command ends. Its reason is empty for a normal exit, or `timeout`, `canceled`, `command not found`, `cannot execute command`, or `not started: ...` (the process could not be started; no exit code).
 
-A `released` row with no `completed` row after it means the daemon died mid-run. Refusals, denials and failures before the release (an unknown secret, an expired secret, a failed decryption) are one row each (`denied_user`, `refused_policy`, `refused_tier`, `error`). `set`, `delete` and `show` are recorded too, as `allowed_once` with the verb as the reason.
+A `released` row with no `completed` row after it means the daemon died mid-run. Refusals, denials and failures before the release (an unknown secret, an expired secret, a failed decryption) are one row each (`denied_user`, `refused_policy`, `refused_tier`, `error`). `set`, `delete`, `update` and `show` are recorded too, as `allowed_once` with the verb as the reason.
 
 **Integrity.** Rows are chained: `HMAC_n = HMAC-SHA256(key, canonical(row_n) || HMAC_{n-1})`, with a key derived from the vault key (HKDF, label `audit-hmac`) that the daemon holds. `grantd audit verify` recomputes the whole chain and reports the first bad row. The table has triggers that abort `UPDATE` and `DELETE`. Each row records its encoding version (`enc`): rows written before the expanded names existed are version 1 and still verify; new rows are version 2 (tag `grantd.audit.v2`, expanded names after the secrets). The version tag is inside the HMAC, so relabelling a row fails verification.
 

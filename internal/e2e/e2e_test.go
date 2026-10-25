@@ -837,3 +837,51 @@ func TestStandingKindCannotBeForgedInTheDatabase(t *testing.T) {
 		}
 	}
 }
+
+// update changes metadata over the real socket without the value ever being
+// sent, read or logged, and a min_tier change keeps the secret usable.
+func TestUpdateOverTheWire(t *testing.T) {
+	r := newRig(t)
+	hw := presence.TierHardware
+	r.set("API_KEY", apiKey, func(q *proto.Request) { q.MinTier = &hw; q.Tags = []string{"prod"}; q.Notes = "old" })
+
+	// hardware on a tier-none backend: refused until the tier is lowered
+	wantErr(t, r.run([]string{"API_KEY"}, "true"), proto.ErrRefused, proto.ReasonTierUnmet)
+
+	rep := r.call(&proto.Request{Op: proto.OpUpdate, Caller: "grantd-app", Name: "API_KEY", Tags: []string{"b", "a"}, Notes: "new"})
+	if !rep.resp.OK || rep.resp.AuditID == "" {
+		t.Fatalf("update = %+v", rep.resp)
+	}
+	r.noLeak(rep)
+	var found *proto.SecretInfo
+	for _, s := range result[[]proto.SecretInfo](t, r.call(&proto.Request{Op: proto.OpList})) {
+		if s.Name == "API_KEY" {
+			found = &s
+		}
+	}
+	if found == nil || strings.Join(found.Tags, ",") != "a,b" || found.Notes != "new" || found.MinTier != hw {
+		t.Fatalf("after update: %+v", found)
+	}
+	if a := lastAudit(t, r); a.Decision != audit.DecisionAllowedOnce || a.Reason != "update" || a.Caller != "grantd-app" || strings.Join(a.Argv, " ") != "grantd update API_KEY" {
+		t.Fatalf("audit = %+v", a)
+	}
+
+	none := presence.TierNone
+	if rep := r.call(&proto.Request{Op: proto.OpUpdate, Name: "API_KEY", MinTier: &none}); !rep.resp.OK {
+		t.Fatalf("lower tier: %+v", rep.resp)
+	}
+	run := r.run([]string{"API_KEY"}, "sh", "-c", `printf %s "$API_KEY"`)
+	if !run.resp.OK || run.stdout != "[REDACTED:API_KEY]" {
+		t.Fatalf("run after tier change: %+v stdout=%q", run.resp, run.stdout)
+	}
+	if r.asked() != 1 {
+		t.Fatalf("update must not prompt; approver asked %d times (want 1, for the run)", r.asked())
+	}
+
+	wantErr(t, r.call(&proto.Request{Op: proto.OpUpdate, Name: "NOPE", Notes: "x"}), proto.ErrNotFound, proto.ReasonSecretNotFound)
+	wantErr(t, r.call(&proto.Request{Op: proto.OpUpdate, Name: "API_KEY"}), proto.ErrBadRequest, proto.ReasonBadRequest)
+
+	if v := result[proto.AuditVerifyResult](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionVerify})); !v.OK {
+		t.Fatalf("audit chain broken after update: %+v", v)
+	}
+}

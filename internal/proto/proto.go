@@ -19,6 +19,7 @@ const (
 	OpMasked = "masked" // last 4 chars only (fully masked if shorter than 12)
 	OpSet    = "set"    // store Value under Name (the human putting a secret in)
 	OpDelete = "delete" // remove secret Name
+	OpUpdate = "update" // change metadata of secret Name without touching its value
 	OpShow   = "show"   // TTY-only, presence-gated; NEVER reachable via MCP
 	OpGrants = "grants" // Action: list | add | revoke | revoke_all
 	OpAudit  = "audit"  // Action: list | verify | export
@@ -27,7 +28,7 @@ const (
 
 // Ops lists every valid op name.
 var Ops = []string{
-	OpRun, OpList, OpExists, OpMasked, OpSet, OpDelete, OpShow, OpGrants, OpAudit, OpStatus,
+	OpRun, OpList, OpExists, OpMasked, OpSet, OpDelete, OpUpdate, OpShow, OpGrants, OpAudit, OpStatus,
 }
 
 // Sub-actions (Request.Action) for OpGrants and OpAudit.
@@ -110,6 +111,13 @@ type Request struct {
 	Expires   *time.Time             `json:"expires,omitempty"`   // absolute; CLI converts "30d"
 	MinTier   *presence.PresenceTier `json:"min_tier,omitempty"`  // nil = vault default for platform
 	Overwrite bool                   `json:"overwrite,omitempty"` // set: replace an existing Name
+
+	// update: Name plus any subset of Tags, URL, Notes, Expires and MinTier
+	// (the set fields above, with their omitempty rules: an absent field is
+	// left unchanged). Clear names the fields to reset to empty/never, since
+	// an empty value cannot be told from an absent one on the wire: any of
+	// "tags", "url", "notes", "expires". Value and Overwrite are not used.
+	Clear []string `json:"clear,omitempty"`
 
 	// list
 	Tag             string `json:"tag,omitempty"`               // filter by tag

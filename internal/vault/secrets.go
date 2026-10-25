@@ -42,7 +42,7 @@ type execer interface {
 
 func normalizeTags(tags []string) ([]string, error) {
 	if len(tags) > maxTags {
-		return nil, fmt.Errorf("vault: too many tags (max %d)", maxTags)
+		return nil, fmt.Errorf("%w: too many (max %d)", ErrInvalidTag, maxTags)
 	}
 	seen := make(map[string]struct{}, len(tags))
 	out := make([]string, 0, len(tags))
@@ -144,6 +144,135 @@ ON CONFLICT(name) DO UPDATE SET
 		m.Name, ct, nonce, string(tagsJSON), m.URL, m.Notes, exp, int(tier), now, now)
 	if err != nil {
 		return fmt.Errorf("vault: write secret: %w", err)
+	}
+	return nil
+}
+
+// MetaPatch is a partial metadata change for UpdateMeta. A nil pointer leaves
+// the field as it is; the value is never part of a patch.
+type MetaPatch struct {
+	// Tags replaces the tags (validated and de-duplicated like Set); a pointer
+	// to an empty slice clears them.
+	Tags *[]string
+	// URL and Notes replace the field; a pointer to "" clears it.
+	URL   *string
+	Notes *string
+	// ExpiresAt sets a new expiry; ClearExpires removes it. Not both.
+	ExpiresAt    *time.Time
+	ClearExpires bool
+	// MinTier changes the minimum presence tier. As in Set, TierNone means the
+	// vault default. A change re-encrypts the value (the tier is bound into the
+	// ciphertext's additional data), in the same transaction.
+	MinTier *presence.PresenceTier
+}
+
+// Empty reports whether the patch changes nothing.
+func (p MetaPatch) Empty() bool {
+	return p.Tags == nil && p.URL == nil && p.Notes == nil && p.ExpiresAt == nil && !p.ClearExpires && p.MinTier == nil
+}
+
+// UpdateMeta applies patch to the secret name without changing its value, and
+// bumps updated_at (created_at is kept). It returns ErrNotFound if the name is
+// absent. If the patch changes the effective min tier, the value is decrypted
+// under the old tier and sealed again under the new one with a fresh nonce,
+// all in one transaction; the plaintext is zeroed before returning. An expired
+// secret can be updated (it is how its expiry is fixed).
+func (v *Vault) UpdateMeta(ctx context.Context, name string, p MetaPatch) error {
+	unlock, err := v.rlock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := ValidateName(name); err != nil {
+		return err
+	}
+	if p.Empty() {
+		return errors.New("vault: empty metadata patch")
+	}
+	if p.ExpiresAt != nil && p.ClearExpires {
+		return errors.New("vault: expiry both set and cleared")
+	}
+	var newTier presence.PresenceTier
+	if p.MinTier != nil {
+		newTier = *p.MinTier
+		if newTier == presence.TierNone {
+			newTier = v.cfg.defaultMinTier
+		}
+		if !newTier.Valid() {
+			return fmt.Errorf("vault: invalid min tier %d", int(newTier))
+		}
+	}
+
+	tx, err := v.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("vault: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var (
+		ct, nonce []byte
+		tagsJSON  string
+		url, note string
+		exp       sql.NullInt64
+		oldTier   int
+	)
+	err = tx.QueryRowContext(ctx,
+		`SELECT ciphertext, nonce, tags, url, notes, expires_at, min_tier FROM secrets WHERE name = ?`, name).
+		Scan(&ct, &nonce, &tagsJSON, &url, &note, &exp, &oldTier)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: %s", ErrNotFound, name)
+	}
+	if err != nil {
+		return fmt.Errorf("vault: read secret: %w", err)
+	}
+
+	if p.Tags != nil {
+		tags, err := normalizeTags(*p.Tags)
+		if err != nil {
+			return err
+		}
+		b, err := json.Marshal(tags)
+		if err != nil {
+			return errors.New("vault: encode tags")
+		}
+		tagsJSON = string(b)
+	}
+	if p.URL != nil {
+		url = *p.URL
+	}
+	if p.Notes != nil {
+		note = *p.Notes
+	}
+	switch {
+	case p.ClearExpires:
+		exp = sql.NullInt64{}
+	case p.ExpiresAt != nil:
+		exp = sql.NullInt64{Int64: ms(*p.ExpiresAt), Valid: true}
+	}
+	tier := presence.PresenceTier(oldTier)
+	if p.MinTier != nil && newTier != tier {
+		pt, err := open(v.key, name, tier, ct, nonce)
+		if err != nil {
+			return fmt.Errorf("%w: %s", err, name)
+		}
+		ct, nonce, err = seal(v.key, name, newTier, pt)
+		zero(pt)
+		if err != nil {
+			return err
+		}
+		tier = newTier
+	}
+	var expArg any
+	if exp.Valid {
+		expArg = exp.Int64
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE secrets SET ciphertext = ?, nonce = ?, tags = ?, url = ?, notes = ?, expires_at = ?, min_tier = ?, updated_at = ?
+WHERE name = ?`, ct, nonce, tagsJSON, url, note, expArg, int(tier), ms(v.cfg.now()), name); err != nil {
+		return fmt.Errorf("vault: update secret: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("vault: commit: %w", err)
 	}
 	return nil
 }

@@ -37,7 +37,7 @@ func TestRegister(t *testing.T) {
 	r := daemon.NewRouter()
 	e.b.Register(r)
 	got := strings.Join(r.Ops(), ",")
-	want := "audit,delete,exists,grants,list,masked,run,set,show"
+	want := "audit,delete,exists,grants,list,masked,run,set,show,update"
 	if got != want {
 		t.Errorf("ops = %s, want %s", got, want)
 	}
@@ -117,6 +117,7 @@ func TestSetValidation(t *testing.T) {
 		"long url":     {Op: proto.OpSet, Name: "X", Value: "value-1234", URL: strings.Repeat("u", maxURLBytes+1)},
 		"long notes":   {Op: proto.OpSet, Name: "X", Value: "value-1234", Notes: strings.Repeat("n", maxNotesBytes+1)},
 		"bad tier":     {Op: proto.OpSet, Name: "X", Value: "value-1234", MinTier: &bad},
+		"bad tag":      {Op: proto.OpSet, Name: "X", Value: "value-1234", Tags: []string{"no spaces"}},
 		"past expires": {Op: proto.OpSet, Name: "X", Value: "value-1234", Expires: &past},
 		"exists name":  {Op: proto.OpExists, Name: "../x"},
 		"masked name":  {Op: proto.OpMasked, Name: ""},
@@ -351,6 +352,7 @@ func TestInternalErrorsAreGeneric(t *testing.T) {
 		{Op: proto.OpMasked, Name: "API_KEY"},
 		{Op: proto.OpSet, Name: "X", Value: "value-1234"},
 		{Op: proto.OpDelete, Name: "API_KEY"},
+		{Op: proto.OpUpdate, Name: "API_KEY", Notes: "x"},
 		showReq(e),
 		{Op: proto.OpGrants, Action: proto.ActionList},
 		{Op: proto.OpGrants, Action: proto.ActionRevoke, GrantID: "x"},
@@ -458,4 +460,137 @@ func TestAuditExportLimitIsOnTheEncodedLength(t *testing.T) {
 	e2 := newEnv(t)
 	e2.bigRows(4, strings.Repeat("r", 1<<20+256<<10))
 	wantFail(t, e2.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionExport}), proto.ErrFailed, proto.ReasonResponseTooLarge)
+}
+
+func listInfo(t *testing.T, e *env, name string) proto.SecretInfo {
+	t.Helper()
+	for _, s := range decode[[]proto.SecretInfo](t, e.do(&proto.Request{Op: proto.OpList})) {
+		if s.Name == name {
+			return s
+		}
+	}
+	t.Fatalf("%s not listed", name)
+	return proto.SecretInfo{}
+}
+
+func TestUpdateChangesMetadataNotTheValue(t *testing.T) {
+	e := newEnv(t)
+	exp := time.Now().Add(48 * time.Hour)
+	wantOK(t, e.do(&proto.Request{Op: proto.OpSet, Name: "aws/key", Value: "AKIA-0123456789-WXYZ",
+		Tags: []string{"prod"}, URL: "https://x", Notes: "n", Expires: &exp}))
+	before := listInfo(t, e, "aws/key")
+
+	// any subset: only tags
+	w := e.do(&proto.Request{Op: proto.OpUpdate, Name: "aws/key", Tags: []string{"b", "a", "b"}})
+	wantOK(t, w)
+	if a := e.lastAudit(); a.Decision != audit.DecisionAllowedOnce || a.Reason != "update" || strings.Join(a.Argv, " ") != "grantd update aws/key" || a.ID != w.final.AuditID {
+		t.Errorf("audit = %+v (audit_id %q)", a, w.final.AuditID)
+	}
+	got := listInfo(t, e, "aws/key")
+	if strings.Join(got.Tags, ",") != "a,b" || got.URL != "https://x" || got.Notes != "n" || got.ExpiresAt == nil || !got.ExpiresAt.Equal(*before.ExpiresAt) {
+		t.Errorf("after tags update: %+v", got)
+	}
+	if !got.CreatedAt.Equal(before.CreatedAt) {
+		t.Errorf("created_at changed")
+	}
+	// the value is untouched
+	if m := decode[proto.MaskedResult](t, e.do(&proto.Request{Op: proto.OpMasked, Name: "aws/key"})).Masked; m != "****WXYZ" {
+		t.Errorf("masked = %q", m)
+	}
+
+	// several fields at once, a new expiry
+	later := time.Now().Add(96 * time.Hour)
+	wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "aws/key", URL: "https://y", Notes: "m", Expires: &later}))
+	got = listInfo(t, e, "aws/key")
+	if got.URL != "https://y" || got.Notes != "m" || got.ExpiresAt == nil || got.ExpiresAt.Sub(later).Abs() > time.Second || strings.Join(got.Tags, ",") != "a,b" {
+		t.Errorf("after multi update: %+v", got)
+	}
+
+	// clear fields
+	wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "aws/key", Clear: []string{"expires", "url", "notes", "tags"}}))
+	got = listInfo(t, e, "aws/key")
+	if got.ExpiresAt != nil || got.URL != "" || got.Notes != "" || len(got.Tags) != 0 {
+		t.Errorf("after clear: %+v", got)
+	}
+	if n := len(decode[[]proto.SecretInfo](t, e.do(&proto.Request{Op: proto.OpList, Tag: "a"}))); n != 0 {
+		t.Errorf("tag filter still matches: %d", n)
+	}
+}
+
+func TestUpdateMinTierReencryptsAndKeepsValue(t *testing.T) {
+	e := newEnv(t)
+	hw, dialog := presence.TierHardware, presence.TierDialog
+	wantOK(t, e.do(&proto.Request{Op: proto.OpSet, Name: "k", Value: "value-0123456789-ABCD", MinTier: &hw}))
+	wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "k", MinTier: &dialog}))
+	if got := listInfo(t, e, "k"); got.MinTier != presence.TierDialog {
+		t.Errorf("min_tier = %v", got.MinTier)
+	}
+	if m := decode[proto.MaskedResult](t, e.do(&proto.Request{Op: proto.OpMasked, Name: "k"})).Masked; m != "****ABCD" {
+		t.Errorf("masked after tier change = %q", m)
+	}
+	// the keystore here is tier none, so a hardware secret is refused on use;
+	// lowering it to the vault default (none) re-encrypts and a run releases it
+	// (the tier is bound into the ciphertext, so a stale seal could not decrypt).
+	wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "k", MinTier: &hw}))
+	wantFail(t, e.do(e.run([]string{"k"}, "true")), proto.ErrRefused, proto.ReasonTierUnmet)
+	none := presence.TierNone
+	wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "k", MinTier: &none}))
+	if w := e.do(e.run([]string{"k"}, "true")); w.final == nil || !w.final.OK {
+		t.Errorf("run after lowering the tier: %+v", w.final)
+	}
+}
+
+func TestUpdateValidation(t *testing.T) {
+	e := newEnv(t)
+	past := time.Now().Add(-time.Hour)
+	soon := time.Now().Add(time.Hour)
+	bad := presence.PresenceTier(9)
+	for name, r := range map[string]*proto.Request{
+		"bad name":        {Op: proto.OpUpdate, Name: "a//b", Notes: "x"},
+		"empty name":      {Op: proto.OpUpdate, Name: "", Notes: "x"},
+		"nothing":         {Op: proto.OpUpdate, Name: "API_KEY"},
+		"value":           {Op: proto.OpUpdate, Name: "API_KEY", Value: "new-value-1234"},
+		"overwrite":       {Op: proto.OpUpdate, Name: "API_KEY", Overwrite: true, Notes: "x"},
+		"long url":        {Op: proto.OpUpdate, Name: "API_KEY", URL: strings.Repeat("u", maxURLBytes+1)},
+		"long notes":      {Op: proto.OpUpdate, Name: "API_KEY", Notes: strings.Repeat("n", maxNotesBytes+1)},
+		"bad tier":        {Op: proto.OpUpdate, Name: "API_KEY", MinTier: &bad},
+		"past expires":    {Op: proto.OpUpdate, Name: "API_KEY", Expires: &past},
+		"bad tag":         {Op: proto.OpUpdate, Name: "API_KEY", Tags: []string{"no spaces"}},
+		"unknown clear":   {Op: proto.OpUpdate, Name: "API_KEY", Clear: []string{"value"}},
+		"set and clear":   {Op: proto.OpUpdate, Name: "API_KEY", Expires: &soon, Clear: []string{"expires"}},
+		"tags set+clear":  {Op: proto.OpUpdate, Name: "API_KEY", Tags: []string{"a"}, Clear: []string{"tags"}},
+		"notes set+clear": {Op: proto.OpUpdate, Name: "API_KEY", Notes: "a", Clear: []string{"notes"}},
+		"url set+clear":   {Op: proto.OpUpdate, Name: "API_KEY", URL: "a", Clear: []string{"url"}},
+		"too many tags":   {Op: proto.OpUpdate, Name: "API_KEY", Tags: manyTags(33)},
+	} {
+		w := e.do(r)
+		if w.final == nil || w.final.OK || w.final.Error != proto.ErrBadRequest {
+			t.Errorf("%s: response = %+v", name, w.final)
+		}
+	}
+	// nothing above changed or audited anything
+	if info := listInfo(t, e, "API_KEY"); len(info.Tags) != 0 || info.Notes != "" || info.ExpiresAt != nil {
+		t.Errorf("rejected updates changed the secret: %+v", info)
+	}
+	wantFail(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "nope", Notes: "x"}), proto.ErrNotFound, proto.ReasonSecretNotFound)
+}
+
+func manyTags(n int) []string {
+	out := make([]string, n)
+	for i := range out {
+		out[i] = "t" + strings.Repeat("x", i)
+	}
+	return out
+}
+
+func TestUpdateNeverPromptsOrReturnsTheValue(t *testing.T) {
+	e := newEnv(t)
+	w := e.do(&proto.Request{Op: proto.OpUpdate, Name: "API_KEY", Notes: "rotated"})
+	wantOK(t, w)
+	if e.ap.calls() != 0 {
+		t.Errorf("approver asked %d times", e.ap.calls())
+	}
+	if b, _ := marshalAll(w); strings.Contains(b, e.secret) {
+		t.Error("update response leaked the value")
+	}
 }

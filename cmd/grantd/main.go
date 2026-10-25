@@ -25,6 +25,7 @@ func newRootCmd() *cobra.Command {
 		newListCmd(),
 		newMaskedCmd(),
 		newDeleteCmd(),
+		newUpdateCmd(),
 		newShowCmd(),
 		newRunCmd(),
 		newGrantsCmd(),
