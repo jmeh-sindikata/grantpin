@@ -56,6 +56,22 @@ func TestServiceInstallFlags(t *testing.T) {
 	}
 }
 
+func TestServiceInstallKeychainFallbackFlag(t *testing.T) {
+	m := &fakeMgr{st: service.Status{Label: "l", Installed: true, KeychainFallback: true, ExePath: "/e"}}
+	out, _, err := runService(t, m, nil, "install", "--keychain-fallback")
+	if err != nil || !m.opts.KeychainFallback {
+		t.Fatalf("opts = %+v, err = %v", m.opts, err)
+	}
+	if !strings.Contains(out, "options:   --keychain-fallback") {
+		t.Errorf("status output lacks the flag: %q", out)
+	}
+	m2 := &fakeMgr{st: service.Status{Label: "l", Installed: true, ExePath: "/e"}}
+	out, _, _ = runService(t, m2, nil, "install")
+	if m2.opts.KeychainFallback || strings.Contains(out, "keychain-fallback") {
+		t.Errorf("flag leaked into default install: %+v %q", m2.opts, out)
+	}
+}
+
 func TestServiceStatusExitCodes(t *testing.T) {
 	m := &fakeMgr{}
 	out, code, err := runService(t, m, nil, "status")

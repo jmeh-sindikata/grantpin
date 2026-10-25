@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -103,7 +104,7 @@ func (l *launchd) Install(ctx context.Context, opts Options) error {
 		return fmt.Errorf("service: log directory %q must be absolute", logDir)
 	}
 	outLog, errLog := logPaths(logDir)
-	data, err := renderPlist(plistSpec{Label: Label, Exe: exe, Socket: opts.Socket, OutLog: outLog, ErrLog: errLog})
+	data, err := renderPlist(plistSpec{Label: Label, Exe: exe, Socket: opts.Socket, OutLog: outLog, ErrLog: errLog, KeychainFallback: opts.KeychainFallback})
 	if err != nil {
 		return err
 	}
@@ -197,7 +198,9 @@ func (l *launchd) Status(ctx context.Context) (Status, error) {
 	switch {
 	case err == nil:
 		st.Installed = true
-		if exe, perr := plistExe(data); perr == nil {
+		if args, perr := plistArgs(data); perr == nil {
+			exe := args[0]
+			st.KeychainFallback = slices.Contains(args[1:], keychainFallbackFlag)
 			st.ExePath = exe
 			if _, serr := os.Stat(exe); serr != nil {
 				st.ExeMissing = true
