@@ -10,6 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"grantd/internal/client"
+	"grantd/internal/daemon"
 )
 
 // Result is the outcome of one launchctl invocation.
@@ -44,6 +47,7 @@ type launchd struct {
 	uid       int
 	tempRoots []string
 	sleep     func(time.Duration)
+	ready     ReadyFunc // nil means realReady
 }
 
 func newLaunchd(r Runner) (*launchd, error) {
@@ -51,7 +55,7 @@ func newLaunchd(r Runner) (*launchd, error) {
 	if err != nil {
 		return nil, fmt.Errorf("service: locate home directory: %w", err)
 	}
-	return &launchd{run: r, home: home, uid: os.Getuid(), tempRoots: defaultTempRoots(), sleep: time.Sleep}, nil
+	return &launchd{run: r, home: home, uid: os.Getuid(), tempRoots: defaultTempRoots(), sleep: time.Sleep, ready: realReady}, nil
 }
 
 func (l *launchd) domain() string { return "gui/" + strconv.Itoa(l.uid) }
@@ -147,10 +151,55 @@ func (l *launchd) Install(ctx context.Context, opts Options) error {
 			return fmt.Errorf("service: launchctl bootstrap: %w", err)
 		}
 		if last.ExitCode == 0 {
-			return nil
+			return l.waitReady(ctx, opts, errLog)
 		}
 	}
 	return fmt.Errorf("service: launchctl bootstrap failed (exit %d): %s", last.ExitCode, strings.TrimSpace(last.Output))
+}
+
+// realReady connects to the daemon socket and asks for its status.
+func realReady(ctx context.Context, socket string) error {
+	_, err := client.Status(ctx, socket)
+	return err
+}
+
+// waitReady polls until the daemon socket is connectable. A timeout is
+// reported as ErrNotReady (launchd itself succeeded); a cancelled ctx is
+// returned as is.
+func (l *launchd) waitReady(ctx context.Context, opts Options, errLog string) error {
+	socket := opts.Socket
+	if socket == "" {
+		p, err := daemon.DefaultSocketPath()
+		if err != nil {
+			return fmt.Errorf("%w: %v", ErrNotReady, err)
+		}
+		socket = p
+	}
+	timeout := opts.ReadyTimeout
+	if timeout <= 0 {
+		timeout = DefaultReadyTimeout
+	}
+	ready := l.ready
+	if ready == nil {
+		ready = realReady
+	}
+	wctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var last error
+	for {
+		last = ready(wctx, socket)
+		if last == nil {
+			return nil
+		}
+		select {
+		case <-wctx.Done():
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("%w within %s (socket %s, last error: %v); check %s", ErrNotReady, timeout, socket, last, errLog)
+		case <-time.After(readyPollInterval):
+		}
+	}
 }
 
 // writePlist writes atomically with mode 0644 (launchd rejects plists that

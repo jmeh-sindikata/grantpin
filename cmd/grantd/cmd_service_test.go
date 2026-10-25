@@ -4,27 +4,41 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
+	"grantd/internal/proto"
 	"grantd/internal/service"
 )
 
 type fakeMgr struct {
-	opts      service.Options
-	st        service.Status
-	err       error
-	uninstall bool
+	opts       service.Options
+	st         service.Status
+	err        error
+	installErr error
+	uninstall  bool
 }
 
-func (f *fakeMgr) Install(_ context.Context, o service.Options) error { f.opts = o; return f.err }
-func (f *fakeMgr) Uninstall(context.Context) error                    { f.uninstall = true; return f.err }
-func (f *fakeMgr) Status(context.Context) (service.Status, error)     { return f.st, f.err }
+func (f *fakeMgr) Install(_ context.Context, o service.Options) error {
+	f.opts = o
+	return errors.Join(f.err, f.installErr)
+}
+func (f *fakeMgr) Uninstall(context.Context) error                { f.uninstall = true; return f.err }
+func (f *fakeMgr) Status(context.Context) (service.Status, error) { return f.st, f.err }
+
+var statusErr error
 
 func runService(t *testing.T, m *fakeMgr, mkErr error, args ...string) (string, int, error) {
 	t.Helper()
-	oldNew, oldExit := newServiceManager, serviceExit
-	defer func() { newServiceManager, serviceExit = oldNew, oldExit }()
+	oldNew, oldExit, oldStatus := newServiceManager, serviceExit, daemonStatus
+	defer func() { newServiceManager, serviceExit, daemonStatus = oldNew, oldExit, oldStatus }()
+	daemonStatus = func(_ context.Context, socket string) (*proto.StatusResult, error) {
+		if statusErr != nil {
+			return nil, statusErr
+		}
+		return &proto.StatusResult{PID: 42, Version: "v", Socket: socket}, nil
+	}
 	newServiceManager = func() (service.Manager, error) {
 		if mkErr != nil {
 			return nil, mkErr
@@ -82,5 +96,26 @@ func TestServiceUninstallAndErrors(t *testing.T) {
 		if _, _, err := runService(t, m, service.ErrUnsupported, verb); !errors.Is(err, service.ErrUnsupported) {
 			t.Errorf("%s ctor error: %v", verb, err)
 		}
+	}
+}
+
+func TestServiceInstallDaemonStatusAndWarning(t *testing.T) {
+	m := &fakeMgr{st: service.Status{Label: "l", Installed: true}}
+	out, _, err := runService(t, m, nil, "install", "--socket", "/s.sock")
+	if err != nil || !strings.Contains(out, "daemon:    running (pid 42") {
+		t.Errorf("ready: %q %v", out, err)
+	}
+
+	m = &fakeMgr{st: service.Status{Label: "l", Installed: true}, installErr: fmt.Errorf("%w within 10s; check /logs/daemon.err.log", service.ErrNotReady)}
+	out, _, err = runService(t, m, nil, "install")
+	if err != nil || !strings.Contains(out, "service installed and started") || !strings.Contains(out, "WARNING:") || !strings.Contains(out, "/logs/daemon.err.log") || strings.Contains(out, "daemon:    running") {
+		t.Errorf("not ready: %q %v", out, err)
+	}
+
+	statusErr = errors.New("refused")
+	defer func() { statusErr = nil }()
+	out, _, err = runService(t, &fakeMgr{st: service.Status{Label: "l", Installed: true}}, nil, "install", "--socket", "/s.sock")
+	if err != nil || !strings.Contains(out, "WARNING:   daemon status: refused") {
+		t.Errorf("status err: %q %v", out, err)
 	}
 }

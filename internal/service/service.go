@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Label is the launchd label of the grantd agent.
@@ -37,7 +38,26 @@ type Options struct {
 	// PATH of the process running Install. Only absolute entries are kept.
 	// PATH is the only variable besides GRANTD_SOCKET the service defines.
 	Path string
+	// ReadyTimeout bounds how long Install waits for the daemon socket to
+	// accept connections after launchd started it. Zero means
+	// DefaultReadyTimeout.
+	ReadyTimeout time.Duration
 }
+
+// DefaultReadyTimeout is how long Install waits for the daemon socket.
+const DefaultReadyTimeout = 10 * time.Second
+
+// readyPollInterval is how often Install retries the socket.
+const readyPollInterval = 100 * time.Millisecond
+
+// ErrNotReady is returned (wrapped) by Install when the service was
+// installed and started but the daemon socket did not become connectable
+// within the ReadyTimeout. The launchd part succeeded; callers should warn,
+// not fail.
+var ErrNotReady = errors.New("service installed, but the daemon did not become ready")
+
+// ReadyFunc reports nil once the daemon on socket accepts connections.
+type ReadyFunc func(ctx context.Context, socket string) error
 
 // sanitizePath keeps the absolute, non-empty entries of a PATH value, in
 // order and without duplicates. It returns "" if nothing is left or the value

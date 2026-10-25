@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
+	"grantd/internal/client"
 	"grantd/internal/service"
 )
 
@@ -17,6 +19,7 @@ const exitServiceNotInstalled = 3
 var (
 	newServiceManager = service.New
 	serviceExit       = os.Exit
+	daemonStatus      = client.Status
 )
 
 func newServiceCmd() *cobra.Command {
@@ -36,15 +39,33 @@ func newServiceCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := m.Install(cmd.Context(), opts); err != nil {
-				return err
+			w := cmd.OutOrStdout()
+			notReady := m.Install(cmd.Context(), opts)
+			if notReady != nil && !errors.Is(notReady, service.ErrNotReady) {
+				return notReady
 			}
 			st, err := m.Status(cmd.Context())
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "service installed and started")
+			fmt.Fprintln(w, "service installed and started")
 			printServiceStatus(cmd, st)
+			if notReady != nil {
+				fmt.Fprintf(w, "WARNING:   %v\n", notReady)
+				return nil
+			}
+			socket := opts.Socket
+			if socket == "" {
+				if socket, err = resolveSocket(""); err != nil {
+					return err
+				}
+			}
+			ds, err := daemonStatus(cmd.Context(), socket)
+			if err != nil {
+				fmt.Fprintf(w, "WARNING:   daemon status: %v\n", err)
+				return nil
+			}
+			fmt.Fprintf(w, "daemon:    running (pid %d, version %s)\n", ds.PID, ds.Version)
 			return nil
 		},
 	}

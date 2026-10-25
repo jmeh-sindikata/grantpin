@@ -46,7 +46,7 @@ func newTest(t *testing.T, r Runner) (*launchd, string) {
 		t.Fatal(err)
 	}
 	real, _ := filepath.EvalSymlinks(exe)
-	return &launchd{run: r, home: home, uid: 501, sleep: func(time.Duration) {}}, real
+	return &launchd{run: r, home: home, uid: 501, sleep: func(time.Duration) {}, ready: func(context.Context, string) error { return nil }}, real
 }
 
 const wantPlist = `<?xml version="1.0" encoding="UTF-8"?>
@@ -528,5 +528,42 @@ func TestExecRunnerNonDestructive(t *testing.T) {
 	}
 	if _, err := execCommand(ctx, "/nonexistent/binary"); err == nil {
 		t.Error("missing binary not an error")
+	}
+}
+
+func TestInstallWaitsForSocket(t *testing.T) {
+	f := &fakeRunner{results: map[string][]Result{"print": {{ExitCode: 113}}}}
+	l, exe := newTest(t, f)
+	n := 0
+	var got string
+	l.ready = func(_ context.Context, socket string) error {
+		got = socket
+		if n++; n < 3 {
+			return errors.New("not yet")
+		}
+		return nil
+	}
+	if err := l.Install(context.Background(), Options{Exe: exe, Socket: "/run/g.sock", LogDir: filepath.Join(l.home, "logs")}); err != nil {
+		t.Fatal(err)
+	}
+	if n != 3 || got != "/run/g.sock" {
+		t.Errorf("ready calls = %d socket = %q", n, got)
+	}
+}
+
+func TestInstallReadyTimeout(t *testing.T) {
+	f := &fakeRunner{results: map[string][]Result{"print": {{ExitCode: 113}}}}
+	l, exe := newTest(t, f)
+	l.ready = func(context.Context, string) error { return errors.New("refused") }
+	logs := filepath.Join(l.home, "logs")
+	err := l.Install(context.Background(), Options{Exe: exe, Socket: "/run/g.sock", LogDir: logs, ReadyTimeout: 250 * time.Millisecond})
+	if !errors.Is(err, ErrNotReady) {
+		t.Fatalf("err = %v, want ErrNotReady", err)
+	}
+	if !strings.Contains(err.Error(), filepath.Join(logs, "daemon.err.log")) {
+		t.Errorf("error lacks log path: %v", err)
+	}
+	if _, serr := os.Stat(l.plistPath()); serr != nil {
+		t.Errorf("plist should still be installed: %v", serr)
 	}
 }
