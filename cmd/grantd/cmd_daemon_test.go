@@ -41,6 +41,7 @@ func TestStatusNotRunning(t *testing.T) {
 }
 
 func TestDaemonAndStatusEndToEnd(t *testing.T) {
+	useFakeBackends(t)
 	sock := shortSocket(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -89,6 +90,7 @@ func TestDaemonAndStatusEndToEnd(t *testing.T) {
 }
 
 func TestDaemonRefusesSecondInstance(t *testing.T) {
+	useFakeBackends(t)
 	sock := shortSocket(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

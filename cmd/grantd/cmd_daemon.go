@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -33,13 +34,32 @@ func newDaemonCmd() *cobra.Command {
 	return cmd
 }
 
-// runDaemon serves until ctx is cancelled.
+// runDaemon opens the build's backends and serves until ctx is cancelled.
 func runDaemon(ctx context.Context, socket string, logger *slog.Logger) error {
+	be, err := openBackends()
+	if err != nil {
+		return fmt.Errorf("start daemon: %w", err)
+	}
+	return serveDaemon(ctx, socket, logger, be)
+}
+
+// serveDaemon wires vault, broker and socket server together and serves until
+// ctx is cancelled. If the vault already exists it is opened up front, so an
+// unusable vault stops the daemon at start instead of at the first request.
+func serveDaemon(ctx context.Context, socket string, logger *slog.Logger, be backends) error {
+	h, err := newBrokerHolder(be, socket, logger)
+	if err != nil {
+		return err
+	}
+	defer h.close()
+	if _, err := h.get(ctx); err != nil && !errors.Is(err, errVaultMissing) {
+		return fmt.Errorf("start daemon: open vault %s: %w", h.path, err)
+	}
 	srv, err := daemon.New(daemon.Config{
 		SocketPath: socket,
-		Router:     buildRouter(),
+		Router:     h.buildRouter(),
 		Logger:     logger,
-		StatusFunc: buildStatusFunc(),
+		StatusFunc: h.statusFunc(),
 		Version:    version,
 	})
 	if err != nil {

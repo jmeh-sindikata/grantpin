@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime"
 
+	"grantd/internal/approve"
 	"grantd/internal/keystore"
 )
 
@@ -16,4 +17,14 @@ func openKeyStore() (keystore.KeyStore, error) {
 		return nil, fmt.Errorf("macOS keystore not yet implemented")
 	}
 	return nil, fmt.Errorf("no keystore backend for %s yet", runtime.GOOS)
+}
+
+// openApprover selects the platform Approver for production builds. Until the
+// real backend is wired in, the daemon refuses to start rather than run
+// without a human in the loop.
+func openApprover() (approve.Approver, error) {
+	if runtime.GOOS == "darwin" {
+		return nil, fmt.Errorf("macOS approver not yet implemented")
+	}
+	return nil, fmt.Errorf("no approver backend for %s yet", runtime.GOOS)
 }

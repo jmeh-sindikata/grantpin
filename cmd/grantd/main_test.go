@@ -21,20 +21,3 @@ func TestHelpListsAllVerbs(t *testing.T) {
 		}
 	}
 }
-
-func TestVerbsReturnNotImplemented(t *testing.T) {
-	for _, args := range [][]string{
-		{"set", "A"}, {"list"}, {"masked", "A"}, {"delete", "A"}, {"show", "A"},
-		{"run", "--secrets", "A", "--", "true"}, {"grants"}, {"grants", "list"}, {"grants", "revoke", "x"},
-		{"audit"}, {"audit", "list"}, {"audit", "verify"}, {"audit", "export", "--csv"},
-		{"import", ".env"},
-	} {
-		root := newRootCmd()
-		root.SetOut(&bytes.Buffer{})
-		root.SetErr(&bytes.Buffer{})
-		root.SetArgs(args)
-		if err := root.Execute(); err == nil || err.Error() != "not implemented" {
-			t.Errorf("%v: err = %v, want not implemented", args, err)
-		}
-	}
-}

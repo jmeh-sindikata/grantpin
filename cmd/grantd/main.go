@@ -1,15 +1,11 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 )
-
-// errNotImplemented is returned by every verb until its milestone step lands.
-var errNotImplemented = errors.New("not implemented")
 
 // version is overridden at build time via -ldflags "-X main.version=...".
 var version = "dev"
@@ -44,10 +40,9 @@ func newRootCmd() *cobra.Command {
 
 func main() {
 	if err := newRootCmd().Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "grantd:", err)
-		os.Exit(1)
+		if err.Error() != "" { // an empty message relays a child's exit status
+			fmt.Fprintln(os.Stderr, "grantd:", err)
+		}
+		os.Exit(exitCodeOf(err))
 	}
 }
-
-// notImplemented is a RunE for verbs that are not built yet.
-func notImplemented(*cobra.Command, []string) error { return errNotImplemented }
