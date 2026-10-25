@@ -1,0 +1,31 @@
+# Binaries
+/bin/
+/dist/
+/grantd
+*.exe
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Local vaults / databases (never commit)
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Go workspace / vendor
+go.work
+go.work.sum
+/vendor/
