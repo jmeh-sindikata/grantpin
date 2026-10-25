@@ -678,7 +678,7 @@ func TestLogsNeverContainValues(t *testing.T) {
 	}
 }
 
-func TestLogsRecordArgvAndErrors(t *testing.T) {
+func TestLogsRecordOutcomeAndErrors(t *testing.T) {
 	logs := &syncBuf{}
 	rt := routerWith(proto.OpRun, func(_ context.Context, _ *proto.Request, w ResponseWriter) {
 		_ = w.Finish(&proto.Response{OK: true, ExitCode: proto.IntPtr(3)})
@@ -688,7 +688,36 @@ func TestLogsRecordArgvAndErrors(t *testing.T) {
 	call(t, r.path, proto.Request{Op: proto.OpList})
 	_ = r.stop(t)
 	out := logs.String()
-	for _, want := range []string{`argv="[php artisan sync]"`, "exit_code=3", "reason=unknown_op", "outcome=error"} {
+	for _, want := range []string{"argc=3", "exit_code=3", "reason=unknown_op", "outcome=error"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// The daemon has no redactor, so a value a caller smuggles into argv must not
+// reach its log, for any outcome.
+func TestLogsNeverContainArgv(t *testing.T) {
+	const marker = "argv-marker-s3cr3t-7c1d"
+	logs := &syncBuf{}
+	rt := routerWith(proto.OpRun, func(_ context.Context, _ *proto.Request, w ResponseWriter) {
+		_ = w.Finish(&proto.Response{OK: true, ExitCode: proto.IntPtr(0)})
+	})
+	r := start(t, Config{Router: rt, Logger: slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))})
+	argv := []string{"curl", "-H", "Authorization: " + marker, marker}
+	_, resp := call(t, r.path, proto.Request{Op: proto.OpRun, Caller: "tester", Cwd: "/work", Argv: argv})
+	if !resp.OK {
+		t.Fatalf("resp = %+v", resp)
+	}
+	call(t, r.path, proto.Request{Op: proto.OpRun, Argv: argv, TimeoutS: -1}) // rejected before dispatch
+	call(t, r.path, proto.Request{Op: proto.OpList, Argv: argv})              // unknown op for this router
+	exchange(t, r.path, []byte(`{"v":9,"op":"run","argv":["`+marker+`"]}`))   // bad version
+	_ = r.stop(t)
+	out := logs.String()
+	if strings.Contains(out, marker) {
+		t.Fatalf("argv leaked into the daemon log:\n%s", out)
+	}
+	for _, want := range []string{"op=run", "caller=tester", "cwd=/work", "argc=4", "outcome=ok"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("log missing %q:\n%s", want, out)
 		}

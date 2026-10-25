@@ -542,6 +542,9 @@ func TestRunMessagesAreScrubbed(t *testing.T) {
 			t.Errorf("argv in row %s = %q", en.ID, got)
 		}
 	}
+	if out := e.logs.String(); strings.Contains(out, e.secret) {
+		t.Errorf("value in the broker log:\n%s", out)
+	}
 }
 
 func TestRunResolveFailureLeavesSingleErrorRow(t *testing.T) {

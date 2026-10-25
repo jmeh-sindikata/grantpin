@@ -8,10 +8,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -46,8 +48,27 @@ func (s *slowApprover) Ask(ctx context.Context, req approve.ApprovalRequest) (ap
 	return s.Approver.Ask(ctx, req)
 }
 
+// syncBuf is a goroutine-safe log sink.
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
 // rig is a running daemon plus handles to its approver.
 type rig struct {
+	logs *syncBuf // everything the daemon and broker log, at debug level
 	t    *testing.T
 	sock string
 	ap   *devap.Approver
@@ -87,14 +108,16 @@ func newRig(t *testing.T) *rig {
 	}
 	ap := devap.New(true)
 	slow := &slowApprover{Approver: ap}
-	b, err := broker.New(broker.Deps{Vault: v, Grants: grant.NewStore(v.DB(), v.DeriveKey("grant-mac")), Audit: al, Approver: slow, KeyStoreTier: ks.Tier()})
+	logs := &syncBuf{}
+	logger := slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	b, err := broker.New(broker.Deps{Vault: v, Grants: grant.NewStore(v.DB(), v.DeriveKey("grant-mac")), Audit: al, Approver: slow, KeyStoreTier: ks.Tier(), Logger: logger})
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := daemon.NewRouter()
 	b.Register(r)
 	sock := filepath.Join(dir, "s.sock")
-	srv, err := daemon.New(daemon.Config{SocketPath: sock, Router: r, StatusFunc: b.StatusFunc(), Version: "e2e"})
+	srv, err := daemon.New(daemon.Config{SocketPath: sock, Router: r, StatusFunc: b.StatusFunc(), Version: "e2e", Logger: logger})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,6 +130,12 @@ func newRig(t *testing.T) *rig {
 		cancel()
 		<-done
 		_ = v.Close()
+		// Serve has drained every connection, so every request line has been
+		// logged by now: no test may have put the value in the daemon's or the
+		// broker's log, whatever it did (argv, errors, show, grants).
+		if out := logs.String(); strings.Contains(out, apiKey) {
+			t.Errorf("the secret value is in the daemon/broker log:\n%s", out)
+		}
 	})
 
 	cwd, err := filepath.EvalSymlinks(filepath.Join(dir))
@@ -117,7 +146,7 @@ func newRig(t *testing.T) *rig {
 	if err := os.Mkdir(proj, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	return &rig{t: t, sock: sock, ap: ap, slow: slow, cwd: proj, db: v.DB()}
+	return &rig{logs: logs, t: t, sock: sock, ap: ap, slow: slow, cwd: proj, db: v.DB()}
 }
 
 // call drives the wire protocol directly and records the raw bytes.
@@ -183,6 +212,9 @@ func (r *rig) noLeak(rep reply) {
 	r.t.Helper()
 	if bytes.Contains(rep.raw, []byte(apiKey)) {
 		r.t.Fatalf("raw socket bytes contain the secret value: %q", rep.raw)
+	}
+	if out := r.logs.String(); strings.Contains(out, apiKey) {
+		r.t.Fatalf("the secret value is in the daemon/broker log:\n%s", out)
 	}
 }
 
@@ -258,6 +290,7 @@ func TestRunRedactsBothStreamsAndNeverLeaksOnTheWire(t *testing.T) {
 		{Op: proto.OpStatus},
 		{Op: proto.OpRun, Cwd: r.cwd, Argv: []string{"definitely-not-a-command"}, Secrets: []string{"API_KEY"}},
 		{Op: proto.OpRun, Cwd: r.cwd, Argv: []string{apiKey}, Secrets: []string{"API_KEY"}},
+		{Op: proto.OpRun, Cwd: r.cwd, Argv: []string{"sh", "-c", "true", apiKey}, Secrets: []string{"API_KEY"}}, // runs; the value rides in argv
 		{Op: proto.OpRun, Cwd: r.cwd, Argv: []string{"true"}, Secrets: []string{"MISSING"}},
 		{Op: proto.OpSet, Name: "API_KEY", Value: apiKey}, // duplicate: error must not echo the value
 	} {

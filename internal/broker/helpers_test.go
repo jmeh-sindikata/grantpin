@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -131,7 +132,26 @@ func (r *recWriter) out(stream string) string {
 	return sb.String()
 }
 
+// logSink collects the broker's log output.
+type logSink struct {
+	mu sync.Mutex
+	sb strings.Builder
+}
+
+func (l *logSink) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.sb.Write(p)
+}
+
+func (l *logSink) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.sb.String()
+}
+
 type env struct {
+	logs   logSink
 	t      *testing.T
 	b      *Broker
 	v      *vault.Vault
@@ -178,7 +198,8 @@ func newEnv(t *testing.T) *env {
 
 func (e *env) rebuild(ksTier presence.PresenceTier) {
 	b, err := New(Deps{Vault: e.v, Grants: e.g, Audit: e.a, Approver: e.ap, KeyStoreTier: ksTier,
-		Now: func() time.Time { e.nowMu.Lock(); defer e.nowMu.Unlock(); return e.now }})
+		Logger: slog.New(slog.NewTextHandler(&e.logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Now:    func() time.Time { e.nowMu.Lock(); defer e.nowMu.Unlock(); return e.now }})
 	if err != nil {
 		e.t.Fatal(err)
 	}

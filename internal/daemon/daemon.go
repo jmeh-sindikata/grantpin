@@ -38,7 +38,8 @@ type Config struct {
 	// built-in status op answers).
 	Router *Router
 	// Logger receives operational logs. nil discards. The daemon logs op,
-	// caller, cwd, argv and outcome only, never request bodies or values.
+	// caller, cwd, argv element count and outcome only, never request bodies,
+	// argv or values.
 	Logger *slog.Logger
 	// StatusFunc, if set, augments the built-in status reply.
 	StatusFunc StatusFunc
@@ -441,15 +442,17 @@ func (s *Server) runHandler(ctx context.Context, h Handler, req *proto.Request, 
 	w.finishIfOpen(Failure(proto.ErrFailed, reason))
 }
 
-// logRequest logs the allowed fields only: op, caller, cwd, argv, outcome.
-// Never the request body, and never Request.Value.
+// logRequest logs the allowed fields only: op, caller, cwd, the number of argv
+// elements, outcome and duration. Never the request body, never Request.Value
+// and never argv itself: the daemon has no redactor, and a caller can put a
+// secret value into argv. The broker audits argv, scrubbed of injected values.
 func (s *Server) logRequest(req *proto.Request, w *connWriter, start time.Time) {
 	resp, frames := w.outcome()
 	attrs := []any{
 		"op", req.Op,
 		"caller", req.Caller,
 		"cwd", req.Cwd,
-		"argv", req.Argv,
+		"argc", len(req.Argv),
 		"frames", frames,
 		"duration_ms", time.Since(start).Milliseconds(),
 	}
