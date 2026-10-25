@@ -534,12 +534,18 @@ func TestRunDoesNotHangOnEscapedPipeHolder(t *testing.T) {
 }
 
 func TestRunForwardsSignals(t *testing.T) {
-	spec := sh(`trap "exit 42" TERM; echo ready; sleep 10`)
+	// The trap is installed before "ready" is printed, so signalling after
+	// "ready" is safe. The sleep runs in the background and the shell blocks in
+	// the interruptible builtin wait: a foreground sleep would make the shell
+	// defer the trap until sleep exits, and a TERM landing in the window between
+	// fork and exec of that sleep is swallowed by the forked child, leaving the
+	// shell waiting the full 10 seconds.
+	spec := sh(`trap "exit 42" TERM; sleep 10 & echo ready; wait`)
 	sigs := make(chan os.Signal, 1)
 	spec.Signals = sigs
 	var so safeBuf
 	go func() {
-		for i := 0; i < 500 && !strings.Contains(so.String(), "ready"); i++ {
+		for i := 0; i < 3000 && !strings.Contains(so.String(), "ready"); i++ {
 			time.Sleep(10 * time.Millisecond)
 		}
 		sigs <- syscall.SIGTERM
