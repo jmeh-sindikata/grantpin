@@ -83,18 +83,18 @@ BEGIN SELECT RAISE(ABORT, 'audit log is append-only'); END;
 // Entry is one audit row (§6). It never contains secret values: Secrets holds
 // names only.
 type Entry struct {
-	ID       string // string form of Seq; set by Append/List, ignored on input
-	Seq      int64  // monotonic row id; set by Append/List, ignored on input
-	TS       time.Time
-	Caller   string
-	Cwd      string
-	Argv     []string
-	Secrets  []string // names requested as written (may contain globs), never values
+	ID      string // string form of Seq; set by Append/List, ignored on input
+	Seq     int64  // monotonic row id; set by Append/List, ignored on input
+	TS      time.Time
+	Caller  string
+	Cwd     string
+	Argv    []string
+	Secrets []string // names requested as written (may contain globs), never values
 	// Expanded is the concrete names Secrets resolved to after glob expansion
 	// (equal to Secrets when there are no globs). Empty on rows written before
 	// the request was expanded (validation or policy refusals).
 	Expanded []string
-	Decision string   // one of the Decision* constants
+	Decision string // one of the Decision* constants
 	GrantID  string
 	ExitCode *int
 	Duration time.Duration

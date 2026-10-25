@@ -68,7 +68,7 @@ func (b *Broker) handleAudit(ctx context.Context, req *proto.Request, w daemon.R
 		out := make([]proto.AuditInfo, 0, len(es))
 		for _, e := range es {
 			info := proto.AuditInfo{
-				ID: e.ID, TS: e.TS, Caller: e.Caller, Cwd: e.Cwd, Argv: e.Argv, Secrets: e.Secrets,
+				ID: e.ID, TS: e.TS, Caller: e.Caller, Cwd: e.Cwd, Argv: e.Argv, Secrets: e.Secrets, Expanded: e.Expanded,
 				Decision: e.Decision, GrantID: e.GrantID, ExitCode: e.ExitCode,
 				DurationMS: e.Duration.Milliseconds(), Reason: e.Reason,
 			}

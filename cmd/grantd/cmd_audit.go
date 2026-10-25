@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -44,7 +45,7 @@ func newAuditCmd() *cobra.Command {
 				grant = e.GrantID[:min(8, len(e.GrantID))]
 			}
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.ID, e.TS.Local().Format("2006-01-02 15:04:05"),
-				e.Decision, e.Caller, strings.Join(e.Argv, " "), strings.Join(e.Secrets, ","), grant, exit, took, dash(e.Reason))
+				e.Decision, e.Caller, strings.Join(e.Argv, " "), secretsCell(e), grant, exit, took, dash(e.Reason))
 		}
 		return tw.Flush()
 	}
@@ -97,4 +98,15 @@ func newAuditCmd() *cobra.Command {
 	}
 	c.AddCommand(listCmd, verify, export)
 	return c
+}
+
+// secretsCell is what the SECRETS column shows: the secrets as requested, and
+// "→ a, b" with the concrete names they expanded to when that differs (a glob
+// such as aws/* released something specific).
+func secretsCell(e proto.AuditInfo) string {
+	req := strings.Join(e.Secrets, ",")
+	if len(e.Expanded) == 0 || slices.Equal(e.Expanded, e.Secrets) {
+		return req
+	}
+	return req + " → " + strings.Join(e.Expanded, ", ")
 }

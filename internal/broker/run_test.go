@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -855,5 +856,44 @@ func TestRunNotStartedBecauseContextEnded(t *testing.T) {
 				t.Error("command ran")
 			}
 		})
+	}
+}
+
+// Audit rows record the concrete names a glob released, not just the glob.
+func TestRunAuditRowsRecordExpandedNames(t *testing.T) {
+	e := newEnv(t)
+	for _, n := range []string{"aws/b", "aws/a"} {
+		if err := e.v.Set(context.Background(), vault.Meta{Name: n}, []byte("value-"+n+"-xx"), false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantOK(t, e.do(e.run([]string{"aws/*", "API_KEY"}, "true")))
+	rel, done := e.lastPair()
+	want := []string{"API_KEY", "aws/a", "aws/b"}
+	for _, row := range []audit.Entry{rel, done} {
+		if strings.Join(row.Secrets, ",") != "aws/*,API_KEY" || !slices.Equal(row.Expanded, want) {
+			t.Errorf("row %s: secrets=%v expanded=%v", row.ID, row.Secrets, row.Expanded)
+		}
+	}
+	// Without globs the expansion is the same names.
+	wantOK(t, e.do(e.run([]string{"API_KEY"}, "true")))
+	if _, done := e.lastPair(); !slices.Equal(done.Expanded, []string{"API_KEY"}) {
+		t.Errorf("literal run: expanded = %v", done.Expanded)
+	}
+	// An error after expansion (here: a denial) carries it too; a refusal before
+	// expansion (bad request) has none.
+	e.ap.allow = false
+	e.do(e.run([]string{"aws/*"}, "true"))
+	if a := e.lastAudit(); a.Decision != audit.DecisionDeniedUser || !slices.Equal(a.Expanded, []string{"aws/a", "aws/b"}) {
+		t.Errorf("denied row = %+v", a)
+	}
+	// It reaches `audit list` and the CSV export.
+	list := decode[[]proto.AuditInfo](t, e.do(&proto.Request{Op: proto.OpAudit, Limit: 1}))
+	if !slices.Equal(list[0].Expanded, []string{"aws/a", "aws/b"}) {
+		t.Errorf("list = %+v", list[0])
+	}
+	csv := decode[proto.AuditExportResult](t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionExport})).CSV
+	if !strings.HasPrefix(csv, "id,ts,caller,cwd,argv,secrets,expanded,") || !strings.Contains(csv, `"[""aws/a"",""aws/b""]"`) {
+		t.Errorf("csv = %q", csv)
 	}
 }

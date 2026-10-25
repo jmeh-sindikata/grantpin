@@ -67,17 +67,21 @@ type GrantInfo struct {
 
 // AuditInfo is one row of an OpAudit list/export result (Result is []AuditInfo).
 type AuditInfo struct {
-	ID         string    `json:"id"`
-	TS         time.Time `json:"ts"`
-	Caller     string    `json:"caller"`
-	Cwd        string    `json:"cwd"`
-	Argv       []string  `json:"argv"`
-	Secrets    []string  `json:"secrets"`
-	Decision   string    `json:"decision"`
-	GrantID    string    `json:"grant_id,omitempty"`
-	ExitCode   *int      `json:"exit_code,omitempty"`
-	DurationMS int64     `json:"duration_ms,omitempty"`
-	Reason     string    `json:"reason,omitempty"`
+	ID      string    `json:"id"`
+	TS      time.Time `json:"ts"`
+	Caller  string    `json:"caller"`
+	Cwd     string    `json:"cwd"`
+	Argv    []string  `json:"argv"`
+	Secrets []string  `json:"secrets"`
+	// Expanded is the concrete names Secrets resolved to after glob expansion
+	// (equal to Secrets when there are no globs); absent on rows written before
+	// the request was expanded.
+	Expanded   []string `json:"expanded,omitempty"`
+	Decision   string   `json:"decision"`
+	GrantID    string   `json:"grant_id,omitempty"`
+	ExitCode   *int     `json:"exit_code,omitempty"`
+	DurationMS int64    `json:"duration_ms,omitempty"`
+	Reason     string   `json:"reason,omitempty"`
 }
 
 // AuditExportResult is the OpAudit export result: the whole log as CSV text.

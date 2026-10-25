@@ -91,6 +91,7 @@ func (b *Broker) handleRun(ctx context.Context, req *proto.Request, w daemon.Res
 		b.runLookupFailure(ctx, rc, err)
 		return
 	}
+	rc.entry.Expanded = names // every row from here on records what the globs meant
 	envNames, err := runner.EnvNames(names, req.EnvPrefix)
 	if err != nil {
 		rc.refuse(ctx, audit.DecisionError, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())

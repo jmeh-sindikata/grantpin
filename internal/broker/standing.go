@@ -99,6 +99,7 @@ func (b *Broker) handleGrantAdd(ctx context.Context, req *proto.Request, w daemo
 		b.runLookupFailure(ctx, rc, err)
 		return
 	}
+	rc.entry.Expanded = names
 	required, err := b.d.Vault.CheckNames(ctx, names, b.now())
 	if err != nil {
 		b.runLookupFailure(ctx, rc, err)
