@@ -361,8 +361,6 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 	defer cancelRun()
 	so := &frameWriter{w: rc.w, stream: proto.StreamStdout, onErr: cancelRun}
 	se := &frameWriter{w: rc.w, stream: proto.StreamStderr, onErr: cancelRun}
-	rso := runner.NewRedactingWriter(so, byName)
-	rse := runner.NewRedactingWriter(se, byName)
 
 	spec := runner.Spec{
 		Argv:      req.Argv,
@@ -372,10 +370,10 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 		Timeout:   commandTimeout(ctx, req),
 		KillGrace: killGrace,
 	}
-	res, runErr := runner.Run(runCtx, spec, rso, rse)
-	// Flush withheld bytes (redacting writers first, then partial runes).
-	_ = rso.Close()
-	_ = rse.Close()
+	// The runner redacts the output (Spec.Env + Labels); the frame writers get
+	// already-redacted bytes and only hold back split UTF-8 sequences.
+	res, runErr := runner.Run(runCtx, spec, so, se)
+	// Flush withheld partial runes (the runner has flushed its redactors).
 	_ = so.Close()
 	_ = se.Close()
 
@@ -473,7 +471,8 @@ func errText(err error) string {
 	return err.Error()
 }
 
-// frameWriter forwards redacted output as stream frames. It holds back an
+// frameWriter forwards output that the runner has already redacted as stream
+// frames. It holds back an
 // incomplete trailing UTF-8 sequence so that a multibyte character split across
 // reads is not mangled by JSON encoding. A failed write (client gone) cancels
 // the run via onErr and is sticky.
