@@ -1,25 +1,37 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Info.plist TEMPLATE (LSUIElement true = agent app: no Dock icon, no menu bar) for dist/grantd.app (make bundle). The @NAME@ tokens are
-  filled in by the Makefile; this file is not a valid Info.plist until then.
+  Info.plist TEMPLATE for the nested helper bundle
+  dist/grantd.app/Contents/Helpers/grantd-daemon.app, whose main executable is
+  the Go binary (daemon, CLI, MCP shim). Filled in by app/Grantd/embed-helper.sh
+  (Xcode Run Script phase, driven by make app). Not a valid Info.plist until
+  then. The outer app's own Info.plist is app/Grantd/Info.plist.
 
-    @BUNDLE_ID@     Makefile BUNDLE_ID (default dev.grantd.app). The one place the
-                    bundle identifier lives; rename the project here. It must
-                    match the App ID in the Apple developer portal and the
-                    com.apple.application-identifier entitlement.
+  Why a bundle of its own: the provisioning profile that authorises the
+  restricted keychain-access-groups entitlement is only honoured for a bundle's
+  main executable; a plain second executable next to the app's is killed at
+  launch by AMFI (docs/UI-SPEC.md section 2.1).
+
+    @BUNDLE_ID@     the helper's bundle identifier: the app's (Makefile BUNDLE_ID,
+                    default dev.grantd.app) plus ".daemon".
     @VERSION@       Makefile VERSION (git describe), shown as the version.
     @BUILD@         Makefile BUILD_NUMBER (git commit count), CFBundleVersion.
-    @MIN_MACOS@     lowest macOS the embedded binary supports.
+    @MIN_MACOS@     lowest macOS the helper supports: Makefile MIN_MACOS (14.0).
+                    The Go binary must be built for it (make helper sets
+                    -mmacosx-version-min), or it will not start on older macOS.
+
+  LSUIElement (no Dock icon, no menu bar) rather than LSBackgroundOnly: this is
+  what the proven single-bundle layout used, and the daemon shows the Touch ID
+  sheet. See docs/UI-SPEC.md section 2.1 for the layout.
 -->
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
 	<string>@BUNDLE_ID@</string>
 	<key>CFBundleName</key>
-	<string>grantd</string>
+	<string>grantd daemon</string>
 	<key>CFBundleDisplayName</key>
-	<string>grantd</string>
+	<string>grantd daemon</string>
 	<key>CFBundleExecutable</key>
 	<string>grantd</string>
 	<key>CFBundlePackageType</key>
