@@ -38,6 +38,9 @@ func newStatusCmd() *cobra.Command {
 			fmt.Fprintf(out, "approver:     %s\n", st.ApproverTier)
 			fmt.Fprintf(out, "secrets:      %d\n", st.Secrets)
 			fmt.Fprintf(out, "grants:       %d active\n", st.ActiveGrants)
+			if st.TamperedGrants > 0 {
+				fmt.Fprintf(out, "WARNING:      %d grant row(s) failed authentication and are ignored (vault file modified outside grantd); see `grantd grants`\n", st.TamperedGrants)
+			}
 			return nil
 		},
 	}

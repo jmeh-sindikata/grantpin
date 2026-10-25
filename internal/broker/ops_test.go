@@ -359,3 +359,26 @@ func TestInternalErrorsAreGeneric(t *testing.T) {
 		t.Errorf("status = %+v", st)
 	}
 }
+
+func TestForgedGrantRowIsIgnoredFlaggedAndCounted(t *testing.T) {
+	e := newEnv(t)
+	_, err := e.v.DB().Exec(`INSERT INTO grants VALUES ('forged', 'tester', ?, '["API_KEY"]', '["true"]', ?, ?, NULL, x'00')`,
+		e.cwd, e.now.UnixNano(), e.now.Add(time.Hour).UnixNano())
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantOK(t, e.do(e.run([]string{"API_KEY"}, "true")))
+	if e.ap.calls() != 1 {
+		t.Fatalf("forged grant skipped the approver (calls=%d)", e.ap.calls())
+	}
+	gs := decode[[]proto.GrantInfo](t, e.do(&proto.Request{Op: proto.OpGrants, Action: proto.ActionList}))
+	if len(gs) != 1 || gs[0].ID != "forged" || !gs[0].Tampered {
+		t.Fatalf("grants = %+v", gs)
+	}
+	var st proto.StatusResult
+	e.b.StatusFunc()(context.Background(), &st)
+	if st.TamperedGrants != 1 || st.ActiveGrants != 0 {
+		t.Errorf("status = %+v", st)
+	}
+	wantOK(t, e.do(&proto.Request{Op: proto.OpGrants, Action: proto.ActionRevoke, GrantID: "forged"}))
+}

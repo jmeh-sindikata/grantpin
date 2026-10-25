@@ -111,8 +111,10 @@ func (h *brokerHolder) get(ctx context.Context) (*broker.Broker, error) {
 		closeVault()
 		return nil, err
 	}
+	grants := grant.NewStore(v.DB(), v.DeriveKey("grant-mac"))
+	grants.SetLogger(h.logger)
 	b, err := broker.New(broker.Deps{
-		Vault: v, Grants: grant.NewStore(v.DB()), Audit: alog,
+		Vault: v, Grants: grants, Audit: alog,
 		Approver: h.be.ap, KeyStoreTier: h.be.ks.Tier(),
 		DefaultGrantTTL: time.Hour, Logger: h.logger,
 	})

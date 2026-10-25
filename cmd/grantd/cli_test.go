@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"grantd/internal/client"
+	"grantd/internal/vault"
 )
 
 const secretValue = "s3cr3t-value-ABCDEFG"
@@ -342,4 +344,29 @@ func TestRunInterruptedBySignal(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Errorf("child %d still running after interrupt", pid)
+}
+
+func TestCLIShowsTamperedGrants(t *testing.T) {
+	startTestDaemon(t, true)
+	vp, _ := vault.DefaultPath()
+	db, err := sql.Open("sqlite", "file:"+vp+"?_pragma=busy_timeout(10000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO grants VALUES ('forgedgrant', 'cli', '/', '["*"]', '["sh"]', 0, ?, NULL, x'00')`,
+		time.Now().Add(time.Hour).UnixNano()); err != nil {
+		t.Fatal(err)
+	}
+	if o := mustCLI(t, "", "grants"); !strings.Contains(o, "forgedgrant") || !strings.Contains(o, "TAMPERED") {
+		t.Errorf("grants = %q", o)
+	}
+	o := mustCLI(t, "", "status")
+	if !strings.Contains(o, "grants:       0 active") || !strings.Contains(o, "WARNING") || !strings.Contains(o, "1 grant row") {
+		t.Errorf("status = %q", o)
+	}
+	mustCLI(t, "", "grants", "revoke", "forgedgrant")
+	if o := mustCLI(t, "", "status"); strings.Contains(o, "WARNING") {
+		t.Errorf("status after revoke = %q", o)
+	}
 }

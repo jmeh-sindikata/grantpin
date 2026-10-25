@@ -26,6 +26,11 @@ func newGrantsCmd() *cobra.Command {
 		tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 		fmt.Fprintln(tw, "ID\tCALLER\tCWD\tSECRETS\tCOMMAND\tEXPIRES")
 		for _, g := range gs {
+			if g.Tampered {
+				// The row's content is untrusted; show only that it exists.
+				fmt.Fprintf(tw, "%s\t-\t-\t-\t-\tTAMPERED: failed authentication, ignored (revoke it)\n", g.ID)
+				continue
+			}
 			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", g.ID, g.Caller, g.CwdPrefix,
 				strings.Join(g.Secrets, ","), strings.Join(g.CmdPrefix, " "),
 				time.Until(g.ExpiresAt).Round(time.Second))

@@ -44,6 +44,11 @@ type Grant struct {
 	// Expired is set by Get and List (relative to the store clock); it is not
 	// persisted and ignored by Add.
 	Expired bool
+	// Tampered is set by Get and List when the stored row failed MAC
+	// verification or could not be decoded: it was not written by this store
+	// (someone edited the vault file). Such a row never matches; its other
+	// fields are untrusted and for display only. Ignored by Add.
+	Tampered bool
 }
 
 // Query is what a run request is matched against.

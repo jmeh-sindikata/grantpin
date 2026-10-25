@@ -139,7 +139,10 @@ func (b *Broker) StatusFunc() daemon.StatusFunc {
 		}
 		if gs, err := b.d.Grants.List(ctx); err == nil {
 			for _, g := range gs {
-				if !g.Expired && g.ExpiresAt.After(b.now()) {
+				switch {
+				case g.Tampered:
+					st.TamperedGrants++
+				case !g.Expired && g.ExpiresAt.After(b.now()):
 					st.ActiveGrants++
 				}
 			}

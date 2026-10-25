@@ -56,6 +56,9 @@ type GrantInfo struct {
 	ExpiresAt     time.Time `json:"expires_at"`
 	UsesRemaining *int      `json:"uses_remaining,omitempty"` // nil = unlimited within TTL
 	CreatedAt     time.Time `json:"created_at"`
+	// Tampered: the stored row failed authentication (the vault file was edited
+	// outside grantd). It never matches; the other fields are untrusted.
+	Tampered bool `json:"tampered,omitempty"`
 }
 
 // AuditInfo is one row of an OpAudit list/export result (Result is []AuditInfo).
@@ -96,7 +99,8 @@ type StatusResult struct {
 	ApproverTier     presence.PresenceTier `json:"approver_tier"`
 	Secrets          int                   `json:"secrets"`
 	ActiveGrants     int                   `json:"active_grants"`
-	Socket           string                `json:"socket,omitempty"` // path the daemon listens on
+	TamperedGrants   int                   `json:"tampered_grants,omitempty"` // grant rows that failed authentication
+	Socket           string                `json:"socket,omitempty"`          // path the daemon listens on
 }
 
 // NewResult marshals v into a Response.Result payload.

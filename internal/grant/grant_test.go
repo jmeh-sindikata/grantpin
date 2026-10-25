@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -16,6 +17,8 @@ import (
 
 	"grantd/internal/approve"
 )
+
+var testKey = []byte("grant-test-mac-key-0123456789abcd")
 
 var t0 = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
@@ -35,7 +38,7 @@ func newDB(t *testing.T) *sql.DB {
 
 func newStore(t *testing.T) *Store {
 	t.Helper()
-	s := NewStore(newDB(t))
+	s := NewStore(newDB(t), testKey)
 	s.SetClock(func() time.Time { return t0 })
 	return s
 }
@@ -158,7 +161,7 @@ func TestAddValidation(t *testing.T) {
 
 func TestAddDBError(t *testing.T) {
 	db := newDB(t)
-	s := NewStore(db)
+	s := NewStore(db, testKey)
 	db.Close()
 	ctx := context.Background()
 	if _, err := s.Add(ctx, base()); err == nil {
@@ -184,9 +187,9 @@ func TestAddDBError(t *testing.T) {
 	}
 }
 
-func TestCorruptRows(t *testing.T) {
+func TestCorruptRowsAreFlaggedNotFatal(t *testing.T) {
 	db := newDB(t)
-	s := NewStore(db)
+	s := NewStore(db, testKey)
 	ctx := context.Background()
 	for _, col := range []string{"secrets", "cmd_prefix"} {
 		secrets, cmd := `["a"]`, `["x"]`
@@ -195,21 +198,216 @@ func TestCorruptRows(t *testing.T) {
 		} else {
 			cmd = "not json"
 		}
-		_, err := db.Exec(`INSERT INTO grants VALUES (?, 'c', '/a', ?, ?, 0, ?, NULL)`,
+		_, err := db.Exec(`INSERT INTO grants VALUES (?, 'c', '/a', ?, ?, 0, ?, NULL, x'00')`,
 			"id-"+col, secrets, cmd, time.Now().Add(time.Hour).UnixNano())
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := s.Get(ctx, "id-"+col); err == nil {
-			t.Errorf("%s: Get accepted corrupt row", col)
+		g, err := s.Get(ctx, "id-"+col)
+		if err != nil || !g.Tampered {
+			t.Errorf("%s: Get = %+v, %v; want a flagged row", col, g, err)
 		}
 	}
-	if _, err := s.List(ctx); err == nil {
-		t.Error("List accepted corrupt rows")
+	l, err := s.List(ctx)
+	if err != nil || len(l) != 2 || !l[0].Tampered || !l[1].Tampered {
+		t.Errorf("List = %+v, %v", l, err)
 	}
 	q := Query{Caller: "c", Cwd: "/a", Secrets: []string{"a"}, Argv: []string{"x"}, Now: time.Now()}
-	if _, err := s.Match(ctx, q); err == nil || errors.Is(err, ErrNoMatch) {
+	if _, err := s.Match(ctx, q); !errors.Is(err, ErrNoMatch) {
 		t.Errorf("Match err = %v", err)
+	}
+}
+
+// forge inserts a row exactly as the store would, but with the given MAC.
+func forge(t *testing.T, db *sql.DB, id string, mac []byte, uses any) {
+	t.Helper()
+	_, err := db.Exec(`INSERT INTO grants VALUES (?, 'claude-code', '/a/b', '["DB_URL"]', '["php"]', ?, ?, ?, ?)`,
+		id, t0.UnixNano(), t0.Add(time.Hour).UnixNano(), uses, mac)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestForgedRowNeverMatches(t *testing.T) {
+	db := newDB(t)
+	s := NewStore(db, testKey)
+	ctx := context.Background()
+	q := query()
+	q.Argv = []string{"php", "x"}
+	for name, mac := range map[string][]byte{"empty": {}, "garbage": []byte("not a mac"), "zeros": make([]byte, 32)} {
+		forge(t, db, "forged-"+name, mac, nil)
+	}
+	if _, err := s.Match(ctx, q); !errors.Is(err, ErrNoMatch) {
+		t.Fatalf("forged rows matched: %v", err)
+	}
+	l, _ := s.List(ctx)
+	if len(l) != 3 {
+		t.Fatalf("list = %d rows", len(l))
+	}
+	for _, g := range l {
+		if !g.Tampered {
+			t.Errorf("%s not flagged", g.ID)
+		}
+	}
+	// A MAC made with another key (a forger who guessed the format) fails too.
+	other := NewStore(db, []byte("some-other-key-some-other-key-00"))
+	canon := canonical("forged-key", "claude-code", "/a/b", []string{"DB_URL"}, []string{"php"}, t0.UnixNano(), t0.Add(time.Hour).UnixNano(), nil)
+	forge(t, db, "forged-key", other.sign(canon), nil)
+	if _, err := s.Match(ctx, q); !errors.Is(err, ErrNoMatch) {
+		t.Fatalf("foreign-key row matched: %v", err)
+	}
+	// A correctly signed row, inserted raw, is accepted (proves the test is
+	// not just failing for another reason).
+	forge(t, db, "genuine", s.sign(canonical("genuine", "claude-code", "/a/b", []string{"DB_URL"}, []string{"php"}, t0.UnixNano(), t0.Add(time.Hour).UnixNano(), nil)), nil)
+	g, err := s.Match(ctx, q)
+	if err != nil || g.ID != "genuine" {
+		t.Fatalf("genuine row: %v %v", g, err)
+	}
+}
+
+func TestEveryFieldIsAuthenticated(t *testing.T) {
+	for name, stmt := range map[string]string{
+		"caller":     `UPDATE grants SET caller = 'evil'`,
+		"cwd":        `UPDATE grants SET cwd_prefix = '/'`,
+		"secrets":    `UPDATE grants SET secrets = '["*"]'`,
+		"cmd":        `UPDATE grants SET cmd_prefix = '["x"]'`,
+		"created":    `UPDATE grants SET created_at = created_at - 1`,
+		"expires":    `UPDATE grants SET expires_at = expires_at + 1000000000000`,
+		"uses":       `UPDATE grants SET uses_remaining = 99`,
+		"id":         `UPDATE grants SET id = 'other'`,
+		"mac flip":   `UPDATE grants SET mac = x'00' || substr(mac, 2)`,
+		"mac cut":    `UPDATE grants SET mac = substr(mac, 1, 31)`,
+		"mac append": `UPDATE grants SET mac = mac || x'00'`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := newDB(t)
+			s := NewStore(db, testKey)
+			s.SetClock(func() time.Time { return t0 })
+			two := 2
+			g := base()
+			g.UsesRemaining = &two
+			g.Caller = "claude-code"
+			added := mustAdd(t, s, g)
+			if _, err := db.Exec(stmt); err != nil {
+				t.Fatal(err)
+			}
+			id := added.ID
+			if name == "id" {
+				id = "other"
+			}
+			q := query()
+			if name == "caller" {
+				q.Caller = "evil" // the forged row would match this caller
+			}
+			if _, err := s.Match(context.Background(), q); !errors.Is(err, ErrNoMatch) {
+				t.Fatalf("tampered row matched: %v", err)
+			}
+			got, err := s.Get(context.Background(), id)
+			if err != nil || !got.Tampered {
+				t.Fatalf("Get = %+v, %v; want Tampered", got, err)
+			}
+			l, _ := s.List(context.Background())
+			if len(l) != 1 || !l[0].Tampered {
+				t.Fatalf("List = %+v", l)
+			}
+		})
+	}
+}
+
+func TestUsesCountIsReMACedAndSurvivesRoundTrip(t *testing.T) {
+	db := newDB(t)
+	s := NewStore(db, testKey)
+	s.SetClock(func() time.Time { return t0 })
+	three := 3
+	g := base()
+	g.UsesRemaining = &three
+	added := mustAdd(t, s, g)
+	for want := 2; want >= 0; want-- {
+		got, err := s.Match(context.Background(), query())
+		if err != nil || *got.UsesRemaining != want {
+			t.Fatalf("match: %+v %v (want %d left)", got, err, want)
+		}
+		back, err := s.Get(context.Background(), added.ID)
+		if err != nil || back.Tampered || *back.UsesRemaining != want {
+			t.Fatalf("after use: %+v %v", back, err)
+		}
+	}
+	if _, err := s.Match(context.Background(), query()); !errors.Is(err, ErrNoMatch) {
+		t.Fatalf("exhausted grant matched: %v", err)
+	}
+	// Putting the count back by hand is detected.
+	if _, err := db.Exec(`UPDATE grants SET uses_remaining = 3`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Match(context.Background(), query()); !errors.Is(err, ErrNoMatch) {
+		t.Fatalf("reset count matched: %v", err)
+	}
+}
+
+func TestTamperedRowIsLoggedOnce(t *testing.T) {
+	db := newDB(t)
+	s := NewStore(db, testKey)
+	var buf strings.Builder
+	s.SetLogger(slog.New(slog.NewTextHandler(&buf, nil)))
+	s.SetLogger(nil) // ignored
+	forge(t, db, "bad", []byte("x"), nil)
+	for range 3 {
+		_, _ = s.List(context.Background())
+		_, _ = s.Match(context.Background(), query())
+	}
+	if n := strings.Count(buf.String(), "failed authentication"); n != 1 {
+		t.Errorf("logged %d times:\n%s", n, buf.String())
+	}
+	if strings.Contains(buf.String(), "DB_URL") {
+		t.Errorf("log contains row content: %s", buf.String())
+	}
+}
+
+func TestEmptyKeyFailsClosed(t *testing.T) {
+	db := newDB(t)
+	s := NewStore(db, nil)
+	if _, err := s.Add(context.Background(), base()); !errors.Is(err, ErrInvalidGrant) {
+		t.Errorf("Add err = %v", err)
+	}
+	// A row signed with an empty key is not accepted either.
+	forge(t, db, "x", NewStore(db, testKey).sign([]byte("anything")), nil)
+	forge(t, db, "y", (&Store{}).sign([]byte("anything")), nil)
+	if _, err := s.Match(context.Background(), query()); !errors.Is(err, ErrNoMatch) {
+		t.Errorf("Match err = %v", err)
+	}
+}
+
+func TestMigrateDropsUnauthenticatedTable(t *testing.T) {
+	dsn := "file:" + filepath.Join(t.TempDir(), "g.db")
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if _, err := db.Exec(`CREATE TABLE grants (id TEXT PRIMARY KEY, caller TEXT NOT NULL, cwd_prefix TEXT NOT NULL,
+		secrets TEXT NOT NULL, cmd_prefix TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, uses_remaining INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO grants VALUES ('old', 'c', '/a', '["x"]', '["y"]', 0, 9999999999999999, NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 { // idempotent
+		if err := Migrate(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l, err := NewStore(db, testKey).List(ctx)
+	if err != nil || len(l) != 0 {
+		t.Fatalf("legacy rows survived: %v %v", l, err)
+	}
+	s := NewStore(db, testKey)
+	mustAdd(t, s, base())
+	if err := Migrate(ctx, db); err != nil { // a current table is left alone
+		t.Fatal(err)
+	}
+	if l, _ := s.List(ctx); len(l) != 1 {
+		t.Fatalf("Migrate dropped a current table: %v", l)
 	}
 }
 
@@ -371,9 +569,10 @@ func TestMatchArgv(t *testing.T) {
 func TestEmptyCmdPrefixNeverMatches(t *testing.T) {
 	// Add refuses it, but a row inserted behind our back must still not match.
 	db := newDB(t)
-	s := NewStore(db)
-	_, err := db.Exec(`INSERT INTO grants VALUES ('x', 'claude-code', '/a/b', '["DB_URL"]', '[]', 0, ?, NULL)`,
-		t0.Add(time.Hour).UnixNano())
+	s := NewStore(db, testKey)
+	exp := t0.Add(time.Hour).UnixNano()
+	mac := s.sign(canonical("x", "claude-code", "/a/b", []string{"DB_URL"}, []string{}, 0, exp, nil))
+	_, err := db.Exec(`INSERT INTO grants VALUES ('x', 'claude-code', '/a/b', '["DB_URL"]', '[]', 0, ?, NULL, ?)`, exp, mac)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +688,7 @@ func TestMatchConcurrentUses(t *testing.T) {
 func TestMatchConcurrentUsesAcrossStores(t *testing.T) {
 	const N, workers = 3, 10
 	db := newDB(t)
-	stores := []*Store{NewStore(db), NewStore(db)}
+	stores := []*Store{NewStore(db, testKey), NewStore(db, testKey)}
 	n := N
 	g := base()
 	g.UsesRemaining = &n

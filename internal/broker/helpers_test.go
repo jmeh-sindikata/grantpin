@@ -153,7 +153,7 @@ func newEnv(t *testing.T) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.v, e.g, e.a = v, grant.NewStore(v.DB()), al
+	e.v, e.g, e.a = v, grant.NewStore(v.DB(), v.DeriveKey("grant-mac")), al
 	e.ap = &fakeApprover{tier: presence.TierNone, allow: true}
 	cwd, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

@@ -5,6 +5,7 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net"
@@ -52,6 +53,7 @@ type rig struct {
 	ap   *devap.Approver
 	slow *slowApprover
 	cwd  string
+	db   *sql.DB // the vault file, to play the same-UID attacker
 }
 
 // reply is everything one exchange put on the wire.
@@ -85,7 +87,7 @@ func newRig(t *testing.T) *rig {
 	}
 	ap := devap.New(true)
 	slow := &slowApprover{Approver: ap}
-	b, err := broker.New(broker.Deps{Vault: v, Grants: grant.NewStore(v.DB()), Audit: al, Approver: slow, KeyStoreTier: ks.Tier()})
+	b, err := broker.New(broker.Deps{Vault: v, Grants: grant.NewStore(v.DB(), v.DeriveKey("grant-mac")), Audit: al, Approver: slow, KeyStoreTier: ks.Tier()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +117,7 @@ func newRig(t *testing.T) *rig {
 	if err := os.Mkdir(proj, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	return &rig{t: t, sock: sock, ap: ap, slow: slow, cwd: proj}
+	return &rig{t: t, sock: sock, ap: ap, slow: slow, cwd: proj, db: v.DB()}
 }
 
 // call drives the wire protocol directly and records the raw bytes.
@@ -533,5 +535,57 @@ func TestStatusAndAuditVerifyAfterEverything(t *testing.T) {
 	st := result[proto.StatusResult](t, r.call(&proto.Request{Op: proto.OpStatus}))
 	if !st.VaultInitialized || st.KeyStoreTier != presence.TierNone || st.ApproverTier != presence.TierNone || st.Secrets != 0 {
 		t.Errorf("status = %+v", st)
+	}
+}
+
+// Presence bypass attempt: a same-UID process writes a grant straight into the
+// vault file. Without a valid MAC it must be ignored and the human asked.
+func TestForgedGrantRowDoesNotBypassThePrompt(t *testing.T) {
+	r := newRig(t)
+	r.set("API_KEY", apiKey)
+	far := time.Now().Add(24 * time.Hour).UnixNano()
+	for i, mac := range [][]byte{{}, []byte("forged"), make([]byte, 32)} {
+		if _, err := r.db.Exec(`INSERT INTO grants VALUES (?, 'e2e', ?, '["API_KEY"]', '["sh"]', ?, ?, NULL, ?)`,
+			"forged"+string(rune('a'+i)), r.cwd, time.Now().UnixNano(), far, mac); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rep := r.run([]string{"API_KEY"}, "sh", "-c", "exit 0")
+	if !rep.resp.OK || rep.resp.GrantID != "" {
+		t.Fatalf("response = %+v", rep.resp)
+	}
+	if r.asked() != 1 {
+		t.Fatalf("forged grant skipped the prompt (approver asked %d times)", r.asked())
+	}
+	if rel, _ := lastPair(t, r); rel.Decision != audit.DecisionAllowedOnce {
+		t.Fatalf("decision = %q, want allowed_once (a human decision)", rel.Decision)
+	}
+	// ... and the forgeries are visible to the user.
+	gl := result[[]proto.GrantInfo](t, r.call(&proto.Request{Op: proto.OpGrants, Action: proto.ActionList}))
+	if len(gl) != 3 {
+		t.Fatalf("grants = %+v", gl)
+	}
+	for _, g := range gl {
+		if !g.Tampered {
+			t.Errorf("forged grant %s not flagged", g.ID)
+		}
+	}
+	if st := result[proto.StatusResult](t, r.call(&proto.Request{Op: proto.OpStatus})); st.TamperedGrants != 3 || st.ActiveGrants != 0 {
+		t.Errorf("status = %+v", st)
+	}
+	// A genuine grant still works next to the forgeries.
+	r.ap.TTL = time.Hour
+	first := r.run([]string{"API_KEY"}, "sh", "-c", "exit 0")
+	second := r.run([]string{"API_KEY"}, "sh", "-c", "exit 0")
+	if first.resp.GrantID == "" || second.resp.GrantID != first.resp.GrantID || r.asked() != 2 {
+		t.Fatalf("genuine grant: %+v %+v asked=%d", first.resp, second.resp, r.asked())
+	}
+	// Editing the genuine row's expiry in place invalidates it.
+	if _, err := r.db.Exec(`UPDATE grants SET expires_at = expires_at + 3600000000000 WHERE id = ?`, first.resp.GrantID); err != nil {
+		t.Fatal(err)
+	}
+	r.run([]string{"API_KEY"}, "sh", "-c", "exit 0")
+	if r.asked() != 3 {
+		t.Fatalf("edited grant still matched (asked %d)", r.asked())
 	}
 }

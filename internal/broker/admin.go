@@ -20,13 +20,13 @@ func (b *Broker) handleGrants(ctx context.Context, req *proto.Request, w daemon.
 		}
 		out := make([]proto.GrantInfo, 0, len(gs))
 		for _, g := range gs {
-			if g.Expired || !g.ExpiresAt.After(b.now()) {
+			if !g.Tampered && (g.Expired || !g.ExpiresAt.After(b.now())) {
 				continue
 			}
 			out = append(out, proto.GrantInfo{
 				ID: g.ID, Caller: g.Caller, CwdPrefix: g.CwdPrefix, Secrets: g.Secrets,
 				CmdPrefix: g.CmdPrefix, ExpiresAt: g.ExpiresAt, UsesRemaining: g.UsesRemaining,
-				CreatedAt: g.CreatedAt,
+				CreatedAt: g.CreatedAt, Tampered: g.Tampered,
 			})
 		}
 		ok(w, out)

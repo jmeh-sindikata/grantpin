@@ -2,10 +2,14 @@ package grant
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -16,7 +20,9 @@ import (
 )
 
 // DDL is the schema owned by this package. Times are unix nanoseconds.
-// secrets and cmd_prefix are JSON arrays of strings.
+// secrets and cmd_prefix are JSON arrays of strings. mac authenticates the
+// row (see the package comment): a row whose mac does not verify is never
+// matched.
 const DDL = `CREATE TABLE IF NOT EXISTS grants (
 	id             TEXT    PRIMARY KEY,
 	caller         TEXT    NOT NULL,
@@ -25,12 +31,25 @@ const DDL = `CREATE TABLE IF NOT EXISTS grants (
 	cmd_prefix     TEXT    NOT NULL,
 	created_at     INTEGER NOT NULL,
 	expires_at     INTEGER NOT NULL,
-	uses_remaining INTEGER
+	uses_remaining INTEGER,
+	mac            BLOB    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS grants_caller_expires ON grants (caller, expires_at);`
 
-// Migrate creates the grants table if needed. It is idempotent.
+// Migrate creates the grants table if needed. It is idempotent. A grants table
+// from before rows were authenticated (no mac column) is dropped: its rows
+// cannot be trusted, and losing grants only means being asked again.
 func Migrate(ctx context.Context, db *sql.DB) error {
+	var cols, hasMAC int
+	if err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*), COALESCE(SUM(name = 'mac'), 0) FROM pragma_table_info('grants')`).Scan(&cols, &hasMAC); err != nil {
+		return fmt.Errorf("grant: migrate: %w", err)
+	}
+	if cols > 0 && hasMAC == 0 {
+		if _, err := db.ExecContext(ctx, `DROP TABLE grants`); err != nil {
+			return fmt.Errorf("grant: migrate: %w", err)
+		}
+	}
 	if _, err := db.ExecContext(ctx, DDL); err != nil {
 		return fmt.Errorf("grant: migrate: %w", err)
 	}
@@ -40,46 +59,123 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 // Store persists grants in the shared vault SQLite database. Call Migrate
 // first. A Store is safe for concurrent use.
 type Store struct {
-	db  *sql.DB
-	now func() time.Time
-	mu  sync.Mutex // serialises Match so use-counting never interleaves in-process
+	db     *sql.DB
+	key    []byte
+	now    func() time.Time
+	log    *slog.Logger
+	mu     sync.Mutex // serialises Match so use-counting never interleaves in-process
+	warned sync.Map   // grant IDs already reported as tampered
 }
 
 // NewStore returns a Store over db using the wall clock for Get/List/Purge/Add.
-func NewStore(db *sql.DB) *Store { return &Store{db: db, now: time.Now} }
+// macKey authenticates every row (the daemon passes vault.DeriveKey("grant-mac"));
+// an empty key makes Add fail and every row count as tampered, so nothing ever
+// matches.
+func NewStore(db *sql.DB, macKey []byte) *Store {
+	return &Store{db: db, key: slices.Clone(macKey), now: time.Now, log: slog.New(slog.DiscardHandler)}
+}
+
+// SetLogger sets where tampered rows are reported (WARN, once per row, never
+// with row content). Default: discard.
+func (s *Store) SetLogger(l *slog.Logger) {
+	if l != nil {
+		s.log = l
+	}
+}
+
+// canonicalTag versions the MAC input encoding.
+const canonicalTag = "grantd.grant.v1\x00"
+
+// canonical is the MAC input for one row, built from decoded values so that
+// JSON whitespace is irrelevant:
+//
+//	"grantd.grant.v1\x00"      domain/version tag
+//	id, caller, cwd_prefix     string: uint64 big-endian length, then bytes
+//	secrets, cmd_prefix        uint64 count, then count strings
+//	created_at, expires_at     int64 big-endian, unix nanoseconds
+//	uses_remaining             byte 0, or byte 1 followed by int64 big-endian
+//
+// Length prefixes make the encoding injective.
+func canonical(id, caller, cwd string, secrets, cmd []string, createdNs, expiresNs int64, uses *int64) []byte {
+	b := []byte(canonicalTag)
+	str := func(v string) {
+		b = binary.BigEndian.AppendUint64(b, uint64(len(v)))
+		b = append(b, v...)
+	}
+	list := func(vs []string) {
+		b = binary.BigEndian.AppendUint64(b, uint64(len(vs)))
+		for _, v := range vs {
+			str(v)
+		}
+	}
+	str(id)
+	str(caller)
+	str(cwd)
+	list(secrets)
+	list(cmd)
+	b = binary.BigEndian.AppendUint64(b, uint64(createdNs))
+	b = binary.BigEndian.AppendUint64(b, uint64(expiresNs))
+	if uses == nil {
+		return append(b, 0)
+	}
+	b = append(b, 1)
+	return binary.BigEndian.AppendUint64(b, uint64(*uses))
+}
+
+func (s *Store) sign(canon []byte) []byte {
+	m := hmac.New(sha256.New, s.key)
+	m.Write(canon)
+	return m.Sum(nil)
+}
+
+func (s *Store) verify(canon, mac []byte) bool {
+	return len(s.key) > 0 && hmac.Equal(s.sign(canon), mac)
+}
 
 // SetClock overrides the clock used by Add (default CreatedAt), Get, List and
 // Purge. Intended for tests. Match always uses Query.Now.
 func (s *Store) SetClock(now func() time.Time) { s.now = now }
 
-const cols = `id, caller, cwd_prefix, secrets, cmd_prefix, created_at, expires_at, uses_remaining`
+const cols = `id, caller, cwd_prefix, secrets, cmd_prefix, created_at, expires_at, uses_remaining, mac`
 
 type scanner interface{ Scan(dest ...any) error }
 
-func scan(r scanner, now time.Time) (Grant, error) {
+// scan decodes one row and verifies its MAC. A row that cannot be decoded or
+// whose MAC does not verify is returned with Tampered set (and only the fields
+// that could be decoded); it is never an error, so one forged row cannot break
+// listing or matching of the genuine ones.
+func (s *Store) scan(r scanner, now time.Time) (Grant, error) {
 	var (
 		g              Grant
 		secrets, cmd   string
 		created, expir int64
 		uses           sql.NullInt64
+		mac            []byte
 	)
-	if err := r.Scan(&g.ID, &g.Caller, &g.CwdPrefix, &secrets, &cmd, &created, &expir, &uses); err != nil {
+	if err := r.Scan(&g.ID, &g.Caller, &g.CwdPrefix, &secrets, &cmd, &created, &expir, &uses, &mac); err != nil {
 		return Grant{}, err
-	}
-	if err := json.Unmarshal([]byte(secrets), &g.Secrets); err != nil {
-		return Grant{}, fmt.Errorf("grant %s: corrupt secrets: %w", g.ID, err)
-	}
-	if err := json.Unmarshal([]byte(cmd), &g.CmdPrefix); err != nil {
-		return Grant{}, fmt.Errorf("grant %s: corrupt cmd_prefix: %w", g.ID, err)
 	}
 	g.CreatedAt = time.Unix(0, created).UTC()
 	g.ExpiresAt = time.Unix(0, expir).UTC()
+	var u *int64
 	if uses.Valid {
 		n := int(uses.Int64)
 		g.UsesRemaining = &n
+		u = &uses.Int64
 	}
 	g.Expired = g.expiredAt(now)
+	if json.Unmarshal([]byte(secrets), &g.Secrets) != nil || json.Unmarshal([]byte(cmd), &g.CmdPrefix) != nil ||
+		!s.verify(canonical(g.ID, g.Caller, g.CwdPrefix, g.Secrets, g.CmdPrefix, created, expir, u), mac) {
+		g.Tampered = true
+		s.reportTampered(g.ID)
+	}
 	return g, nil
+}
+
+func (s *Store) reportTampered(id string) {
+	if _, seen := s.warned.LoadOrStore(id, struct{}{}); !seen {
+		s.log.Warn("grant row failed authentication; ignoring it (the vault file was modified outside grantd)", "grant_id", id)
+	}
 }
 
 // Add validates and stores g, returning the stored grant. The ID is always
@@ -90,6 +186,9 @@ func scan(r scanner, now time.Time) (Grant, error) {
 func (s *Store) Add(ctx context.Context, g Grant) (*Grant, error) {
 	bad := func(format string, a ...any) (*Grant, error) {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidGrant, fmt.Sprintf(format, a...))
+	}
+	if len(s.key) == 0 {
+		return nil, fmt.Errorf("%w: store has no MAC key", ErrInvalidGrant)
 	}
 	if !filepath.IsAbs(g.CwdPrefix) {
 		return bad("cwd_prefix %q is not absolute", g.CwdPrefix)
@@ -132,13 +231,17 @@ func (s *Store) Add(ctx context.Context, g Grant) (*Grant, error) {
 	secrets, _ := json.Marshal(out.Secrets)
 	cmd, _ := json.Marshal(out.CmdPrefix)
 	var uses any
+	var u *int64
 	if out.UsesRemaining != nil {
-		uses = int64(*out.UsesRemaining)
+		n := int64(*out.UsesRemaining)
+		uses, u = n, &n
 	}
+	mac := s.sign(canonical(out.ID, out.Caller, out.CwdPrefix, out.Secrets, out.CmdPrefix,
+		out.CreatedAt.UnixNano(), out.ExpiresAt.UnixNano(), u))
 	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO grants (`+cols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO grants (`+cols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		out.ID, out.Caller, out.CwdPrefix, string(secrets), string(cmd),
-		out.CreatedAt.UnixNano(), out.ExpiresAt.UnixNano(), uses)
+		out.CreatedAt.UnixNano(), out.ExpiresAt.UnixNano(), uses, mac)
 	if err != nil {
 		return nil, fmt.Errorf("grant: add: %w", err)
 	}
@@ -146,9 +249,10 @@ func (s *Store) Add(ctx context.Context, g Grant) (*Grant, error) {
 	return &out, nil
 }
 
-// Get returns one grant (expired or not, flagged via Expired) or ErrNotFound.
+// Get returns one grant (expired or not, flagged via Expired; a row that fails
+// authentication is returned with Tampered set) or ErrNotFound.
 func (s *Store) Get(ctx context.Context, id string) (*Grant, error) {
-	g, err := scan(s.db.QueryRowContext(ctx, `SELECT `+cols+` FROM grants WHERE id = ?`, id), s.now())
+	g, err := s.scan(s.db.QueryRowContext(ctx, `SELECT `+cols+` FROM grants WHERE id = ?`, id), s.now())
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -159,7 +263,8 @@ func (s *Store) Get(ctx context.Context, id string) (*Grant, error) {
 }
 
 // List returns every stored grant: non-expired first, then expired (flagged
-// with Expired), each group oldest first.
+// with Expired), each group oldest first. Rows that fail authentication are
+// included, flagged Tampered, so they can be shown to the user.
 func (s *Store) List(ctx context.Context) ([]Grant, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT `+cols+` FROM grants ORDER BY created_at, id`)
 	if err != nil {
@@ -169,7 +274,7 @@ func (s *Store) List(ctx context.Context) ([]Grant, error) {
 	now := s.now()
 	var out []Grant
 	for rows.Next() {
-		g, err := scan(rows, now)
+		g, err := s.scan(rows, now)
 		if err != nil {
 			return nil, fmt.Errorf("grant: list: %w", err)
 		}
@@ -249,12 +354,12 @@ func (s *Store) Match(ctx context.Context, q Query) (*Grant, error) {
 	}
 	var cands []Grant
 	for rows.Next() {
-		g, err := scan(rows, q.Now)
+		g, err := s.scan(rows, q.Now)
 		if err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("grant: match: %w", err)
 		}
-		if g.matches(q, cwd) {
+		if !g.Tampered && g.matches(q, cwd) {
 			cands = append(cands, g)
 		}
 	}
@@ -268,19 +373,59 @@ func (s *Store) Match(ctx context.Context, q Query) (*Grant, error) {
 		if g.UsesRemaining == nil {
 			return &g, nil
 		}
-		res, err := s.db.ExecContext(ctx,
-			`UPDATE grants SET uses_remaining = uses_remaining - 1
-			 WHERE id = ? AND uses_remaining > 0 AND expires_at > ?`, g.ID, nowNs)
+		got, err := s.consume(ctx, g, q, cwd)
 		if err != nil {
-			return nil, fmt.Errorf("grant: match: %w", err)
+			return nil, err
 		}
-		if n, err := res.RowsAffected(); err != nil {
-			return nil, fmt.Errorf("grant: match: %w", err)
-		} else if n == 1 {
-			left := *g.UsesRemaining - 1
-			g.UsesRemaining = &left
-			return &g, nil
+		if got != nil {
+			return got, nil
 		}
 	}
 	return nil, ErrNoMatch
+}
+
+// consumeAttempts bounds the compare-and-swap retries for one grant when
+// several Store values share a database.
+const consumeAttempts = 64
+
+// consume takes one use of a finite-use grant: it atomically replaces
+// uses_remaining and the row's mac, guarded by the count it read, and retries
+// with a fresh read if another writer got there first. It returns nil when the
+// grant is no longer usable.
+func (s *Store) consume(ctx context.Context, g Grant, q Query, cwd string) (*Grant, error) {
+	nowNs := q.Now.UnixNano()
+	for range consumeAttempts {
+		left := *g.UsesRemaining - 1
+		l := int64(left)
+		mac := s.sign(canonical(g.ID, g.Caller, g.CwdPrefix, g.Secrets, g.CmdPrefix,
+			g.CreatedAt.UnixNano(), g.ExpiresAt.UnixNano(), &l))
+		res, err := s.db.ExecContext(ctx,
+			`UPDATE grants SET uses_remaining = ?, mac = ?
+			 WHERE id = ? AND uses_remaining = ? AND expires_at > ?`,
+			l, mac, g.ID, int64(*g.UsesRemaining), nowNs)
+		if err != nil {
+			return nil, fmt.Errorf("grant: match: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("grant: match: %w", err)
+		}
+		if n == 1 {
+			g.UsesRemaining = &left
+			return &g, nil
+		}
+		// Lost the race (or the row changed): look again.
+		cur, err := s.scan(s.db.QueryRowContext(ctx, `SELECT `+cols+` FROM grants WHERE id = ?`, g.ID), q.Now)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("grant: match: %w", err)
+		}
+		if cur.Tampered || cur.UsesRemaining == nil || *cur.UsesRemaining <= 0 || !cur.ExpiresAt.After(q.Now) || !cur.matches(q, cwd) {
+			return nil, nil
+		}
+		g = cur
+	}
+	return nil, nil
 }
