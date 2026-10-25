@@ -59,11 +59,22 @@ install -m 0755 bin/grantd ~/.local/bin/grantd   # or any permanent directory on
 
 `make build` produces a production binary: the insecure test backends are not compiled in (see [Development](#development)).
 
-**`make sign` does not help today.** On macOS, Secure Enclave keys live in the data-protection keychain, which the system opens only to code with an accepted keychain access group. A plain `go build` binary has none, and `make sign` (ad-hoc signature, `build/grantd.entitlements`, identifier `dev.grantd.grantd`, entitlement `com.apple.application-identifier`) was tested on macOS 27.0.1 and is not accepted either: key creation still fails with `errSecMissingEntitlement` (`-34018`). That is outcome D in [MANUAL-TEST-MACOS.md](MANUAL-TEST-MACOS.md) §2a. The Secure Enclave needs a real Apple Development or Developer ID identity with a provisioning profile, i.e. a signed app bundle, which is planned for v0.2. The target stays in the Makefile for a build you sign yourself, but do not expect it to unlock the Secure Enclave.
+**`make sign` does not help today.** On macOS, Secure Enclave keys live in the data-protection keychain, which the system opens only to code with an accepted keychain access group. A plain `go build` binary has none, and `make sign` (ad-hoc signature, `build/grantd.entitlements`, identifier `dev.grantd.grantd`, entitlement `com.apple.application-identifier`) was tested on macOS 27.0.1 and is not accepted either: key creation still fails with `errSecMissingEntitlement` (`-34018`). That is outcome D in [MANUAL-TEST-MACOS.md](MANUAL-TEST-MACOS.md) §2a. The Secure Enclave needs a real Apple Development or Developer ID identity with a provisioning profile, i.e. a signed app bundle (below). The target stays in the Makefile for a build you sign yourself, but do not expect it to unlock the Secure Enclave.
 
 **For a from-source build on current macOS, create the vault with `grantd init --keychain-fallback`** (next section). Plain `grantd init` is the path for a properly signed build, where the Secure Enclave is available.
 
-**Signed bundle (restores the Secure Enclave).** With a paid Apple Developer account you can wrap the same binary in a Developer ID signed `.app` whose provisioning profile carries `keychain-access-groups`; the daemon inside the bundle can then create the Secure Enclave key (`keystore tier: hardware`). `make bundle` assembles `dist/grantd.app`, `make sign-bundle IDENTITY=... PROFILE=... TEAM_ID=...` signs it, and `grantd service install --exe dist/grantd.app/Contents/MacOS/grantd` (or `--exe /Applications/grantd.app`) runs the daemon from it. It has no UI yet, and the signing steps have not been run end to end; the portal setup and the exact commands are in [MANUAL-TEST-MACOS.md](MANUAL-TEST-MACOS.md) §2c.
+**Signed bundle (restores the Secure Enclave).** With an Apple Developer account you can build `dist/grantd.app`, sign it, and run the daemon from it; the daemon inside the bundle can then create the Secure Enclave key (`keystore tier: hardware`). It needs Xcode. The app is two bundles: the outer `grantd.app` is the SwiftUI menu-bar app (a stub so far: menu bar icon, a status line, Quit), and the Go binary lives in its own nested bundle, `grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd`, because the provisioning profile is only honoured for a bundle's main executable. The binary is built for macOS 14.0 or newer (`minos 14.0`; `make helper` checks it).
+
+```sh
+make bundle                                   # xcodebuild + the Go helper -> dist/grantd.app (unsigned)
+make sign-bundle IDENTITY=... PROFILE=... TEAM_ID=...   # signs the helper, then the outer app
+H=dist/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd
+GRANTD_HOME=$(mktemp -d) "$H" init            # must print: keystore tier: hardware
+cp -R dist/grantd.app /Applications/
+"$H" service install --exe /Applications/grantd.app   # runs the helper's binary, never the UI
+```
+
+`--exe` accepts the outer `grantd.app`, the helper `.app` or the Go binary; the first two resolve to the Go binary, and the app's own UI executable is refused. Register the MCP server with the helper's path too (`claude mcp add grantd -- /Applications/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd mcp`). `make ci-app` builds the unsigned app and runs the Swift tests (`app/GrantdKit`); it is not part of `make ci`. The signing steps have been run with an Apple Development identity and profile (the Developer ID path and notarisation have not); the portal setup and the exact commands are in [MANUAL-TEST-MACOS.md](MANUAL-TEST-MACOS.md) §2c, and the app design is in [UI-SPEC.md](UI-SPEC.md).
 
 **Run the daemon at login:**
 

@@ -147,18 +147,44 @@ restores the Secure Enclave is in 2c.
 
 Goal: run the daemon from a signed `.app` bundle whose provisioning profile
 carries `keychain-access-groups`, so the Secure Enclave key can be created
-(`keystore tier: hardware`). This is roadmap step 4a; there is no UI yet, the
-bundle just wraps the CLI binary. It needs a paid Apple Developer account. Nothing
-in `make ci` or the unit tests uses this; it is a manual test on your Mac.
+(`keystore tier: hardware`). It needs an Apple Developer account (an Apple
+Development identity and profile work for your own Macs). Nothing in `make ci`
+or the unit tests uses this; it is a manual test on your Mac. It needs Xcode:
+`make bundle` runs `xcodebuild` for the menu-bar app (`make ci-app` is the
+non-signing check of that part).
 
-Layout produced by `make bundle`:
+Layout produced by `make bundle` (v0.2; see [UI-SPEC.md](UI-SPEC.md) section 2.1):
 
 ```
 dist/grantd.app/Contents/
-  Info.plist              from build/bundle/Info.plist (LSUIElement: no Dock icon)
-  MacOS/grantd            the normal bin/grantd
-  Resources/              empty for now
-  embedded.provisionprofile   added by make sign-bundle
+  Info.plist                 from app/Grantd/Info.plist; id dev.grantd.app; CFBundleExecutable grantd-app (the SwiftUI app)
+  MacOS/grantd-app           the menu-bar app (a stub so far: icon, status line, Quit)
+  embedded.provisionprofile  added by make sign-bundle
+  Helpers/grantd-daemon.app/
+    Contents/
+      Info.plist             from build/bundle/helper-Info.plist; id dev.grantd.app.daemon; CFBundleExecutable grantd
+      MacOS/grantd           the Go binary (daemon, CLI, MCP shim), built for macOS 14.0
+      embedded.provisionprofile   a copy of the same profile, added by make sign-bundle
+```
+
+**Why the Go binary is in a bundle of its own.** A Go binary signed with the
+restricted `keychain-access-groups` entitlement and placed at
+`Contents/MacOS/grantd` or `Contents/Helpers/grantd` next to a different main
+executable is killed at launch (exit 137, `amfid`: `No matching profile found`):
+the provisioning profile is only looked up for a bundle's main executable. Inside
+its own nested `.app` with a copy of the profile it launches, and `grantd init`
+prints `keystore tier: hardware`. Both bundles are signed with the same identity
+and entitlements, inside out (helper first), without `--deep`.
+
+**Minimum macOS.** `make helper` builds `bin/grantd` with
+`CGO_CFLAGS`/`CGO_LDFLAGS` `-mmacosx-version-min=14.0` and fails unless
+`otool -l bin/grantd` shows `minos 14.0` (without the flags the binary records the
+build machine's macOS, 27.0 here, and would not start on older releases). Both
+Info.plists pin `LSMinimumSystemVersion` 14.0 (`MIN_MACOS` in the Makefile).
+Check the bundled binary:
+
+```sh
+otool -l dist/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd | grep -A3 LC_BUILD_VERSION   # minos 14.0
 ```
 
 **Version.** `make build` and `make bundle` print the version they use and where it came from. Order: `make VERSION=x` on the command line, then `git describe --tags --always --dirty`, then the contents of a `VERSION` file in the repo root, then `dev`. A tree from plain `git archive` has no `.git` and would report `dev`; run `make dist-src` in the checkout instead, which writes `dist/grantd-src.tar.gz` containing a `VERSION` file with the hash, so building from the unpacked archive (`make bundle`) carries it.
@@ -168,15 +194,20 @@ The bundle identifier lives in one place, `BUNDLE_ID` in the Makefile
 (`dev.grantd`) is the keychain group without the team prefix. Rename the project
 there and in the portal.
 
-**What is verified and what is not.** Verified on this repo's machine: `make
-bundle` produces the layout above with a valid `Info.plist`; `make sign-bundle`
-refuses to run without `IDENTITY`, `PROFILE` and `TEAM_ID`; `codesign` embeds an
-entitlements file verbatim (it does **not** expand `$(TeamIdentifierPrefix)`, an
-Xcode build setting), which is why `make sign-bundle` expands it into
-`dist/grantd-app.entitlements` first. Everything below that needs your
-certificate, Team ID or profile has not been run; the portal steps are written
-from memory of the portal and marked "verify" where the exact wording or option
-may differ.
+**What is verified and what is not.** Verified on this repo's machine (macOS
+27.0.1, Xcode 27.1): `make bundle` produces the layout above with valid
+`Info.plist` files and `minos 14.0` on the Go binary; `make sign-bundle` refuses
+to run without `IDENTITY`, `PROFILE` and `TEAM_ID`; with an **Apple Development**
+identity and its macOS App Development profile (App ID `TEAMID.dev.grantd.app`,
+keychain group `TEAMID.dev.grantd`), `make bundle && make sign-bundle ...` signs
+both bundles, `codesign --verify --deep --strict dist/grantd.app` passes, and
+`GRANTD_HOME=$(mktemp -d) .../grantd-daemon.app/Contents/MacOS/grantd init`
+prints `keystore tier: hardware`. `codesign` embeds an entitlements file verbatim
+(it does **not** expand `$(TeamIdentifierPrefix)`, an Xcode build setting), which
+is why `make sign-bundle` expands it into `dist/grantd-app.entitlements` first.
+Not run: a **Developer ID** identity and profile, notarisation, and the nested
+layout on any other Mac. The portal steps below are written from memory of the
+portal and marked "verify" where the exact wording or option may differ.
 
 #### (a) App ID with Keychain Sharing
 
@@ -229,12 +260,14 @@ make sign-bundle IDENTITY="Developer ID Application: Your Name (TEAMID)" \
   PROFILE=~/Downloads/grantd.provisionprofile TEAM_ID=TEAMID
 ```
 
-`sign-bundle` copies the profile to `Contents/embedded.provisionprofile`,
-expands `build/bundle/grantd-app.entitlements` with your Team ID, runs
+`sign-bundle` copies the profile to `Contents/embedded.provisionprofile` and to
+the helper's `Contents/embedded.provisionprofile`, expands
+`build/bundle/grantd-app.entitlements` with your Team ID, runs
 `codesign --force --options runtime --timestamp --sign ... --entitlements ...`
-on the bundle, then `codesign --verify --deep --strict` and prints the
-entitlements. `--timestamp` contacts Apple's timestamp server, so you need
-network access. Signing may ask for access to the certificate's private key in
+on the helper bundle and then on the outer app (inside out, no `--deep`), then
+`codesign --verify --deep --strict` and prints the entitlements of both.
+`--timestamp` contacts Apple's timestamp server, so you need network access
+(`make sign-bundle CODESIGN_TIMESTAMP=--timestamp=none` skips it). Signing may ask for access to the certificate's private key in
 your keychain: that is your own prompt, allow it. It prints `signed and
 verified: dist/grantd.app` on success. Re-run `make bundle` before signing again
 (it starts from a clean `dist/grantd.app`).
@@ -243,8 +276,12 @@ verified: dist/grantd.app` on success. Re-run `make bundle` before signing again
 
 ```sh
 codesign -d --entitlements - dist/grantd.app
+codesign -d --entitlements - dist/grantd.app/Contents/Helpers/grantd-daemon.app
 codesign -dvv dist/grantd.app 2>&1 | grep -E 'Identifier|Authority|TeamIdentifier|flags'
+codesign -dvv dist/grantd.app/Contents/Helpers/grantd-daemon.app 2>&1 | grep -E 'Identifier|Authority|TeamIdentifier|flags'
 ```
+
+Both bundles should show the entitlements below.
 
 Expected (macOS 27 prints the tree form; older releases print XML):
 
@@ -258,7 +295,7 @@ Expected (macOS 27 prints the tree form; older releases print XML):
         [String] TEAMID.dev.grantd
 ```
 
-and `Identifier=dev.grantd.app`, an `Authority=Developer ID Application: ...`
+and `Identifier=dev.grantd.app` (the helper: `dev.grantd.app.daemon`), an `Authority=Developer ID Application: ...`
 line, `TeamIdentifier=TEAMID`, and `flags=0x10000(runtime)`. A literal
 `$(TeamIdentifierPrefix)` anywhere means the unexpanded template got signed.
 
@@ -267,10 +304,10 @@ line, `TeamIdentifier=TEAMID`, and `flags=0x10000(runtime)`. A literal
 The keystore manual test (`GRANTD_MANUAL_TEST=1 go test ...`) does **not**
 exercise the bundle: the test binary is a different executable outside the
 bundle with no profile, so it stays at outcome D. The check is the bundled
-binary itself, on a fresh vault:
+Go binary (the helper's, not the SwiftUI app's), on a fresh vault:
 
 ```sh
-GRANTD_HOME=$(mktemp -d) dist/grantd.app/Contents/MacOS/grantd init
+GRANTD_HOME=$(mktemp -d) dist/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd init
 ```
 
 Expected: `vault created at ... (keystore tier: hardware)`, no prompt. This
@@ -297,16 +334,20 @@ Failure modes:
 #### (f) Run the daemon from the bundle
 
 ```sh
-grantd service install --exe "$PWD/dist/grantd.app/Contents/MacOS/grantd"
+H=dist/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd
+$H service install --exe "$PWD/$H"
 # or, after cp -R dist/grantd.app /Applications/ :
-grantd service install --exe /Applications/grantd.app
-grantd service status          # exe: .../grantd.app/Contents/MacOS/grantd
+$H service install --exe /Applications/grantd.app
+$H service status          # exe: .../grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd
 ```
 
-`--exe` takes the inner binary, or the `.app`, which is resolved to
-`Contents/MacOS/grantd`. The launchd plist always names the inner binary, because
-the signature and profile apply to the bundle that contains the running file.
-A path under a temporary directory is still refused. Any grantd can run the
+`--exe` takes the Go binary, the helper `grantd-daemon.app`, or the outer
+`grantd.app`; the last two are resolved to
+`Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd`. The launchd plist
+always names that binary, because the signature and profile apply to the bundle
+that contains the running file. The outer app's own executable
+(`Contents/MacOS/grantd-app`, the UI) is refused: `service install` never installs
+a job that runs the UI. A path under a temporary directory is still refused. Any grantd can run the
 `install` command; only the binary it points at needs to be the bundled one.
 Put the bundle in `/Applications` with `cp -R` (not a symlink or a move of a
 build directory you will rebuild), and run `service install` again after every
@@ -316,8 +357,9 @@ The CLI, the MCP shim and the auto-started daemon need no special handling, but
 use the bundled binary so they all share one identity:
 
 ```sh
-ln -sf /Applications/grantd.app/Contents/MacOS/grantd ~/.local/bin/grantd   # optional
-claude mcp add grantd -- /Applications/grantd.app/Contents/MacOS/grantd mcp
+G=/Applications/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd
+ln -sf "$G" ~/.local/bin/grantd   # optional
+claude mcp add grantd -- "$G" mcp
 ```
 
 `grantd mcp` starts the daemon it needs with `os.Executable()`, so launched

@@ -1,5 +1,7 @@
 # grantd v0.2: menu-bar app spec
 
+> **Status (2026-10-25): v0.2 step 1 done; the owner accepted every default in section 8.** Implemented: G1 (`bundleExe` resolves `grantd.app` to the helper), G2 and the bundle restructure (nested `grantd-daemon.app`, `make helper`/`app`/`bundle`/`sign-bundle`, `minos 14.0`), a stub SwiftUI app with `GrantdKit` and its tests (`make ci-app`), G3 (dialog sentence) and G4 (`update` op, which also takes `min_tier` and a `clear` list). Not started: work-breakdown steps 3 to 15.
+
 Status: design spec, no code. Audience: the agent that implements v0.2 and the owner who reviews it. Written against the tree at commit `d1675b5` (plus uncommitted work in `internal/grant` and `internal/audit` that nothing here depends on). File references are to this repository; protocol names are exactly those in [PROTOCOL.md](PROTOCOL.md).
 
 Decisions in this document are made; the six open questions in section 8 each carry a default so work can start without answers. Where a fact was checked on this machine (macOS 27.0.1, Xcode 27.1, SDK 27.0, Go 1.27.3) it says so; what could not be checked is collected in Appendix A.
