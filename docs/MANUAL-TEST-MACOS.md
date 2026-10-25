@@ -118,6 +118,20 @@ exact `OSStatus` line from the failing run.
 | E | some other error (paste it) | investigate |
 | F | only the fallback works | `TierDialog` on this Mac |
 
+**Recorded result (2026-10-25, macOS 27.0.1, Apple silicon): outcome D.**
+- Unsigned `go test` binary: Secure Enclave key creation fails with
+  `OSStatus -34018` (`errSecMissingEntitlement`).
+- After `make sign` (ad-hoc, entitlement
+  `com.apple.application-identifier=dev.grantd.grantd`) the binary launches, but
+  `find Secure Enclave key: A required entitlement is not present. (OSStatus -34018)`.
+- The Keychain fallback round-trip (`TestManualFallbackRoundTrip`) passes.
+
+Conclusion: ad-hoc signing with an application identifier is **not** accepted as
+a keychain access group. The Secure Enclave needs a real Apple Development or
+Developer ID identity with a provisioning profile, i.e. an app bundle, planned
+for v0.2 (BACKLOG.md roadmap step 4). Until then `grantd init --keychain-fallback`
+is the working path for a from-source build.
+
 ### 2b. Verify the key exists
 
 - Fallback item (login keychain): `security find-generic-password -s dev.grantd -a vault-kek`

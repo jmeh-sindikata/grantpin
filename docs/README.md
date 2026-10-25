@@ -53,13 +53,15 @@ Requirements: macOS, Go 1.27 or newer (`go.mod` says `go 1.27.3`), and the Xcode
 git clone <this repository> grantd && cd grantd
 export PATH=/opt/homebrew/bin:$PATH      # if Go is a Homebrew install
 make build                               # writes bin/grantd (production build)
-make sign                                # optional, macOS; rebuilds and ad-hoc signs bin/grantd (see below)
+make sign                                # optional; ad-hoc signs bin/grantd, but does not unlock the Secure Enclave (see below)
 install -m 0755 bin/grantd ~/.local/bin/grantd   # or any permanent directory on PATH
 ```
 
 `make build` produces a production binary: the insecure test backends are not compiled in (see [Development](#development)).
 
-**Optional: `make sign`.** On macOS, Secure Enclave keys live in the data-protection keychain, which the system opens only to code that carries an application identifier. A plain `go build` binary has none, and per [MANUAL-TEST-MACOS.md](MANUAL-TEST-MACOS.md) §2a key creation usually fails with `errSecMissingEntitlement` (`-34018`). `make sign` builds and then ad-hoc signs `bin/grantd` with `build/grantd.entitlements` (identifier `dev.grantd.grantd`, entitlement `com.apple.application-identifier`) to give it one. Whether macOS accepts an ad-hoc application identifier for Secure Enclave keys is machine-dependent and not verified here; the decision tree in MANUAL-TEST-MACOS.md §2a is how to find out. If `grantd init` says the Secure Enclave is unavailable, run `make sign` and retry; if it still fails, use the weaker Keychain fallback: `grantd init --keychain-fallback`, the choice is recorded in the vault and in the wrapped key, so the daemon and the service need no flag; see [Presence tiers](#presence-tiers-and-the-keychain-fallback).
+**`make sign` does not help today.** On macOS, Secure Enclave keys live in the data-protection keychain, which the system opens only to code with an accepted keychain access group. A plain `go build` binary has none, and `make sign` (ad-hoc signature, `build/grantd.entitlements`, identifier `dev.grantd.grantd`, entitlement `com.apple.application-identifier`) was tested on macOS 27.0.1 and is not accepted either: key creation still fails with `errSecMissingEntitlement` (`-34018`). That is outcome D in [MANUAL-TEST-MACOS.md](MANUAL-TEST-MACOS.md) §2a. The Secure Enclave needs a real Apple Development or Developer ID identity with a provisioning profile, i.e. a signed app bundle, which is planned for v0.2. The target stays in the Makefile for a build you sign yourself, but do not expect it to unlock the Secure Enclave.
+
+**For a from-source build on current macOS, create the vault with `grantd init --keychain-fallback`** (next section). Plain `grantd init` is the path for a properly signed build, where the Secure Enclave is available.
 
 **Run the daemon at login:**
 
@@ -79,11 +81,27 @@ This is the whole path from a built binary to a Touch ID-gated run through Claud
 **1. Create the vault.**
 
 ```sh
+grantd init --keychain-fallback
+# vault created at /Users/you/Library/Application Support/grantd/vault.db (keystore tier: dialog)
+```
+
+Use `--keychain-fallback` for a build you made from source: on current macOS an unsigned or ad-hoc signed binary cannot create a Secure Enclave key (`-34018`, see [MANUAL-TEST-MACOS.md](MANUAL-TEST-MACOS.md) §2a), and `make sign` does not change that. What the flag changes:
+
+- The keystore tier is `dialog`, not `hardware`.
+- New secrets default to the `dialog` tier, because `init` gives them the key store's tier.
+- Touch ID still gates every release: the approver is still `hardware`.
+- The vault key is wrapped by a random key held in a login-keychain item, not by a key in the Secure Enclave, so it is readable by processes running as you. See [Presence tiers](#presence-tiers-and-the-keychain-fallback) and the threat model.
+
+The choice is recorded in the vault, so no later command needs the flag. `init` does not need the daemon; it creates the SQLite vault (mode 0600).
+
+For a properly signed build (Apple Development or Developer ID identity with a provisioning profile), run plain `grantd init` instead:
+
+```sh
 grantd init
 # vault created at /Users/you/Library/Application Support/grantd/vault.db (keystore tier: hardware)
 ```
 
-This creates a Secure Enclave key, wraps a random 256-bit vault key with it, and creates the SQLite vault (mode 0600). `init` does not need the daemon. If it fails with a Secure Enclave error, see Install above.
+This creates a Secure Enclave key, wraps a random 256-bit vault key with it, and new secrets default to `hardware`. If it fails with a Secure Enclave error, use the fallback above.
 
 **2. Make sure the daemon is running.** If you have not installed the service yet:
 
@@ -92,7 +110,7 @@ grantd service install
 grantd status
 # daemon:       running (pid 4242)
 # ...
-# keystore:     hardware
+# keystore:     dialog        (hardware with a Secure Enclave vault)
 # approver:     hardware
 ```
 
@@ -104,7 +122,7 @@ grantd set API_KEY                      # type the value, input hidden
 # stored API_KEY
 grantd list
 # NAME     TIER      EXPIRES  TAGS  URL
-# API_KEY  hardware  -        -     -
+# API_KEY  dialog    -        -     -
 ```
 
 Names are `[A-Za-z0-9_/.-]+`, with `/` for namespaces (`aws/access_key`). Inside the command the secret becomes an environment variable named after the last path segment, uppercased (`aws/access_key` becomes `ACCESS_KEY`).
@@ -192,7 +210,7 @@ One thing to know before you rely on this for real commands: the command runs wi
 |---|---|
 | `grantd: grantd daemon is not running ... start it with grantd daemon` (exit 69) | Nothing is listening on the socket. `grantd service install`, or `grantd daemon`. |
 | `vault not initialized; run grantd init` | The daemon is up but there is no vault yet. Run `grantd init`; the daemon picks it up without a restart. |
-| `init` fails: Secure Enclave unavailable | Try `make sign`; in a VM or on a Mac without a Secure Enclave use `grantd init --keychain-fallback` (no flag is needed afterwards) and read the tier consequences below. |
+| `init` fails: Secure Enclave unavailable (`-34018`) | `make sign` does not fix this (MANUAL-TEST-MACOS.md §2a, outcome D); for a from-source build, a VM or a Mac without a Secure Enclave use `grantd init --keychain-fallback` (no flag is needed afterwards) and read the tier consequences below. |
 | `denied (approver_unavailable)` (exit 77) | The prompt could not be shown: no GUI session (daemon started over SSH), no device password set, or `osascript` failed. It never degrades to an allow. |
 | `refused (tier_unmet)` (exit 78) | A secret needs a presence tier your backends do not provide. Tiers are never downgraded. |
 | `refused (policy_refused)` (exit 78) | `.grantd.yml` forbids the secret or command, or the file is unreadable, invalid, not owned by you, or world-writable. The message names the item. |
