@@ -32,17 +32,20 @@ func (k idKeyStore) Tier() presence.PresenceTier { return k.tier }
 
 // fakeApprover answers per its fields and records requests.
 type fakeApprover struct {
-	mu       sync.Mutex
-	tier     presence.PresenceTier
-	allow    bool
-	ttl      time.Duration
-	reason   string
-	err      error
-	onAsk    func()        // if non-nil, called inside Ask
-	block    chan struct{} // if non-nil, Ask waits for it (or ctx)
-	reqs     []approve.ApprovalRequest
-	inFlight int
-	maxSeen  int
+	mu    sync.Mutex
+	tier  presence.PresenceTier
+	allow bool
+	ttl   time.Duration
+	// standingTTL, if non-nil, replaces the duration a standing-grant allow
+	// carries (default: exactly RequestedTTL, as a real approver answers).
+	standingTTL *time.Duration
+	reason      string
+	err         error
+	onAsk       func()        // if non-nil, called inside Ask
+	block       chan struct{} // if non-nil, Ask waits for it (or ctx)
+	reqs        []approve.ApprovalRequest
+	inFlight    int
+	maxSeen     int
 }
 
 func (f *fakeApprover) Tier() presence.PresenceTier { return f.tier }
@@ -67,6 +70,12 @@ func (f *fakeApprover) Ask(ctx context.Context, r approve.ApprovalRequest) (appr
 	}
 	if err != nil {
 		return approve.Decision{}, err
+	}
+	if allow && r.Kind == approve.KindStandingGrant {
+		ttl = r.RequestedTTL
+		if f.standingTTL != nil {
+			ttl = *f.standingTTL
+		}
 	}
 	return approve.Decision{Allow: allow, TTL: ttl, Reason: reason}, nil
 }

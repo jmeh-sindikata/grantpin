@@ -211,13 +211,18 @@ func policyItem(err error) string {
 // approveRun asks the human (serialised). It returns the audit decision and
 // grant ID to proceed with, or an empty decision after having responded.
 func (b *Broker) approveRun(ctx context.Context, rc *runCtx, req *proto.Request, pol *policy.Policy, caller, cwd string, names []string) (decision, grantID string) {
-	suggested := b.d.DefaultGrantTTL
-	maxTTL := b.d.DefaultGrantTTL
+	// The dialog offers the repo policy's max_grant_ttl, but never more than
+	// grant.MaxDialogGrantTTL: it is the prompt an agent can trigger at will.
+	// Without a policy it offers the daemon default (1h). The same value caps
+	// the grant the answer creates. Standing grants are a different path
+	// (handleGrantAdd) and are not limited by max_grant_ttl.
+	suggested := min(b.d.DefaultGrantTTL, grant.MaxDialogGrantTTL)
 	if pol.Present() {
-		suggested = min(suggested, pol.MaxGrantTTL())
-		maxTTL = pol.MaxGrantTTL()
+		suggested = min(pol.MaxGrantTTL(), grant.MaxDialogGrantTTL)
 	}
+	maxTTL := suggested
 	areq := approve.ApprovalRequest{
+		Kind:          approve.KindRelease,
 		Caller:        caller,
 		Cwd:           cwd,
 		Argv:          slices.Clone(req.Argv),

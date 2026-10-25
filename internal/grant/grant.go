@@ -15,6 +15,21 @@ import (
 	"grantd/internal/approve"
 )
 
+const (
+	// MaxDialogGrantTTL is the longest grant the approval dialog can create
+	// ("Allow for N"). The dialog offers min(policy max_grant_ttl, this), or 1h
+	// without a policy, and FromDecision callers cap at it.
+	MaxDialogGrantTTL = 24 * time.Hour
+	// MaxStandingGrantTTL is the longest standing grant (`grantd grants add`),
+	// whatever the policy says. A policy may lower it with
+	// max_standing_grant_ttl; it cannot raise it.
+	MaxStandingGrantTTL = 90 * 24 * time.Hour
+)
+
+// KindStanding is the stored kind of a standing grant. The empty kind is a
+// grant created from the approval dialog.
+const KindStanding = "standing"
+
 var (
 	// ErrNoMatch means no stored grant satisfies the query.
 	ErrNoMatch = errors.New("grant: no matching grant")
@@ -40,6 +55,12 @@ type Grant struct {
 	CreatedAt     time.Time
 	ExpiresAt     time.Time
 	UsesRemaining *int // nil = unlimited within TTL
+
+	// Standing marks a grant the human created deliberately with
+	// `grantd grants add` (stored as kind "standing", covered by the row MAC),
+	// as opposed to one created by the "Allow for N" button. It changes nothing
+	// about matching; it exists so listings can tell them apart.
+	Standing bool
 
 	// Expired is set by Get and List (relative to the store clock); it is not
 	// persisted and ignored by Add.
@@ -169,4 +190,38 @@ func FromDecision(req approve.ApprovalRequest, ttl, maxTTL time.Duration, cmdPre
 		CreatedAt: now,
 		ExpiresAt: now.Add(ttl),
 	}
+}
+
+// NewStanding builds the standing grant for an approved KindStandingGrant
+// request: exactly the caller, directory prefix (GrantCwdPrefix, or Cwd),
+// secrets list and command prefix (GrantCmdPrefix, or Argv) the human was
+// shown, for RequestedTTL and RequestedUses (0 = unlimited). It applies no
+// ceiling; the broker checks those before asking. A non-positive RequestedTTL
+// yields an already-expired grant, which Store.Add rejects.
+func NewStanding(req approve.ApprovalRequest, now time.Time) Grant {
+	cwd := req.GrantCwdPrefix
+	if cwd == "" {
+		cwd = req.Cwd
+	}
+	if cwd != "" {
+		cwd = filepath.Clean(cwd)
+	}
+	prefix := req.GrantCmdPrefix
+	if len(prefix) == 0 {
+		prefix = req.Argv
+	}
+	g := Grant{
+		Caller:    req.Caller,
+		CwdPrefix: cwd,
+		Secrets:   slices.Clone(req.Secrets),
+		CmdPrefix: slices.Clone(prefix),
+		CreatedAt: now,
+		ExpiresAt: now.Add(max(req.RequestedTTL, 0)),
+		Standing:  true,
+	}
+	if req.RequestedUses > 0 {
+		n := req.RequestedUses
+		g.UsesRemaining = &n
+	}
+	return g
 }

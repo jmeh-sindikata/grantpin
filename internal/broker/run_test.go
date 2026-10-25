@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"grantd/internal/approve"
 	"grantd/internal/audit"
+	"grantd/internal/grant"
 	"grantd/internal/presence"
 	"grantd/internal/proto"
 	"grantd/internal/vault"
@@ -620,5 +622,75 @@ func TestRunApprovalRequestStatesGrantScope(t *testing.T) {
 	}
 	if strings.Join(r.GrantCmdPrefix, "|") != "sh" || strings.Join(g.CmdPrefix, "|") != strings.Join(r.GrantCmdPrefix, "|") || g.CwdPrefix != r.GrantCwdPrefix {
 		t.Errorf("shown scope %q in %q != stored %q in %q", r.GrantCmdPrefix, r.GrantCwdPrefix, g.CmdPrefix, g.CwdPrefix)
+	}
+}
+
+// ---- dialog TTL follows the repo policy, capped ---------------------------
+
+func TestRunDialogTTLFollowsPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		policy      string // max_grant_ttl line, "" for none
+		wantOffered time.Duration
+	}{
+		{"no max_grant_ttl key", "", time.Hour}, // the policy default
+		{"8h", "max_grant_ttl: 8h\n", 8 * time.Hour},
+		{"90m", "max_grant_ttl: 90m\n", 90 * time.Minute},
+		{"exactly the cap", "max_grant_ttl: 24h\n", 24 * time.Hour},
+		{"7d is capped to 24h", "max_grant_ttl: 7d\n", 24 * time.Hour},
+		{"10m", "max_grant_ttl: 10m\n", 10 * time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			writePolicy(t, e.cwd, "version: 1\nsecrets: [API_KEY]\ncommands:\n  - [true]\n"+tc.policy, 0o600)
+			e.ap.ttl = tc.wantOffered // the human takes the offer
+			w := e.do(e.run([]string{"API_KEY"}, "true"))
+			wantOK(t, w)
+			r := e.ap.last()
+			if r.Kind != approve.KindRelease || r.SuggestedTTL != tc.wantOffered {
+				t.Fatalf("offered %v (kind %v), want %v", r.SuggestedTTL, r.Kind, tc.wantOffered)
+			}
+			g, err := e.g.Get(context.Background(), w.final.GrantID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d := g.ExpiresAt.Sub(g.CreatedAt); d != tc.wantOffered || g.Standing {
+				t.Errorf("grant lasts %v (standing=%v), want %v", d, g.Standing, tc.wantOffered)
+			}
+		})
+	}
+}
+
+func TestRunDialogGrantNeverExceedsTheOffer(t *testing.T) {
+	// An approver answering for longer than it was offered is clamped: to the
+	// policy's max_grant_ttl, and to 24h whatever the policy says.
+	for _, tc := range []struct {
+		policy string
+		want   time.Duration
+	}{
+		{"max_grant_ttl: 8h\n", 8 * time.Hour},
+		{"max_grant_ttl: 7d\n", 24 * time.Hour},
+		{"", time.Hour},
+	} {
+		e := newEnv(t)
+		writePolicy(t, e.cwd, "version: 1\nsecrets: [API_KEY]\ncommands:\n  - [true]\n"+tc.policy, 0o600)
+		e.ap.ttl = 30 * 24 * time.Hour
+		w := e.do(e.run([]string{"API_KEY"}, "true"))
+		wantOK(t, w)
+		g, _ := e.g.Get(context.Background(), w.final.GrantID)
+		if d := g.ExpiresAt.Sub(g.CreatedAt); d != tc.want {
+			t.Errorf("policy %q: grant lasts %v, want %v", tc.policy, d, tc.want)
+		}
+	}
+}
+
+func TestRunNoPolicyOffersTheDaemonDefault(t *testing.T) {
+	e := newEnv(t)
+	wantOK(t, e.do(e.run([]string{"API_KEY"}, "true")))
+	if r := e.ap.last(); r.SuggestedTTL != time.Hour || r.Kind != approve.KindRelease || r.PolicyPresent {
+		t.Errorf("request = %+v", r)
+	}
+	if grant.MaxDialogGrantTTL != 24*time.Hour {
+		t.Errorf("MaxDialogGrantTTL = %v", grant.MaxDialogGrantTTL)
 	}
 }

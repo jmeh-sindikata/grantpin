@@ -362,7 +362,7 @@ func TestInternalErrorsAreGeneric(t *testing.T) {
 
 func TestForgedGrantRowIsIgnoredFlaggedAndCounted(t *testing.T) {
 	e := newEnv(t)
-	_, err := e.v.DB().Exec(`INSERT INTO grants VALUES ('forged', 'tester', ?, '["API_KEY"]', '["true"]', ?, ?, NULL, x'00')`,
+	_, err := e.v.DB().Exec(`INSERT INTO grants (id, caller, cwd_prefix, secrets, cmd_prefix, created_at, expires_at, uses_remaining, mac) VALUES ('forged', 'tester', ?, '["API_KEY"]', '["true"]', ?, ?, NULL, x'00')`,
 		e.cwd, e.now.UnixNano(), e.now.Add(time.Hour).UnixNano())
 	if err != nil {
 		t.Fatal(err)

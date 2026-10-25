@@ -21,7 +21,9 @@ import (
 // DefaultCaller is used when a request carries no caller label.
 const DefaultCaller = "cli"
 
-// DefaultGrantTTL is the "Allow for N" suggestion when Deps leaves it zero.
+// DefaultGrantTTL is the "Allow for N" suggestion when Deps leaves it zero and
+// no policy applies (a policy offers its max_grant_ttl, at most
+// grant.MaxDialogGrantTTL).
 const DefaultGrantTTL = time.Hour
 
 const (
@@ -46,8 +48,9 @@ type Deps struct {
 	// KeyStoreTier is the tier the keystore provides; a secret whose min_tier
 	// is higher than this (or than Approver.Tier()) is refused.
 	KeyStoreTier presence.PresenceTier
-	// DefaultGrantTTL is offered as "Allow for N" (default 1h), capped by
-	// policy max_grant_ttl.
+	// DefaultGrantTTL is offered as "Allow for N" (default 1h) when no policy
+	// applies. With a policy the dialog offers min(max_grant_ttl,
+	// grant.MaxDialogGrantTTL) instead.
 	DefaultGrantTTL time.Duration
 	// Logger receives operational errors (never values). nil discards.
 	Logger *slog.Logger
@@ -211,6 +214,11 @@ func callerOf(req *proto.Request) (string, bool) {
 	if c == "" {
 		return DefaultCaller, true
 	}
+	return labelOf(c)
+}
+
+// labelOf validates a non-empty, trimmed caller label.
+func labelOf(c string) (string, bool) {
 	if len(c) > maxCallerLen {
 		return DefaultCaller, false
 	}

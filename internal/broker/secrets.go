@@ -197,6 +197,7 @@ func (b *Broker) handleShow(ctx context.Context, req *proto.Request, w daemon.Re
 	}
 
 	dec, err := b.ask(ctx, approve.ApprovalRequest{
+		Kind:   approve.KindShow,
 		Caller: caller, Cwd: req.Cwd, Argv: []string{"grantd", "show", req.Name},
 		Secrets: []string{req.Name}, Expanded: []string{req.Name},
 	})

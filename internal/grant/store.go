@@ -20,9 +20,10 @@ import (
 )
 
 // DDL is the schema owned by this package. Times are unix nanoseconds.
-// secrets and cmd_prefix are JSON arrays of strings. mac authenticates the
-// row (see the package comment): a row whose mac does not verify is never
-// matched.
+// secrets and cmd_prefix are JSON arrays of strings. kind is "" for a grant
+// created from the approval dialog and "standing" for one the human created
+// with `grants add`. mac authenticates the row, kind included (see the
+// package comment): a row whose mac does not verify is never matched.
 const DDL = `CREATE TABLE IF NOT EXISTS grants (
 	id             TEXT    PRIMARY KEY,
 	caller         TEXT    NOT NULL,
@@ -32,21 +33,28 @@ const DDL = `CREATE TABLE IF NOT EXISTS grants (
 	created_at     INTEGER NOT NULL,
 	expires_at     INTEGER NOT NULL,
 	uses_remaining INTEGER,
-	mac            BLOB    NOT NULL
+	mac            BLOB    NOT NULL,
+	kind           TEXT    NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS grants_caller_expires ON grants (caller, expires_at);`
 
 // Migrate creates the grants table if needed. It is idempotent. A grants table
 // from before rows were authenticated (no mac column) is dropped: its rows
-// cannot be trusted, and losing grants only means being asked again.
+// cannot be trusted, and losing grants only means being asked again. A table
+// from before standing grants (no kind column) gains it; the existing rows
+// are dialog grants (kind "") and their MACs stay valid.
 func Migrate(ctx context.Context, db *sql.DB) error {
-	var cols, hasMAC int
+	var cols, hasMAC, hasKind int
 	if err := db.QueryRowContext(ctx,
-		`SELECT COUNT(*), COALESCE(SUM(name = 'mac'), 0) FROM pragma_table_info('grants')`).Scan(&cols, &hasMAC); err != nil {
+		`SELECT COUNT(*), COALESCE(SUM(name = 'mac'), 0), COALESCE(SUM(name = 'kind'), 0) FROM pragma_table_info('grants')`).Scan(&cols, &hasMAC, &hasKind); err != nil {
 		return fmt.Errorf("grant: migrate: %w", err)
 	}
 	if cols > 0 && hasMAC == 0 {
 		if _, err := db.ExecContext(ctx, `DROP TABLE grants`); err != nil {
+			return fmt.Errorf("grant: migrate: %w", err)
+		}
+	} else if cols > 0 && hasKind == 0 {
+		if _, err := db.ExecContext(ctx, `ALTER TABLE grants ADD COLUMN kind TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("grant: migrate: %w", err)
 		}
 	}
@@ -83,8 +91,15 @@ func (s *Store) SetLogger(l *slog.Logger) {
 	}
 }
 
-// canonicalTag versions the MAC input encoding.
-const canonicalTag = "grantd.grant.v1\x00"
+// canonicalTag versions the MAC input encoding. A row with a kind (standing)
+// is encoded under canonicalTagKind and carries the kind after uses_remaining,
+// so a dialog row cannot be turned into a standing one (or back) without the
+// key. Rows without a kind keep the original v1 encoding, so grants stored
+// before kinds existed still verify.
+const (
+	canonicalTag     = "grantd.grant.v1\x00"
+	canonicalTagKind = "grantd.grant.v2\x00"
+)
 
 // canonical is the MAC input for one row, built from decoded values so that
 // JSON whitespace is irrelevant:
@@ -94,10 +109,15 @@ const canonicalTag = "grantd.grant.v1\x00"
 //	secrets, cmd_prefix        uint64 count, then count strings
 //	created_at, expires_at     int64 big-endian, unix nanoseconds
 //	uses_remaining             byte 0, or byte 1 followed by int64 big-endian
+//	kind                       only under the v2 tag (kind != ""): string
 //
 // Length prefixes make the encoding injective.
-func canonical(id, caller, cwd string, secrets, cmd []string, createdNs, expiresNs int64, uses *int64) []byte {
-	b := []byte(canonicalTag)
+func canonical(id, caller, cwd string, secrets, cmd []string, createdNs, expiresNs int64, uses *int64, kind string) []byte {
+	tag := canonicalTag
+	if kind != "" {
+		tag = canonicalTagKind
+	}
+	b := []byte(tag)
 	str := func(v string) {
 		b = binary.BigEndian.AppendUint64(b, uint64(len(v)))
 		b = append(b, v...)
@@ -116,10 +136,23 @@ func canonical(id, caller, cwd string, secrets, cmd []string, createdNs, expires
 	b = binary.BigEndian.AppendUint64(b, uint64(createdNs))
 	b = binary.BigEndian.AppendUint64(b, uint64(expiresNs))
 	if uses == nil {
-		return append(b, 0)
+		b = append(b, 0)
+	} else {
+		b = append(b, 1)
+		b = binary.BigEndian.AppendUint64(b, uint64(*uses))
 	}
-	b = append(b, 1)
-	return binary.BigEndian.AppendUint64(b, uint64(*uses))
+	if kind != "" {
+		str(kind)
+	}
+	return b
+}
+
+// kindOf is the stored kind for g.
+func kindOf(g Grant) string {
+	if g.Standing {
+		return KindStanding
+	}
+	return ""
 }
 
 func (s *Store) sign(canon []byte) []byte {
@@ -136,7 +169,7 @@ func (s *Store) verify(canon, mac []byte) bool {
 // Purge. Intended for tests. Match always uses Query.Now.
 func (s *Store) SetClock(now func() time.Time) { s.now = now }
 
-const cols = `id, caller, cwd_prefix, secrets, cmd_prefix, created_at, expires_at, uses_remaining, mac`
+const cols = `id, caller, cwd_prefix, secrets, cmd_prefix, created_at, expires_at, uses_remaining, mac, kind`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -151,8 +184,9 @@ func (s *Store) scan(r scanner, now time.Time) (Grant, error) {
 		created, expir int64
 		uses           sql.NullInt64
 		mac            []byte
+		kind           string
 	)
-	if err := r.Scan(&g.ID, &g.Caller, &g.CwdPrefix, &secrets, &cmd, &created, &expir, &uses, &mac); err != nil {
+	if err := r.Scan(&g.ID, &g.Caller, &g.CwdPrefix, &secrets, &cmd, &created, &expir, &uses, &mac, &kind); err != nil {
 		return Grant{}, err
 	}
 	g.CreatedAt = time.Unix(0, created).UTC()
@@ -164,8 +198,10 @@ func (s *Store) scan(r scanner, now time.Time) (Grant, error) {
 		u = &uses.Int64
 	}
 	g.Expired = g.expiredAt(now)
+	g.Standing = kind == KindStanding
 	if json.Unmarshal([]byte(secrets), &g.Secrets) != nil || json.Unmarshal([]byte(cmd), &g.CmdPrefix) != nil ||
-		!s.verify(canonical(g.ID, g.Caller, g.CwdPrefix, g.Secrets, g.CmdPrefix, created, expir, u), mac) {
+		(kind != "" && kind != KindStanding) ||
+		!s.verify(canonical(g.ID, g.Caller, g.CwdPrefix, g.Secrets, g.CmdPrefix, created, expir, u, kind), mac) {
 		g.Tampered = true
 		s.reportTampered(g.ID)
 	}
@@ -236,12 +272,13 @@ func (s *Store) Add(ctx context.Context, g Grant) (*Grant, error) {
 		n := int64(*out.UsesRemaining)
 		uses, u = n, &n
 	}
+	kind := kindOf(out)
 	mac := s.sign(canonical(out.ID, out.Caller, out.CwdPrefix, out.Secrets, out.CmdPrefix,
-		out.CreatedAt.UnixNano(), out.ExpiresAt.UnixNano(), u))
+		out.CreatedAt.UnixNano(), out.ExpiresAt.UnixNano(), u, kind))
 	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO grants (`+cols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO grants (`+cols+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		out.ID, out.Caller, out.CwdPrefix, string(secrets), string(cmd),
-		out.CreatedAt.UnixNano(), out.ExpiresAt.UnixNano(), uses, mac)
+		out.CreatedAt.UnixNano(), out.ExpiresAt.UnixNano(), uses, mac, kind)
 	if err != nil {
 		return nil, fmt.Errorf("grant: add: %w", err)
 	}
@@ -398,7 +435,7 @@ func (s *Store) consume(ctx context.Context, g Grant, q Query, cwd string) (*Gra
 		left := *g.UsesRemaining - 1
 		l := int64(left)
 		mac := s.sign(canonical(g.ID, g.Caller, g.CwdPrefix, g.Secrets, g.CmdPrefix,
-			g.CreatedAt.UnixNano(), g.ExpiresAt.UnixNano(), &l))
+			g.CreatedAt.UnixNano(), g.ExpiresAt.UnixNano(), &l, kindOf(g)))
 		res, err := s.db.ExecContext(ctx,
 			`UPDATE grants SET uses_remaining = ?, mac = ?
 			 WHERE id = ? AND uses_remaining = ? AND expires_at > ?`,

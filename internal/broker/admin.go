@@ -23,13 +23,11 @@ func (b *Broker) handleGrants(ctx context.Context, req *proto.Request, w daemon.
 			if !g.Tampered && (g.Expired || !g.ExpiresAt.After(b.now())) {
 				continue
 			}
-			out = append(out, proto.GrantInfo{
-				ID: g.ID, Caller: g.Caller, CwdPrefix: g.CwdPrefix, Secrets: g.Secrets,
-				CmdPrefix: g.CmdPrefix, ExpiresAt: g.ExpiresAt, UsesRemaining: g.UsesRemaining,
-				CreatedAt: g.CreatedAt, Tampered: g.Tampered,
-			})
+			out = append(out, grantInfo(g))
 		}
 		ok(w, out)
+	case proto.ActionAdd:
+		b.handleGrantAdd(ctx, req, w)
 	case proto.ActionRevoke:
 		if req.GrantID == "" {
 			fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, "grant_id is required")

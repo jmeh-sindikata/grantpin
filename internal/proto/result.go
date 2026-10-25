@@ -46,7 +46,8 @@ func (ShowResult) String() string { return "proto.ShowResult{[REDACTED]}" }
 // GoString redacts the value.
 func (ShowResult) GoString() string { return "proto.ShowResult{[REDACTED]}" }
 
-// GrantInfo is one row of an OpGrants list result (Result is []GrantInfo).
+// GrantInfo is one row of an OpGrants list result (Result is []GrantInfo) and
+// the result of OpGrants add (a single GrantInfo).
 type GrantInfo struct {
 	ID            string    `json:"id"`
 	Caller        string    `json:"caller"`
@@ -56,6 +57,9 @@ type GrantInfo struct {
 	ExpiresAt     time.Time `json:"expires_at"`
 	UsesRemaining *int      `json:"uses_remaining,omitempty"` // nil = unlimited within TTL
 	CreatedAt     time.Time `json:"created_at"`
+	// Standing: created by the human with `grants add`, not by the dialog's
+	// "Allow for N".
+	Standing bool `json:"standing,omitempty"`
 	// Tampered: the stored row failed authentication (the vault file was edited
 	// outside grantd). It never matches; the other fields are untrusted.
 	Tampered bool `json:"tampered,omitempty"`

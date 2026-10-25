@@ -198,7 +198,7 @@ func TestCorruptRowsAreFlaggedNotFatal(t *testing.T) {
 		} else {
 			cmd = "not json"
 		}
-		_, err := db.Exec(`INSERT INTO grants VALUES (?, 'c', '/a', ?, ?, 0, ?, NULL, x'00')`,
+		_, err := db.Exec(`INSERT INTO grants (id, caller, cwd_prefix, secrets, cmd_prefix, created_at, expires_at, uses_remaining, mac) VALUES (?, 'c', '/a', ?, ?, 0, ?, NULL, x'00')`,
 			"id-"+col, secrets, cmd, time.Now().Add(time.Hour).UnixNano())
 		if err != nil {
 			t.Fatal(err)
@@ -221,7 +221,7 @@ func TestCorruptRowsAreFlaggedNotFatal(t *testing.T) {
 // forge inserts a row exactly as the store would, but with the given MAC.
 func forge(t *testing.T, db *sql.DB, id string, mac []byte, uses any) {
 	t.Helper()
-	_, err := db.Exec(`INSERT INTO grants VALUES (?, 'claude-code', '/a/b', '["DB_URL"]', '["php"]', ?, ?, ?, ?)`,
+	_, err := db.Exec(`INSERT INTO grants (id, caller, cwd_prefix, secrets, cmd_prefix, created_at, expires_at, uses_remaining, mac) VALUES (?, 'claude-code', '/a/b', '["DB_URL"]', '["php"]', ?, ?, ?, ?)`,
 		id, t0.UnixNano(), t0.Add(time.Hour).UnixNano(), uses, mac)
 	if err != nil {
 		t.Fatal(err)
@@ -251,14 +251,14 @@ func TestForgedRowNeverMatches(t *testing.T) {
 	}
 	// A MAC made with another key (a forger who guessed the format) fails too.
 	other := NewStore(db, []byte("some-other-key-some-other-key-00"))
-	canon := canonical("forged-key", "claude-code", "/a/b", []string{"DB_URL"}, []string{"php"}, t0.UnixNano(), t0.Add(time.Hour).UnixNano(), nil)
+	canon := canonical("forged-key", "claude-code", "/a/b", []string{"DB_URL"}, []string{"php"}, t0.UnixNano(), t0.Add(time.Hour).UnixNano(), nil, "")
 	forge(t, db, "forged-key", other.sign(canon), nil)
 	if _, err := s.Match(ctx, q); !errors.Is(err, ErrNoMatch) {
 		t.Fatalf("foreign-key row matched: %v", err)
 	}
 	// A correctly signed row, inserted raw, is accepted (proves the test is
 	// not just failing for another reason).
-	forge(t, db, "genuine", s.sign(canonical("genuine", "claude-code", "/a/b", []string{"DB_URL"}, []string{"php"}, t0.UnixNano(), t0.Add(time.Hour).UnixNano(), nil)), nil)
+	forge(t, db, "genuine", s.sign(canonical("genuine", "claude-code", "/a/b", []string{"DB_URL"}, []string{"php"}, t0.UnixNano(), t0.Add(time.Hour).UnixNano(), nil, "")), nil)
 	g, err := s.Match(ctx, q)
 	if err != nil || g.ID != "genuine" {
 		t.Fatalf("genuine row: %v %v", g, err)
@@ -571,8 +571,8 @@ func TestEmptyCmdPrefixNeverMatches(t *testing.T) {
 	db := newDB(t)
 	s := NewStore(db, testKey)
 	exp := t0.Add(time.Hour).UnixNano()
-	mac := s.sign(canonical("x", "claude-code", "/a/b", []string{"DB_URL"}, []string{}, 0, exp, nil))
-	_, err := db.Exec(`INSERT INTO grants VALUES ('x', 'claude-code', '/a/b', '["DB_URL"]', '[]', 0, ?, NULL, ?)`, exp, mac)
+	mac := s.sign(canonical("x", "claude-code", "/a/b", []string{"DB_URL"}, []string{}, 0, exp, nil, ""))
+	_, err := db.Exec(`INSERT INTO grants (id, caller, cwd_prefix, secrets, cmd_prefix, created_at, expires_at, uses_remaining, mac) VALUES ('x', 'claude-code', '/a/b', '["DB_URL"]', '[]', 0, ?, NULL, ?)`, exp, mac)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -906,4 +906,162 @@ func TestNewIDFormat(t *testing.T) {
 	if fmt.Sprint(isGlob("a/b"), isGlob("a/*")) != "false true" {
 		t.Fatal("isGlob")
 	}
+}
+
+func TestCeilingConstants(t *testing.T) {
+	if MaxDialogGrantTTL != 24*time.Hour || MaxStandingGrantTTL != 90*24*time.Hour {
+		t.Fatalf("ceilings = %v / %v", MaxDialogGrantTTL, MaxStandingGrantTTL)
+	}
+}
+
+func TestNewStandingMirrorsTheRequestShown(t *testing.T) {
+	two := 2
+	req := approve.ApprovalRequest{
+		Kind: approve.KindStandingGrant, Caller: "claude-code", Cwd: "/a/b/../b", Argv: []string{"php", "artisan"},
+		Secrets: []string{"DB_URL", "aws/*"}, Expanded: []string{"DB_URL", "aws/x"},
+		GrantCmdPrefix: []string{"php", "artisan"}, GrantCwdPrefix: "/a/b",
+		RequestedTTL: 720 * time.Hour, RequestedUses: two,
+	}
+	g := NewStanding(req, t0)
+	if !g.Standing || g.Caller != "claude-code" || g.CwdPrefix != "/a/b" ||
+		strings.Join(g.Secrets, ",") != "DB_URL,aws/*" || strings.Join(g.CmdPrefix, " ") != "php artisan" ||
+		!g.CreatedAt.Equal(t0) || g.ExpiresAt.Sub(t0) != 720*time.Hour || g.UsesRemaining == nil || *g.UsesRemaining != 2 {
+		t.Fatalf("grant = %+v", g)
+	}
+	// Fallbacks: no explicit scope fields -> Cwd and Argv; no uses -> unlimited.
+	req.GrantCmdPrefix, req.GrantCwdPrefix, req.RequestedUses = nil, "", 0
+	g = NewStanding(req, t0)
+	if g.CwdPrefix != "/a/b" || strings.Join(g.CmdPrefix, " ") != "php artisan" || g.UsesRemaining != nil {
+		t.Fatalf("fallback grant = %+v", g)
+	}
+	// A request without a duration builds a grant Add refuses.
+	req.RequestedTTL = 0
+	if _, err := newStore(t).Add(context.Background(), NewStanding(req, t0)); !errors.Is(err, ErrInvalidGrant) {
+		t.Fatalf("zero-ttl standing grant: %v", err)
+	}
+}
+
+func TestStandingKindRoundTripsAndIsListed(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	d := mustAdd(t, s, base())
+	sg := base()
+	sg.Standing = true
+	sg.ExpiresAt = t0.Add(30 * 24 * time.Hour)
+	st := mustAdd(t, s, sg)
+	if d.Standing || !st.Standing {
+		t.Fatalf("add: dialog=%v standing=%v", d.Standing, st.Standing)
+	}
+	l, err := s.List(ctx)
+	if err != nil || len(l) != 2 {
+		t.Fatalf("list: %v %v", l, err)
+	}
+	for _, g := range l {
+		if g.Tampered || g.Standing != (g.ID == st.ID) {
+			t.Errorf("listed %+v", g)
+		}
+	}
+	got, err := s.Get(ctx, st.ID)
+	if err != nil || !got.Standing || got.Tampered {
+		t.Fatalf("get: %+v %v", got, err)
+	}
+	// A standing grant matches like any other.
+	q := query()
+	q.Now = t0.Add(48 * time.Hour) // the dialog grant is gone, the standing one is not
+	m, err := s.Match(ctx, q)
+	if err != nil || m.ID != st.ID || !m.Standing {
+		t.Fatalf("match: %+v %v", m, err)
+	}
+}
+
+func TestStandingUsesKeepTheKindMAC(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	g := base()
+	g.Standing = true
+	two := 2
+	g.UsesRemaining = &two
+	added := mustAdd(t, s, g)
+	for i := range 2 {
+		m, err := s.Match(ctx, query())
+		if err != nil || !m.Standing {
+			t.Fatalf("use %d: %+v %v", i, m, err)
+		}
+	}
+	if _, err := s.Match(ctx, query()); !errors.Is(err, ErrNoMatch) {
+		t.Fatalf("third use: %v", err)
+	}
+	got, _ := s.Get(ctx, added.ID)
+	if got.Tampered || !got.Standing || *got.UsesRemaining != 0 {
+		t.Fatalf("after uses: %+v", got)
+	}
+}
+
+// The kind is under the MAC in both directions: a dialog row cannot be
+// promoted to a standing one, and a standing row cannot be demoted.
+func TestKindIsAuthenticated(t *testing.T) {
+	for name, tc := range map[string]struct {
+		standing bool
+		stmt     string
+	}{
+		"promote":  {false, `UPDATE grants SET kind = 'standing'`},
+		"demote":   {true, `UPDATE grants SET kind = ''`},
+		"relabel":  {true, `UPDATE grants SET kind = 'forever'`},
+		"relabel2": {false, `UPDATE grants SET kind = 'other'`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := newDB(t)
+			s := NewStore(db, testKey)
+			s.SetClock(func() time.Time { return t0 })
+			g := base()
+			g.Standing = tc.standing
+			added := mustAdd(t, s, g)
+			if _, err := db.Exec(tc.stmt); err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.Get(context.Background(), added.ID)
+			if err != nil || !got.Tampered {
+				t.Fatalf("not flagged: %+v %v", got, err)
+			}
+			if _, err := s.Match(context.Background(), query()); !errors.Is(err, ErrNoMatch) {
+				t.Fatalf("edited row matched: %v", err)
+			}
+		})
+	}
+}
+
+// A vault from before kinds existed gets the column and its MAC'd rows keep
+// verifying (the v1 encoding is unchanged for the empty kind).
+func TestMigrateAddsKindAndKeepsGenuineRows(t *testing.T) {
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "g.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+	if _, err := db.Exec(`CREATE TABLE grants (
+		id TEXT PRIMARY KEY, caller TEXT NOT NULL, cwd_prefix TEXT NOT NULL, secrets TEXT NOT NULL, cmd_prefix TEXT NOT NULL,
+		created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, uses_remaining INTEGER, mac BLOB NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	s := NewStore(db, testKey)
+	s.SetClock(func() time.Time { return t0 })
+	exp := t0.Add(time.Hour).UnixNano()
+	mac := s.sign(canonical("old", "claude-code", "/a/b", []string{"DB_URL"}, []string{"php"}, t0.UnixNano(), exp, nil, ""))
+	if _, err := db.Exec(`INSERT INTO grants VALUES ('old', 'claude-code', '/a/b', '["DB_URL"]', '["php"]', ?, ?, NULL, ?)`, t0.UnixNano(), exp, mac); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := Migrate(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.Get(ctx, "old")
+	if err != nil || got.Tampered || got.Standing {
+		t.Fatalf("migrated row: %+v %v", got, err)
+	}
+	if _, err := s.Match(ctx, query()); err != nil {
+		t.Fatalf("migrated row does not match: %v", err)
+	}
+	mustAdd(t, s, base()) // and the table is writable with the new column
 }

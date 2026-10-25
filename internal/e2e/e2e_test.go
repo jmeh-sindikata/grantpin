@@ -545,7 +545,7 @@ func TestForgedGrantRowDoesNotBypassThePrompt(t *testing.T) {
 	r.set("API_KEY", apiKey)
 	far := time.Now().Add(24 * time.Hour).UnixNano()
 	for i, mac := range [][]byte{{}, []byte("forged"), make([]byte, 32)} {
-		if _, err := r.db.Exec(`INSERT INTO grants VALUES (?, 'e2e', ?, '["API_KEY"]', '["sh"]', ?, ?, NULL, ?)`,
+		if _, err := r.db.Exec(`INSERT INTO grants (id, caller, cwd_prefix, secrets, cmd_prefix, created_at, expires_at, uses_remaining, mac) VALUES (?, 'e2e', ?, '["API_KEY"]', '["sh"]', ?, ?, NULL, ?)`,
 			"forged"+string(rune('a'+i)), r.cwd, time.Now().UnixNano(), far, mac); err != nil {
 			t.Fatal(err)
 		}

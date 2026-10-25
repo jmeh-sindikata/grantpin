@@ -20,7 +20,7 @@ const (
 	OpSet    = "set"    // store Value under Name (the human putting a secret in)
 	OpDelete = "delete" // remove secret Name
 	OpShow   = "show"   // TTY-only, presence-gated; NEVER reachable via MCP
-	OpGrants = "grants" // Action: list | revoke | revoke_all
+	OpGrants = "grants" // Action: list | add | revoke | revoke_all
 	OpAudit  = "audit"  // Action: list | verify | export
 	OpStatus = "status" // daemon/vault/backends status
 )
@@ -33,6 +33,7 @@ var Ops = []string{
 // Sub-actions (Request.Action) for OpGrants and OpAudit.
 const (
 	ActionList      = "list"       // grants, audit
+	ActionAdd       = "add"        // grants: create a standing grant (human-approved)
 	ActionRevoke    = "revoke"     // grants: revoke GrantID
 	ActionRevokeAll = "revoke_all" // grants
 	ActionVerify    = "verify"     // audit: check HMAC chain
@@ -116,6 +117,16 @@ type Request struct {
 	Action  string `json:"action,omitempty"`
 	GrantID string `json:"grant_id,omitempty"`
 	Limit   int    `json:"limit,omitempty"` // audit list; 0 = daemon default
+
+	// grants add (a standing grant). cwd, secrets and argv (the command
+	// prefix) are the run fields above; Caller is who is asking, as always.
+	// GrantCaller is the caller label the grant is FOR, required, and shown to
+	// the human as claimed. TTLS is the lifetime in seconds (required, above
+	// zero, at most the standing ceiling). Uses limits the number of releases
+	// (0 = unlimited within the lifetime).
+	GrantCaller string `json:"grant_caller,omitempty"`
+	TTLS        int64  `json:"ttl_s,omitempty"`
+	Uses        int    `json:"uses,omitempty"`
 }
 
 // String formats r without Value.

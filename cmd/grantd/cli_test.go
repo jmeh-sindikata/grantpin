@@ -354,7 +354,7 @@ func TestCLIShowsTamperedGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.Exec(`INSERT INTO grants VALUES ('forgedgrant', 'cli', '/', '["*"]', '["sh"]', 0, ?, NULL, x'00')`,
+	if _, err := db.Exec(`INSERT INTO grants (id, caller, cwd_prefix, secrets, cmd_prefix, created_at, expires_at, uses_remaining, mac) VALUES ('forgedgrant', 'cli', '/', '["*"]', '["sh"]', 0, ?, NULL, x'00')`,
 		time.Now().Add(time.Hour).UnixNano()); err != nil {
 		t.Fatal(err)
 	}
