@@ -97,6 +97,25 @@ func TestAppendListVerify(t *testing.T) {
 	}
 }
 
+func TestKnownDecisions(t *testing.T) {
+	l, _ := newLog(t)
+	all := []string{
+		DecisionAllowedGrant, DecisionAllowedOnce, DecisionAllowedNewGrant, DecisionDeniedUser,
+		DecisionRefusedPolicy, DecisionRefusedTier, DecisionError, DecisionCompleted,
+	}
+	if len(validDecisions) != len(all) {
+		t.Errorf("validDecisions has %d entries, want %d", len(validDecisions), len(all))
+	}
+	for _, d := range all {
+		if _, err := l.Append(context.Background(), Entry{Decision: d}); err != nil {
+			t.Errorf("decision %q rejected: %v", d, err)
+		}
+	}
+	if res, err := l.Verify(context.Background()); err != nil || !res.OK || res.Entries != len(all) {
+		t.Fatalf("verify = %+v %v", res, err)
+	}
+}
+
 func TestAppendValidation(t *testing.T) {
 	l, _ := newLog(t)
 	if _, err := l.Append(context.Background(), Entry{Decision: "allow"}); err == nil {

@@ -25,11 +25,18 @@ const (
 	DecisionRefusedPolicy   = "refused_policy"
 	DecisionRefusedTier     = "refused_tier"
 	DecisionError           = "error"
+	// DecisionCompleted closes a run that was released: the broker writes an
+	// allowed_* row (reason "released", no exit code) before the secrets leave
+	// the vault and a completed row (exit code, duration, same grant ID, and a
+	// reason such as "timeout" or "canceled") when the command ends. A
+	// released row with no completed row after it means the daemon died mid-run.
+	DecisionCompleted = "completed"
 )
 
 var validDecisions = map[string]bool{
 	DecisionAllowedGrant: true, DecisionAllowedOnce: true, DecisionAllowedNewGrant: true,
 	DecisionDeniedUser: true, DecisionRefusedPolicy: true, DecisionRefusedTier: true, DecisionError: true,
+	DecisionCompleted: true,
 }
 
 // ErrInvalid is returned for malformed entries or constructor arguments.
