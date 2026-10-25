@@ -63,6 +63,8 @@ install -m 0755 bin/grantd ~/.local/bin/grantd   # or any permanent directory on
 
 **For a from-source build on current macOS, create the vault with `grantd init --keychain-fallback`** (next section). Plain `grantd init` is the path for a properly signed build, where the Secure Enclave is available.
 
+**Signed bundle (restores the Secure Enclave).** With a paid Apple Developer account you can wrap the same binary in a Developer ID signed `.app` whose provisioning profile carries `keychain-access-groups`; the daemon inside the bundle can then create the Secure Enclave key (`keystore tier: hardware`). `make bundle` assembles `dist/grantd.app`, `make sign-bundle IDENTITY=... PROFILE=... TEAM_ID=...` signs it, and `grantd service install --exe dist/grantd.app/Contents/MacOS/grantd` (or `--exe /Applications/grantd.app`) runs the daemon from it. It has no UI yet, and the signing steps have not been run end to end; the portal setup and the exact commands are in [MANUAL-TEST-MACOS.md](MANUAL-TEST-MACOS.md) §2c.
+
 **Run the daemon at login:**
 
 ```sh
@@ -568,7 +570,7 @@ Usage:
   grantd service install [flags]
 
 Flags:
-      --exe string       grantd binary the service runs (default: this executable)
+      --exe string       grantd binary or .app bundle the service runs (default: this executable)
   -h, --help             help for install
       --log-dir string   directory for daemon logs (default: ~/Library/Logs/grantd)
       --path string      PATH the daemon (and the commands it runs) get (default: PATH of this shell)

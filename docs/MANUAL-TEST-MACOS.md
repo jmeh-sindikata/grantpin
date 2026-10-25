@@ -130,7 +130,8 @@ Conclusion: ad-hoc signing with an application identifier is **not** accepted as
 a keychain access group. The Secure Enclave needs a real Apple Development or
 Developer ID identity with a provisioning profile, i.e. an app bundle, planned
 for v0.2 (BACKLOG.md roadmap step 4). Until then `grantd init --keychain-fallback`
-is the working path for a from-source build.
+is the working path for a from-source build. The signed-bundle route that
+restores the Secure Enclave is in 2c.
 
 ### 2b. Verify the key exists
 
@@ -142,7 +143,201 @@ is the working path for a from-source build.
   evidence they exist is that `New()` reports `Mode() == "secure-enclave"` and
   Unwrap of an old blob still works from a new process (section 2 does this).
 
-### 2c. Remove the real vault key (destructive)
+### 2c. Signed bundle (Developer ID)
+
+Goal: run the daemon from a signed `.app` bundle whose provisioning profile
+carries `keychain-access-groups`, so the Secure Enclave key can be created
+(`keystore tier: hardware`). This is roadmap step 4a; there is no UI yet, the
+bundle just wraps the CLI binary. It needs a paid Apple Developer account. Nothing
+in `make ci` or the unit tests uses this; it is a manual test on your Mac.
+
+Layout produced by `make bundle`:
+
+```
+dist/grantd.app/Contents/
+  Info.plist              from build/bundle/Info.plist (LSUIElement: no Dock icon)
+  MacOS/grantd            the normal bin/grantd
+  Resources/              empty for now
+  embedded.provisionprofile   added by make sign-bundle
+```
+
+The bundle identifier lives in one place, `BUNDLE_ID` in the Makefile
+(`dev.grantd.app`; override with `make BUNDLE_ID=...`), and `KEYCHAIN_GROUP`
+(`dev.grantd`) is the keychain group without the team prefix. Rename the project
+there and in the portal.
+
+**What is verified and what is not.** Verified on this repo's machine: `make
+bundle` produces the layout above with a valid `Info.plist`; `make sign-bundle`
+refuses to run without `IDENTITY`, `PROFILE` and `TEAM_ID`; `codesign` embeds an
+entitlements file verbatim (it does **not** expand `$(TeamIdentifierPrefix)`, an
+Xcode build setting), which is why `make sign-bundle` expands it into
+`dist/grantd-app.entitlements` first. Everything below that needs your
+certificate, Team ID or profile has not been run; the portal steps are written
+from memory of the portal and marked "verify" where the exact wording or option
+may differ.
+
+#### (a) App ID with Keychain Sharing
+
+1. In the developer portal (developer.apple.com, Account, Certificates,
+   Identifiers & Profiles) open **Identifiers** and add a new **App ID** of type
+   App with an **explicit** Bundle ID `dev.grantd.app` (same as `BUNDLE_ID`).
+2. Under Capabilities enable **Keychain Sharing** and save. (Verify the
+   capability is offered for a macOS App ID and whether the portal asks you to
+   name groups; in Xcode the group names are listed in the target, the portal
+   usually only records the capability.)
+3. What matters is what ends up in the **profile**: it must carry a
+   `keychain-access-groups` entitlement that covers `TEAMID.dev.grantd`, either
+   exactly or as the wildcard `TEAMID.*`. The capability is how you get that
+   entitlement into the profile; step (b) shows how to check it.
+4. You also need a **Developer ID Application** certificate (Certificates, add,
+   Developer ID Application; verify whether your role may create it, it is
+   usually restricted to the Account Holder) installed in your login keychain.
+   `security find-identity -v -p codesigning` should list `Developer ID
+   Application: Your Name (TEAMID)`. The ten characters in parentheses are your
+   Team ID (also under Membership details in the portal).
+
+#### (b) Provisioning profile
+
+1. Profiles, add, and choose the **Developer ID** distribution type for macOS
+   (verify the exact label; it is the profile type for apps distributed outside
+   the Mac App Store). Pick the App ID `dev.grantd.app`, then the Developer ID
+   Application certificate, name it, and download the `.provisionprofile`.
+2. Inspect it before using it (this only decodes the file):
+
+   ```sh
+   security cms -D -i ~/Downloads/grantd.provisionprofile | plutil -p -
+   ```
+
+   Look under `Entitlements` for `keychain-access-groups` and
+   `com.apple.application-identifier` (`TEAMID.dev.grantd.app`), and check that
+   `TeamIdentifier` is your Team ID and that your certificate is in
+   `DeveloperCertificates`. If `keychain-access-groups` lists only
+   `TEAMID.dev.grantd.app` (the app's own group) and not `TEAMID.*` or
+   `TEAMID.dev.grantd`, sign with `KEYCHAIN_GROUP=dev.grantd.app` instead; the
+   entitlements must stay inside what the profile allows or the process is
+   killed at launch (exit 137, the same as the ad-hoc `keychain-access-groups`
+   result in 2a).
+
+#### (c) Build and sign
+
+```sh
+export PATH=/opt/homebrew/bin:$PATH
+make bundle
+make sign-bundle IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+  PROFILE=~/Downloads/grantd.provisionprofile TEAM_ID=TEAMID
+```
+
+`sign-bundle` copies the profile to `Contents/embedded.provisionprofile`,
+expands `build/bundle/grantd-app.entitlements` with your Team ID, runs
+`codesign --force --options runtime --timestamp --sign ... --entitlements ...`
+on the bundle, then `codesign --verify --deep --strict` and prints the
+entitlements. `--timestamp` contacts Apple's timestamp server, so you need
+network access. Signing may ask for access to the certificate's private key in
+your keychain: that is your own prompt, allow it. It prints `signed and
+verified: dist/grantd.app` on success. Re-run `make bundle` before signing again
+(it starts from a clean `dist/grantd.app`).
+
+#### (d) Check the entitlements
+
+```sh
+codesign -d --entitlements - dist/grantd.app
+codesign -dvv dist/grantd.app 2>&1 | grep -E 'Identifier|Authority|TeamIdentifier|flags'
+```
+
+Expected (macOS 27 prints the tree form; older releases print XML):
+
+```
+[Key] com.apple.application-identifier
+[Value]
+    [String] TEAMID.dev.grantd.app
+[Key] keychain-access-groups
+[Value]
+    [Array]
+        [String] TEAMID.dev.grantd
+```
+
+and `Identifier=dev.grantd.app`, an `Authority=Developer ID Application: ...`
+line, `TeamIdentifier=TEAMID`, and `flags=0x10000(runtime)`. A literal
+`$(TeamIdentifierPrefix)` anywhere means the unexpanded template got signed.
+
+#### (e) Does the Secure Enclave work now?
+
+The keystore manual test (`GRANTD_MANUAL_TEST=1 go test ...`) does **not**
+exercise the bundle: the test binary is a different executable outside the
+bundle with no profile, so it stays at outcome D. The check is the bundled
+binary itself, on a fresh vault:
+
+```sh
+GRANTD_HOME=$(mktemp -d) dist/grantd.app/Contents/MacOS/grantd init
+```
+
+Expected: `vault created at ... (keystore tier: hardware)`, no prompt. This
+creates the real Secure Enclave key (tag `dev.grantd.vault-kek`) in the
+data-protection keychain, which is shared by every vault of your user; it stays
+after the throwaway vault is deleted. It is invisible to `security` and
+Keychain Access, and the production-key removal test (2d) cannot see it either
+(that test binary is not in the bundle); there is no remove command yet.
+
+Failure modes:
+- `OSStatus -34018` (`errSecMissingEntitlement`): the keychain still does not
+  accept the access group. Re-check (b); if the profile and entitlements agree
+  and it persists, `codesign -d --entitlements -` output and the exact error are
+  the report (a possible next step is also signing with
+  `com.apple.developer.team-identifier`, which Xcode normally adds; not tried).
+- Killed at launch (exit 137, `Killed: 9`): an entitlement is not covered by the
+  profile; Console.app (or `log show`) around the launch time usually names the
+  rejected entitlement (not verified).
+- A Gatekeeper "cannot be opened" dialog: this applies to bundles that arrive
+  with the quarantine flag (downloaded or copied from another Mac). A bundle you
+  built locally does not have it. Distributing to other Macs needs notarisation
+  (`xcrun notarytool`), which is not set up here.
+
+#### (f) Run the daemon from the bundle
+
+```sh
+grantd service install --exe "$PWD/dist/grantd.app/Contents/MacOS/grantd"
+# or, after cp -R dist/grantd.app /Applications/ :
+grantd service install --exe /Applications/grantd.app
+grantd service status          # exe: .../grantd.app/Contents/MacOS/grantd
+```
+
+`--exe` takes the inner binary, or the `.app`, which is resolved to
+`Contents/MacOS/grantd`. The launchd plist always names the inner binary, because
+the signature and profile apply to the bundle that contains the running file.
+A path under a temporary directory is still refused. Any grantd can run the
+`install` command; only the binary it points at needs to be the bundled one.
+Put the bundle in `/Applications` with `cp -R` (not a symlink or a move of a
+build directory you will rebuild), and run `service install` again after every
+rebuild and re-sign.
+
+The CLI, the MCP shim and the auto-started daemon need no special handling, but
+use the bundled binary so they all share one identity:
+
+```sh
+ln -sf /Applications/grantd.app/Contents/MacOS/grantd ~/.local/bin/grantd   # optional
+claude mcp add grantd -- /Applications/grantd.app/Contents/MacOS/grantd mcp
+```
+
+`grantd mcp` starts the daemon it needs with `os.Executable()`, so launched
+from the inner binary it starts the inner binary. (Whether the kernel keeps the
+bundle context when started through a symlink was not tested; `grantd init`
+printing `hardware` through the symlink answers it.)
+
+#### (g) Existing vaults and migration
+
+- A vault created earlier with `grantd init --keychain-fallback` keeps working
+  with the bundled daemon: the wrapped key's blob names its own mode and is
+  opened that way (see the `internal/keystore/darwin` package doc). The fallback
+  item sits in the login keychain, written by an older, differently signed
+  binary, so macOS may ask once whether the new binary may use it. Allow only if
+  you trust the bundle you just built.
+- Moving to the Secure Enclave means a **new** vault: stop the service, move
+  the old `vault.db` (and any `-wal`/`-shm` files next to it) aside, run
+  `grantd init` with the bundled binary, then `grantd set` each secret again.
+  Keep the old vault file until you have checked the new one. There is no
+  migrate command yet (BACKLOG.md).
+
+### 2d. Remove the real vault key (destructive)
 
 This makes any existing vault permanently unreadable.
 
