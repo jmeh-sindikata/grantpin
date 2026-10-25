@@ -26,6 +26,7 @@
 //	KindRelease        {"Deny", "Allow once", "Allow for <SuggestedTTL>"}   default and cancel: Deny
 //	KindShow           {"Deny", "Reveal once"}                              default and cancel: Deny
 //	KindStandingGrant  {"Cancel", "Create standing grant"}                  default and cancel: Cancel
+//	KindLowerTier      {"Cancel", "Lower"}                                  default and cancel: Cancel
 //
 // Only a release offers "Allow for N" (and only with SuggestedTTL > 0); a show
 // never offers a duration. A standing grant has one allow button and its TTL is

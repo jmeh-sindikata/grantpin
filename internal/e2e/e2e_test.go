@@ -866,17 +866,47 @@ func TestUpdateOverTheWire(t *testing.T) {
 		t.Fatalf("audit = %+v", a)
 	}
 
+	if r.asked() != 0 {
+		t.Fatalf("a metadata update must not prompt; approver asked %d times", r.asked())
+	}
+
+	// Lowering the level is the one update that asks: the approver sees a
+	// KindLowerTier request naming the secret and both levels, and the audit
+	// row says so.
 	none := presence.TierNone
-	if rep := r.call(&proto.Request{Op: proto.OpUpdate, Name: "API_KEY", MinTier: &none}); !rep.resp.OK {
+	if rep := r.call(&proto.Request{Op: proto.OpUpdate, Caller: "grantd-app", Name: "API_KEY", MinTier: &none}); !rep.resp.OK {
 		t.Fatalf("lower tier: %+v", rep.resp)
+	}
+	reqs := r.ap.Requests()
+	if len(reqs) != 1 || reqs[0].Kind != approve.KindLowerTier || reqs[0].FromTier != hw || reqs[0].ToTier != none ||
+		strings.Join(reqs[0].Secrets, ",") != "API_KEY" {
+		t.Fatalf("approver saw %+v", reqs)
+	}
+	if a := lastAudit(t, r); a.Decision != audit.DecisionAllowedOnce || a.Reason != "update: lower min_tier" || a.Caller != "grantd-app" {
+		t.Fatalf("audit after lowering = %+v", a)
 	}
 	run := r.run([]string{"API_KEY"}, "sh", "-c", `printf %s "$API_KEY"`)
 	if !run.resp.OK || run.stdout != "[REDACTED:API_KEY]" {
 		t.Fatalf("run after tier change: %+v stdout=%q", run.resp, run.stdout)
 	}
-	if r.asked() != 1 {
-		t.Fatalf("update must not prompt; approver asked %d times (want 1, for the run)", r.asked())
+	if r.asked() != 2 {
+		t.Fatalf("approver asked %d times (want 2: the lowering and the run)", r.asked())
 	}
+
+	// A refused lowering changes nothing; raising again needs no approval.
+	r.ap.SetAllow(false)
+	dialog := presence.TierDialog
+	if rep := r.call(&proto.Request{Op: proto.OpUpdate, Name: "API_KEY", MinTier: &hw}); !rep.resp.OK {
+		t.Fatalf("raise tier: %+v", rep.resp)
+	}
+	if r.asked() != 2 {
+		t.Fatalf("raising asked the approver (%d)", r.asked())
+	}
+	wantErr(t, r.call(&proto.Request{Op: proto.OpUpdate, Name: "API_KEY", MinTier: &dialog}), proto.ErrDenied, proto.ReasonUserDenied)
+	if a := lastAudit(t, r); a.Decision != audit.DecisionDeniedUser || !strings.HasPrefix(a.Reason, "update: lower min_tier") {
+		t.Fatalf("audit after refusal = %+v", a)
+	}
+	r.ap.SetAllow(true)
 
 	wantErr(t, r.call(&proto.Request{Op: proto.OpUpdate, Name: "NOPE", Notes: "x"}), proto.ErrNotFound, proto.ReasonSecretNotFound)
 	wantErr(t, r.call(&proto.Request{Op: proto.OpUpdate, Name: "API_KEY"}), proto.ErrBadRequest, proto.ReasonBadRequest)

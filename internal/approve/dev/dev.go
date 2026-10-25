@@ -65,7 +65,7 @@ func (a *Approver) SetDenyStanding(deny bool) {
 
 // Ask records req (deep-copied, Kind included) and answers per configuration.
 // Like the real approvers it answers a KindStandingGrant allow with
-// TTL == RequestedTTL and a KindShow allow with no TTL; TTL applies to
+// TTL == RequestedTTL and a KindShow or KindLowerTier allow with no TTL; TTL applies to
 // KindRelease only.
 func (a *Approver) Ask(ctx context.Context, req approve.ApprovalRequest) (approve.Decision, error) {
 	if err := ctx.Err(); err != nil {
@@ -86,7 +86,7 @@ func (a *Approver) Ask(ctx context.Context, req approve.ApprovalRequest) (approv
 		switch req.Kind {
 		case approve.KindStandingGrant:
 			return approve.Decision{Allow: true, TTL: req.RequestedTTL}, nil
-		case approve.KindShow:
+		case approve.KindShow, approve.KindLowerTier:
 			return approve.Decision{Allow: true}, nil
 		}
 		return approve.Decision{Allow: true, TTL: a.TTL}, nil

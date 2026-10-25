@@ -39,6 +39,9 @@ const (
 //
 //	Create standing grant for 30 days: <caller> may run `<cmd prefix> …` with <secrets> in <cwd> and subfolders[ (at most N runs)][ (no policy)]
 func BuildReason(req approve.ApprovalRequest, grantTTL time.Duration) string {
+	if req.Kind == approve.KindLowerTier {
+		return lowerTierQuestion(req)
+	}
 	standing := req.Kind == approve.KindStandingGrant
 	caller := truncateMiddle(clean(req.Caller), maxCallerRunes)
 	if caller == "" {
@@ -169,6 +172,37 @@ func StandingText(req approve.ApprovalRequest) string {
 		text += " (No policy file applies.)"
 	}
 	return text + "\n\nOnly continue if you just asked for this yourself."
+}
+
+// lowerTierQuestion is the headline of the lower-protection prompt, also the
+// Touch ID reason:
+//
+//	Lower the protection of API_KEY from hardware to dialog?
+//
+// The secret name is shown whole (names are validated, but the request is
+// untrusted and sanitised like every other string).
+func lowerTierQuestion(req approve.ApprovalRequest) string {
+	name := "(unknown secret)"
+	if len(req.Secrets) > 0 {
+		name = clean(req.Secrets[0])
+	}
+	return "Lower the protection of " + name + " from " + req.FromTier.String() + " to " + req.ToTier.String() + "?"
+}
+
+// LowerTierText is the body of the lower-protection dialog:
+//
+//	Lower the protection of API_KEY from hardware to dialog?
+//
+//	Afterwards a program that is allowed to ask for this secret needs less proof that you are there. The stored value does not change.
+//
+//	Only continue if you just asked for this yourself.
+//
+// The last line is there because any process of yours can send the update
+// that produces this dialog.
+func LowerTierText(req approve.ApprovalRequest) string {
+	return lowerTierQuestion(req) +
+		"\n\nAfterwards a program that asks for this secret needs less proof that you are there. The stored value does not change." +
+		"\n\nOnly continue if you just asked for this yourself."
 }
 
 // usesSuffix discloses a use limit, e.g. " (at most 3 runs)"; empty when

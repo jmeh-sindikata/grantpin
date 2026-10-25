@@ -381,3 +381,53 @@ func TestTTLNoChooserAndCancelTitle(t *testing.T) {
 		t.Error("cancel titles")
 	}
 }
+
+func TestDialogArgsLowerTier(t *testing.T) {
+	args := dialogArgs(lowerReq(), time.Hour)
+	if len(args) != 7 || args[1] != chooserScript {
+		t.Fatalf("shape: %q", args)
+	}
+	if args[3] != LowerTierText(lowerReq()) || !strings.HasPrefix(args[3], "Lower the protection of stripe/api_key from hardware to dialog?") {
+		t.Errorf("text = %q", args[3])
+	}
+	if args[4] != "Cancel" || args[5] != "Lower" || args[6] != "" {
+		t.Errorf("buttons = %q, want Cancel / Lower / none", args[4:])
+	}
+}
+
+func TestLowerTierChoiceAndTTL(t *testing.T) {
+	r := lowerReq()
+	ok := "button returned:Lower, gave up:false\n"
+	if got := parseChoice(ok, approve.KindLowerTier, ""); got != choiceOnce {
+		t.Errorf("Lower = %v", got)
+	}
+	for _, in := range []string{
+		"button returned:Cancel, gave up:false\n",
+		"button returned:Lower, gave up:true\n",
+		"button returned:Allow once, gave up:false\n",
+		"button returned:Create standing grant, gave up:false\n",
+		"button returned:Reveal once, gave up:false\n",
+	} {
+		if got := parseChoice(in, approve.KindLowerTier, ""); got != choiceDeny {
+			t.Errorf("%q answered a lower-tier prompt: %v", in, got)
+		}
+	}
+	// Lower answers no other kind's prompt.
+	for _, k := range []approve.Kind{approve.KindRelease, approve.KindShow, approve.KindStandingGrant} {
+		if got := parseChoice(ok, k, ""); got != choiceDeny {
+			t.Errorf("Lower answered kind %v", k)
+		}
+	}
+	if ttl, allow := ttlForChoice(r, choiceOnce, 0); ttl != 0 || !allow {
+		t.Errorf("lower once = (%v, %v)", ttl, allow)
+	}
+	if _, allow := ttlForChoice(r, choiceFor, time.Hour); allow {
+		t.Error("lower accepted an Allow-for answer")
+	}
+	if cancelTitleFor(approve.KindLowerTier) != "Cancel" {
+		t.Errorf("cancel title = %q", cancelTitleFor(approve.KindLowerTier))
+	}
+	if c := newConfig(nil); c.ttlNoChooser(r) != 0 {
+		t.Error("lower without chooser has a ttl")
+	}
+}

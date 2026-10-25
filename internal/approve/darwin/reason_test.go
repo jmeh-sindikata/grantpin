@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"grantd/internal/approve"
+	"grantd/internal/presence"
 )
 
 func req() approve.ApprovalRequest {
@@ -319,6 +320,44 @@ func TestStandingTextClosingSentence(t *testing.T) {
 		}
 		if strings.Contains(strings.TrimSuffix(got, want), "grants add") {
 			t.Errorf("caller %q: text mentions the CLI command: %q", caller, got)
+		}
+	}
+}
+
+func lowerReq() approve.ApprovalRequest {
+	return approve.ApprovalRequest{
+		Kind: approve.KindLowerTier, Caller: "claude-code",
+		Argv:    []string{"grantd", "update", "stripe/api_key"},
+		Secrets: []string{"stripe/api_key"}, Expanded: []string{"stripe/api_key"},
+		FromTier: presence.TierHardware, ToTier: presence.TierDialog,
+	}
+}
+
+func TestLowerTierQuestionIsTheTouchIDReason(t *testing.T) {
+	const want = "Lower the protection of stripe/api_key from hardware to dialog?"
+	if got := BuildReason(lowerReq(), 0); got != want {
+		t.Errorf("reason = %q, want %q", got, want)
+	}
+	// A grant TTL never changes it, and a hostile name is sanitised.
+	if got := BuildReason(lowerReq(), time.Hour); got != want {
+		t.Errorf("reason with ttl = %q", got)
+	}
+	r := lowerReq()
+	r.Secrets = []string{"a\u202eb\nc"}
+	if got := BuildReason(r, 0); strings.ContainsAny(got, "\n\u202e") {
+		t.Errorf("unsanitised reason %q", got)
+	}
+}
+
+func TestLowerTierText(t *testing.T) {
+	got := LowerTierText(lowerReq())
+	if !strings.HasPrefix(got, "Lower the protection of stripe/api_key from hardware to dialog?\n\n") ||
+		!strings.HasSuffix(got, "\n\nOnly continue if you just asked for this yourself.") {
+		t.Errorf("text = %q", got)
+	}
+	for _, bad := range []string{"Allow", "Deny", "grants add"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("text contains %q: %q", bad, got)
 		}
 	}
 }

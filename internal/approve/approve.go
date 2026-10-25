@@ -40,6 +40,13 @@ const (
 	// grant" and states RequestedTTL; the only way to allow is the single
 	// button that creates exactly that grant.
 	KindStandingGrant
+	// KindLowerTier asks the human to lower a secret's minimum protection
+	// level (`update` with a min_tier below the stored one), for example from
+	// hardware to dialog. FromTier and ToTier say what changes and
+	// Secrets/Expanded name the secret. The prompt is "Lower the protection of
+	// X from hardware to dialog?" with the buttons Cancel and Lower; there is
+	// no duration. Raising a level never asks.
+	KindLowerTier
 )
 
 // String names the kind for logs and test failures.
@@ -51,6 +58,8 @@ func (k Kind) String() string {
 		return "show"
 	case KindStandingGrant:
 		return "standing_grant"
+	case KindLowerTier:
+		return "lower_tier"
 	}
 	return "unknown"
 }
@@ -96,6 +105,11 @@ type ApprovalRequest struct {
 	// RequestedUses is, for KindStandingGrant, the use limit of that grant
 	// (0 = unlimited within RequestedTTL). The prompt must state it when set.
 	RequestedUses int
+	// FromTier and ToTier are, for KindLowerTier, the secret's current minimum
+	// protection level and the lower one it would get (ToTier < FromTier). The
+	// prompt must state both. They are zero for other kinds.
+	FromTier presence.PresenceTier
+	ToTier   presence.PresenceTier
 }
 
 // Decision is the human's answer.
@@ -109,7 +123,8 @@ type ApprovalRequest struct {
 // broader grant than the request displayed.
 //
 // For KindStandingGrant an allow must carry TTL == RequestedTTL; the daemon
-// treats any other answer as a denial. For KindShow the TTL is ignored.
+// treats any other answer as a denial. For KindShow and KindLowerTier the TTL is
+// ignored.
 //
 // If Allow is false, Reason explains the denial (e.g. "user denied"); it is
 // recorded in the audit log and surfaced to the caller as reason user_denied.

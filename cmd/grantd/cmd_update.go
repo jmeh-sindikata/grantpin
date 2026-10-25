@@ -19,7 +19,8 @@ func newUpdateCmd() *cobra.Command {
 		Long: "Change the tags, URL, notes, expiry or minimum presence tier of an existing secret. " +
 			"The value is never read or sent. Give any subset of the flags; fields you leave out " +
 			"stay as they are. An empty --tags, --url or --notes clears that field, and " +
-			"--clear-expires removes the expiry. Changing --min-tier re-encrypts the stored value.",
+			"--clear-expires removes the expiry. Changing --min-tier re-encrypts the stored value; " +
+			"lowering it asks for confirmation (dialog and Touch ID).",
 		Example: "  grantd update API_KEY --tags prod,billing --expires 90d\n" +
 			"  grantd update API_KEY --url \"\" --clear-expires",
 		Args: cobra.ExactArgs(1),

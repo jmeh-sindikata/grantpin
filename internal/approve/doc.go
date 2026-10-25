@@ -19,6 +19,10 @@
 //     `grantd grants add`. A single button that creates exactly the grant
 //     shown, for exactly RequestedTTL. Never offered as a choice by a release
 //     prompt.
+//   - KindLowerTier: lower a secret's minimum protection level (`update` with
+//     a min_tier below the stored one). "Lower the protection of X from
+//     hardware to dialog?", the buttons Cancel and Lower, then authentication.
+//     Raising a level never asks.
 //
 // # Standing grants and the socket
 //

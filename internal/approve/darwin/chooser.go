@@ -26,6 +26,7 @@ const (
 	buttonRevealOnce     = "Reveal once"
 	buttonCancel         = "Cancel"
 	buttonCreateStanding = "Create standing grant"
+	buttonLower          = "Lower"
 	dialogTitle          = "grantd"
 )
 
@@ -49,7 +50,7 @@ end run`
 // safeButton is the default and cancel button for kind: the answer that does
 // nothing.
 func safeButton(kind approve.Kind) string {
-	if kind == approve.KindStandingGrant {
+	if kind == approve.KindStandingGrant || kind == approve.KindLowerTier {
 		return buttonCancel
 	}
 	return buttonDeny
@@ -63,6 +64,8 @@ func allowButton(kind approve.Kind) string {
 		return buttonCreateStanding
 	case approve.KindShow:
 		return buttonRevealOnce
+	case approve.KindLowerTier:
+		return buttonLower
 	}
 	return buttonAllowOnce
 }
@@ -122,6 +125,8 @@ func dialogArgs(req approve.ApprovalRequest, ttl time.Duration) []string {
 	switch req.Kind {
 	case approve.KindStandingGrant:
 		text = StandingText(req)
+	case approve.KindLowerTier:
+		text = LowerTierText(req)
 	default:
 		text = "An agent is asking grantd to release secrets:\n\n" + BuildReason(req, 0)
 		if scope := GrantScope(req, ttl); scope != "" {

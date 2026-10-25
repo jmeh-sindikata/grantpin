@@ -9,6 +9,7 @@ import (
 	"grantd/internal/approve"
 	"grantd/internal/audit"
 	"grantd/internal/daemon"
+	"grantd/internal/presence"
 	"grantd/internal/proto"
 	"grantd/internal/vault"
 )
@@ -230,12 +231,88 @@ func (b *Broker) handleUpdate(ctx context.Context, req *proto.Request, w daemon.
 		bad("nothing to update")
 		return
 	}
+	entry := b.lifecycleEntry(req, "update")
+	if req.MinTier != nil {
+		lowered, done := b.confirmLowerTier(ctx, req, w, entry)
+		if done {
+			return
+		}
+		if lowered {
+			entry.Reason = reasonLowerTier
+		}
+	}
 	if err := b.d.Vault.UpdateMeta(ctx, req.Name, patch); err != nil {
 		b.vaultFail(ctx, w, req.Op, err)
 		return
 	}
-	id := b.record(ctx, b.lifecycleEntry(req, "update"))
+	id := b.record(ctx, entry)
 	_ = w.Finish(&proto.Response{OK: true, AuditID: id})
+}
+
+// reasonLowerTier is the audit reason of an update that lowered a secret's
+// minimum protection level (approved by the human), and the prefix of the
+// reason of one that was refused.
+const reasonLowerTier = "update: lower min_tier"
+
+// confirmLowerTier gates a min_tier change that would weaken the secret: the
+// new level (none meaning the vault default) is below the stored one. It asks
+// the approver with approve.KindLowerTier (dialog, then authentication on the
+// real approver) and reports lowered=true when the human agreed. Raising a
+// level or leaving it as it is needs no approval and returns (false, false).
+// done=true means a response has been sent (not found, denied, approver
+// unavailable, cancelled) and the caller must stop.
+//
+// The stored level is read before the human is asked and the update runs after
+// the answer. A concurrent change to the same secret in between could make
+// "from" stale in the dialog, but the target level the human saw is the one
+// applied.
+func (b *Broker) confirmLowerTier(ctx context.Context, req *proto.Request, w daemon.ResponseWriter, entry audit.Entry) (lowered, done bool) {
+	cur, err := b.d.Vault.Get(ctx, req.Name)
+	if err != nil {
+		b.vaultFail(ctx, w, req.Op, err)
+		return false, true
+	}
+	to := *req.MinTier
+	if to == presence.TierNone {
+		to = b.d.Vault.Info().DefaultMinTier
+	}
+	if to >= cur.MinTier {
+		return false, false
+	}
+	refuse := func(decision, category, reason, msg string) {
+		e := entry
+		e.Decision, e.Reason = decision, reasonLowerTier
+		if msg != "" {
+			e.Reason += ": " + msg
+		}
+		r := daemon.Failure(category, reason)
+		r.AuditID = b.record(ctx, e)
+		_ = w.Finish(r)
+	}
+	dec, err := b.ask(ctx, approve.ApprovalRequest{
+		Kind:   approve.KindLowerTier,
+		Caller: entry.Caller, Argv: []string{"grantd", "update", req.Name},
+		Secrets: []string{req.Name}, Expanded: []string{req.Name},
+		FromTier: cur.MinTier, ToTier: to,
+	})
+	switch {
+	case err != nil && ctx.Err() != nil:
+		refuse(audit.DecisionError, proto.ErrFailed, ctxFailure(ctx), "while waiting for approval")
+		return false, true
+	case err != nil:
+		b.log.Warn("approver failed", "err", err.Error())
+		refuse(audit.DecisionError, proto.ErrDenied, proto.ReasonApproverUnavailable, "")
+		return false, true
+	case !dec.Allow:
+		reason := dec.Reason
+		if reason == "" {
+			reason = "denied"
+		}
+		refuse(audit.DecisionDeniedUser, proto.ErrDenied, proto.ReasonUserDenied, reason)
+		return false, true
+	}
+	// dec.TTL is deliberately ignored: this prompt has no duration.
+	return true, false
 }
 
 // handleShow is the only path on which a plaintext value is returned. It is

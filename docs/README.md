@@ -41,7 +41,7 @@ The full analysis is in [THREAT-MODEL.md](THREAT-MODEL.md). The short version:
 - **Code that already runs as you with full control of your account.** Presence is enforced by the daemon's logic, not by cryptography on the key. Forged grant rows are rejected, but a process running as you can still delete the vault, replace the `grantd` binary or the launchd plist, write `.grantd.yml` files, replay a previously captured genuine grant row within its lifetime, or (with the Keychain fallback) read the key. grantd is a defence for the agent-with-a-shell case where you are watching prompts, not for an attacker who owns your user account.
 - **Redaction misses.** Redaction is exact byte match of the injected value. Base64, hex, URL-encoding, substrings, hashes and reversed output pass through unchanged.
 - **A compromised account or a fallback key store.** With a vault created by `grantd init --keychain-fallback` the vault key is readable by anything running as you. With the Secure Enclave key there is no per-use Touch ID on the key (by design); see the threat model for what that means.
-- **Secrets set, overwritten, deleted or edited by the agent.** `set`, `delete`, overwrite and `update` are not presence-gated. A same-user process can destroy or replace a secret, or change its expiry or minimum protection level (a denial-of-service and integrity risk, not a disclosure).
+- **Secrets set, overwritten, deleted or edited by the agent.** `set`, `delete`, overwrite and `update` are not presence-gated, except that lowering a secret's minimum protection level asks you (dialog and Touch ID). A same-user process can destroy or replace a secret, or change its expiry (a denial-of-service and integrity risk, not a disclosure).
 
 The one real security boundary is **human presence at release time**: the dialog that shows the exact command, and the Touch ID prompt behind it. Everything else is defence in depth.
 
@@ -367,10 +367,10 @@ Flags:
 
 ### `grantd update`
 
-Changes a secret's metadata without touching its value: any subset of `--tags`, `--url`, `--notes`, `--expires` and `--min-tier`. Fields you leave out stay as they are. An empty `--tags ""`, `--url ""` or `--notes ""` clears that field and `--clear-expires` removes the expiry. `--expires 30d` is counted from now. Changing `--min-tier` re-encrypts the stored value (the protection level is part of its authenticated data). `none` means the vault default. Fails with `secret_not_found` if the name is absent. **Not presence-gated**, audited as `allowed_once` with reason `update`.
+Changes a secret's metadata without touching its value: any subset of `--tags`, `--url`, `--notes`, `--expires` and `--min-tier`. Fields you leave out stay as they are. An empty `--tags ""`, `--url ""` or `--notes ""` clears that field and `--clear-expires` removes the expiry. `--expires 30d` is counted from now. Changing `--min-tier` re-encrypts the stored value (the protection level is part of its authenticated data). `none` means the vault default. Fails with `secret_not_found` if the name is absent. **Not presence-gated**, audited as `allowed_once` with reason `update`, except that **lowering** `--min-tier` (for example `hardware` to `dialog`) asks first: a "Lower the protection of NAME from hardware to dialog?" dialog (Cancel / Lower) and then Touch ID, and the audit reason is `update: lower min_tier`. Raising the level never asks.
 
 ```
-Change the tags, URL, notes, expiry or minimum presence tier of an existing secret. The value is never read or sent. Give any subset of the flags; fields you leave out stay as they are. An empty --tags, --url or --notes clears that field, and --clear-expires removes the expiry. Changing --min-tier re-encrypts the stored value.
+Change the tags, URL, notes, expiry or minimum presence tier of an existing secret. The value is never read or sent. Give any subset of the flags; fields you leave out stay as they are. An empty --tags, --url or --notes clears that field, and --clear-expires removes the expiry. Changing --min-tier re-encrypts the stored value; lowering it asks for confirmation (dialog and Touch ID).
 
 Usage:
   grantd update NAME [flags]

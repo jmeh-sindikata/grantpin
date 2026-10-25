@@ -3,11 +3,13 @@ package broker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
+	"grantd/internal/approve"
 	"grantd/internal/audit"
 	"grantd/internal/daemon"
 	"grantd/internal/presence"
@@ -592,5 +594,111 @@ func TestUpdateNeverPromptsOrReturnsTheValue(t *testing.T) {
 	}
 	if b, _ := marshalAll(w); strings.Contains(b, e.secret) {
 		t.Error("update response leaked the value")
+	}
+}
+
+func TestUpdateLoweringTheTierNeedsApproval(t *testing.T) {
+	e := newEnv(t)
+	hw, dialog, none := presence.TierHardware, presence.TierDialog, presence.TierNone
+	wantOK(t, e.do(&proto.Request{Op: proto.OpSet, Name: "k", Value: "value-0123456789-ABCD", MinTier: &hw}))
+	e.ap.reqs = nil
+
+	// hardware -> dialog asks, with the secret and both levels in the request.
+	w := e.do(&proto.Request{Op: proto.OpUpdate, Caller: "grantd-app", Name: "k", MinTier: &dialog, Notes: "n"})
+	wantOK(t, w)
+	if e.ap.calls() != 1 {
+		t.Fatalf("approver asked %d times", e.ap.calls())
+	}
+	r := e.ap.last()
+	if r.Kind != approve.KindLowerTier || r.FromTier != hw || r.ToTier != dialog ||
+		strings.Join(r.Secrets, ",") != "k" || r.Caller != "grantd-app" {
+		t.Errorf("approval request = %+v", r)
+	}
+	if a := e.lastAudit(); a.Decision != audit.DecisionAllowedOnce || a.Reason != "update: lower min_tier" || a.ID != w.final.AuditID {
+		t.Errorf("audit = %+v", a)
+	}
+	if got := listInfo(t, e, "k"); got.MinTier != dialog || got.Notes != "n" {
+		t.Errorf("after approved lowering: %+v", got)
+	}
+
+	// dialog -> none (the vault default in this env) asks again.
+	e.ap.reqs = nil
+	wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "k", MinTier: &none}))
+	if e.ap.calls() != 1 || e.ap.last().FromTier != dialog || e.ap.last().ToTier != none {
+		t.Errorf("none did not ask as a lowering: %+v", e.ap.reqs)
+	}
+}
+
+func TestUpdateRaisingOrKeepingTheTierNeverAsks(t *testing.T) {
+	e := newEnv(t)
+	hw, dialog, none := presence.TierHardware, presence.TierDialog, presence.TierNone
+	wantOK(t, e.do(&proto.Request{Op: proto.OpSet, Name: "k", Value: "value-0123456789-ABCD", MinTier: &dialog}))
+	e.ap.reqs = nil
+	wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "k", MinTier: &hw}))      // raise
+	wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "k", MinTier: &hw}))      // same
+	wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "k", Notes: "metadata"})) // no tier
+	if e.ap.calls() != 0 {
+		t.Errorf("approver asked %d times", e.ap.calls())
+	}
+	if a := e.lastAudit(); a.Reason != "update" {
+		t.Errorf("audit reason = %q, want a plain update", a.Reason)
+	}
+	// A secret already at the vault default: none is no change.
+	wantOK(t, e.do(&proto.Request{Op: proto.OpSet, Name: "d", Value: "value-0123456789-ABCD"}))
+	wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "d", MinTier: &none}))
+	if e.ap.calls() != 0 {
+		t.Errorf("approver asked for a no-op tier change")
+	}
+}
+
+func TestUpdateLoweringRefusedChangesNothing(t *testing.T) {
+	hw, dialog := presence.TierHardware, presence.TierDialog
+	for name, tc := range map[string]struct {
+		setup    func(*fakeApprover)
+		category string
+		reason   string
+		decision string
+		suffix   string
+	}{
+		"denied":      {func(a *fakeApprover) { a.allow, a.reason = false, "user denied" }, proto.ErrDenied, proto.ReasonUserDenied, audit.DecisionDeniedUser, ": user denied"},
+		"unavailable": {func(a *fakeApprover) { a.err = errors.New("no gui") }, proto.ErrDenied, proto.ReasonApproverUnavailable, audit.DecisionError, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			wantOK(t, e.do(&proto.Request{Op: proto.OpSet, Name: "k", Value: "value-0123456789-ABCD", MinTier: &hw, Notes: "old"}))
+			tc.setup(e.ap)
+			w := e.do(&proto.Request{Op: proto.OpUpdate, Name: "k", MinTier: &dialog, Notes: "new"})
+			wantFail(t, w, tc.category, tc.reason)
+			a := e.lastAudit()
+			if a.Decision != tc.decision || a.Reason != "update: lower min_tier"+tc.suffix || a.ID != w.final.AuditID {
+				t.Errorf("audit = %+v", a)
+			}
+			// neither the tier nor the other fields of the same request changed
+			if got := listInfo(t, e, "k"); got.MinTier != hw || got.Notes != "old" {
+				t.Errorf("refused update changed the secret: %+v", got)
+			}
+		})
+	}
+}
+
+func TestUpdateLoweringNotFoundAndCancelled(t *testing.T) {
+	e := newEnv(t)
+	dialog := presence.TierDialog
+	wantFail(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "nope", MinTier: &dialog}), proto.ErrNotFound, proto.ReasonSecretNotFound)
+	if e.ap.calls() != 0 {
+		t.Error("asked about a secret that does not exist")
+	}
+	// A client that goes away while the dialog is open: failed/canceled, nothing changes.
+	hw := presence.TierHardware
+	wantOK(t, e.do(&proto.Request{Op: proto.OpSet, Name: "k", Value: "value-0123456789-ABCD", MinTier: &hw}))
+	e.ap.block = make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	e.ap.onAsk = cancel
+	w := e.doCtx(ctx, &proto.Request{Op: proto.OpUpdate, Name: "k", MinTier: &dialog})
+	if w.final == nil || w.final.OK || w.final.Error != proto.ErrFailed {
+		t.Fatalf("response = %+v", w.final)
+	}
+	if got := listInfo(t, e, "k"); got.MinTier != hw {
+		t.Errorf("cancelled update changed the tier: %+v", got)
 	}
 }

@@ -120,3 +120,23 @@ func TestKindIsRecordedAndStandingGrantsFollowDenyStanding(t *testing.T) {
 		t.Fatalf("seen = %+v", seen)
 	}
 }
+
+func TestLowerTierIsRecordedAndHasNoTTL(t *testing.T) {
+	a := New(true)
+	a.TTL = time.Hour
+	a.SetDenyStanding(true) // only standing requests are affected
+	req := approve.ApprovalRequest{
+		Kind: approve.KindLowerTier, Secrets: []string{"k"},
+		FromTier: presence.TierHardware, ToTier: presence.TierDialog,
+	}
+	if d, err := a.Ask(context.Background(), req); err != nil || !d.Allow || d.TTL != 0 {
+		t.Errorf("lower = %+v %v", d, err)
+	}
+	seen := a.Requests()
+	if len(seen) != 1 || seen[0].Kind != approve.KindLowerTier || seen[0].FromTier != presence.TierHardware || seen[0].ToTier != presence.TierDialog {
+		t.Fatalf("seen = %+v", seen)
+	}
+	if d, _ := New(false).Ask(context.Background(), req); d.Allow {
+		t.Error("auto-deny dev approver allowed a lower-tier request")
+	}
+}
