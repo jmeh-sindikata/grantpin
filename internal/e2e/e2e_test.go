@@ -589,3 +589,218 @@ func TestForgedGrantRowDoesNotBypassThePrompt(t *testing.T) {
 		t.Fatalf("edited grant still matched (asked %d)", r.asked())
 	}
 }
+
+// ---- dialog TTL follows the policy; standing grants -----------------------
+
+func (r *rig) addGrant(ttl time.Duration, secrets []string, argv ...string) reply {
+	return r.call(&proto.Request{
+		Op: proto.OpGrants, Action: proto.ActionAdd, Caller: "cli", GrantCaller: "e2e",
+		Cwd: r.cwd, Secrets: secrets, Argv: argv, TTLS: int64(ttl / time.Second),
+	})
+}
+
+func (r *rig) grants() []proto.GrantInfo {
+	return result[[]proto.GrantInfo](r.t, r.call(&proto.Request{Op: proto.OpGrants, Action: proto.ActionList}))
+}
+
+func TestDialogGrantFollowsThePolicyTTLButNeverPastADay(t *testing.T) {
+	for _, tc := range []struct {
+		policyTTL string
+		offered   time.Duration
+	}{
+		{"8h", 8 * time.Hour},
+		{"7d", 24 * time.Hour},
+		{"90m", 90 * time.Minute},
+	} {
+		t.Run(tc.policyTTL, func(t *testing.T) {
+			r := newRig(t)
+			r.set("API_KEY", apiKey)
+			policy := "version: 1\nsecrets: [API_KEY]\ncommands:\n  - [sh, -c]\nmax_grant_ttl: " + tc.policyTTL + "\n"
+			if err := os.WriteFile(filepath.Join(r.cwd, ".grantd.yml"), []byte(policy), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			r.ap.TTL = 30 * 24 * time.Hour // a human who clicks "Allow for N" with whatever is on offer
+			rep := r.run([]string{"API_KEY"}, "sh", "-c", "exit 0")
+			if !rep.resp.OK || rep.resp.GrantID == "" {
+				t.Fatalf("run = %+v", rep.resp)
+			}
+			reqs := r.ap.Requests()
+			if got := reqs[len(reqs)-1]; got.Kind != approve.KindRelease || got.SuggestedTTL != tc.offered {
+				t.Fatalf("dialog offered %v (kind %v), want %v", got.SuggestedTTL, got.Kind, tc.offered)
+			}
+			gl := r.grants()
+			if len(gl) != 1 || gl[0].Standing {
+				t.Fatalf("grants = %+v", gl)
+			}
+			if d := gl[0].ExpiresAt.Sub(gl[0].CreatedAt); d != tc.offered {
+				t.Errorf("grant lasts %v, want %v", d, tc.offered)
+			}
+		})
+	}
+}
+
+func TestStandingGrantIsCreatedByTheHumanAndUsedWithoutAPrompt(t *testing.T) {
+	r := newRig(t)
+	r.set("API_KEY", apiKey)
+
+	rep := r.addGrant(30*24*time.Hour, []string{"API_KEY"}, "sh", "-c")
+	if !rep.resp.OK || rep.resp.GrantID == "" || rep.resp.AuditID == "" {
+		t.Fatalf("grants add = %+v", rep.resp)
+	}
+	r.noLeak(rep)
+	info := result[proto.GrantInfo](t, rep)
+	if !info.Standing || info.ID != rep.resp.GrantID || info.Caller != "e2e" || info.CwdPrefix != r.cwd ||
+		info.ExpiresAt.Sub(info.CreatedAt) != 30*24*time.Hour {
+		t.Fatalf("grant = %+v", info)
+	}
+	// What the human was shown.
+	reqs := r.ap.Requests()
+	if len(reqs) != 1 || reqs[0].Kind != approve.KindStandingGrant || reqs[0].RequestedTTL != 30*24*time.Hour ||
+		reqs[0].Caller != "e2e" || reqs[0].SuggestedTTL != 0 || strings.Join(reqs[0].GrantCmdPrefix, " ") != "sh -c" {
+		t.Fatalf("approval request = %+v", reqs)
+	}
+	if a := lastAudit(t, r); a.Decision != audit.DecisionAllowedNewGrant || a.Reason != "standing" || a.GrantID != info.ID || a.ID != rep.resp.AuditID {
+		t.Fatalf("audit = %+v", a)
+	}
+
+	// A run matching it is released with no prompt, as allowed_grant.
+	run := r.run([]string{"API_KEY"}, "sh", "-c", "echo $API_KEY")
+	if !run.resp.OK || run.resp.GrantID != info.ID || run.stdout != "[REDACTED:API_KEY]\n" {
+		t.Fatalf("run = %+v stdout=%q", run.resp, run.stdout)
+	}
+	r.noLeak(run)
+	if r.asked() != 1 {
+		t.Fatalf("the standing grant did not avoid the prompt (asked %d times)", r.asked())
+	}
+	if rel, _ := lastPair(t, r); rel.Decision != audit.DecisionAllowedGrant || rel.GrantID != info.ID {
+		t.Fatalf("release audit = %+v", rel)
+	}
+	// A different command, caller or directory still asks.
+	if rep := r.run([]string{"API_KEY"}, "true"); !rep.resp.OK || r.asked() != 2 {
+		t.Fatalf("other command: %+v asked=%d", rep.resp, r.asked())
+	}
+	if rep := r.call(&proto.Request{Op: proto.OpRun, Caller: "someone-else", Cwd: r.cwd, Argv: []string{"sh", "-c", "exit 0"}, Secrets: []string{"API_KEY"}}); !rep.resp.OK || r.asked() != 3 {
+		t.Fatalf("other caller: %+v asked=%d", rep.resp, r.asked())
+	}
+
+	// grants lists it as standing; the dialog grants are not.
+	var standing int
+	for _, g := range r.grants() {
+		if g.Standing {
+			standing++
+			if g.ID != info.ID {
+				t.Errorf("unexpected standing grant %+v", g)
+			}
+		}
+	}
+	if standing != 1 {
+		t.Errorf("standing grants listed: %d", standing)
+	}
+	// Revoking it makes the same run ask again.
+	if rep := r.call(&proto.Request{Op: proto.OpGrants, Action: proto.ActionRevoke, GrantID: info.ID}); !rep.resp.OK {
+		t.Fatalf("revoke: %+v", rep.resp)
+	}
+	before := r.asked()
+	r.run([]string{"API_KEY"}, "sh", "-c", "exit 0")
+	if r.asked() != before+1 {
+		t.Errorf("revoked standing grant still matched")
+	}
+	// The whole trail verifies.
+	if v := result[proto.AuditVerifyResult](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionVerify})); !v.OK {
+		t.Fatalf("verify = %+v", v)
+	}
+}
+
+func TestStandingGrantDeniedByTheHumanCreatesNothing(t *testing.T) {
+	r := newRig(t)
+	r.set("API_KEY", apiKey)
+	r.ap.SetDenyStanding(true) // everything else is still allowed
+
+	rep := r.addGrant(30*24*time.Hour, []string{"API_KEY"}, "sh", "-c")
+	wantErr(t, rep, proto.ErrDenied, proto.ReasonUserDenied)
+	if gl := r.grants(); len(gl) != 0 {
+		t.Fatalf("grants after a denied add: %+v", gl)
+	}
+	if a := lastAudit(t, r); a.Decision != audit.DecisionDeniedUser || !strings.HasPrefix(a.Reason, "standing grant") || a.ID != rep.resp.AuditID {
+		t.Fatalf("audit = %+v", a)
+	}
+	// The run is not satisfied by anything: it asks, and the human allows it once.
+	run := r.run([]string{"API_KEY"}, "sh", "-c", "exit 0")
+	if !run.resp.OK || run.resp.GrantID != "" || r.asked() != 2 {
+		t.Fatalf("run = %+v asked=%d", run.resp, r.asked())
+	}
+	if v := result[proto.AuditVerifyResult](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionVerify})); !v.OK {
+		t.Fatalf("verify = %+v", v)
+	}
+}
+
+func TestStandingGrantCeilings(t *testing.T) {
+	r := newRig(t)
+	r.set("API_KEY", apiKey)
+
+	over := r.addGrant(90*24*time.Hour+time.Second, []string{"API_KEY"}, "sh", "-c")
+	wantErr(t, over, proto.ErrBadRequest, proto.ReasonBadRequest)
+	if !strings.Contains(over.resp.Message, "90d") {
+		t.Errorf("message = %q", over.resp.Message)
+	}
+	if r.asked() != 0 || len(r.grants()) != 0 {
+		t.Fatalf("an over-ceiling request reached the human (%d) or was clamped into a grant", r.asked())
+	}
+	if rep := r.addGrant(90*24*time.Hour, []string{"API_KEY"}, "sh", "-c"); !rep.resp.OK {
+		t.Fatalf("90d exactly: %+v", rep.resp)
+	}
+
+	// A policy's max_grant_ttl does not apply to standing grants; its
+	// max_standing_grant_ttl does.
+	policy := "version: 1\nsecrets: [API_KEY]\ncommands:\n  - [sh, -c]\nmax_grant_ttl: 10m\nmax_standing_grant_ttl: 14d\n"
+	if err := os.WriteFile(filepath.Join(r.cwd, ".grantd.yml"), []byte(policy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if rep := r.addGrant(14*24*time.Hour, []string{"API_KEY"}, "sh", "-c"); !rep.resp.OK {
+		t.Fatalf("14d under max_grant_ttl 10m: %+v", rep.resp)
+	}
+	rep := r.addGrant(15*24*time.Hour, []string{"API_KEY"}, "sh", "-c")
+	wantErr(t, rep, proto.ErrBadRequest, proto.ReasonBadRequest)
+	if !strings.Contains(rep.resp.Message, "max_standing_grant_ttl") {
+		t.Errorf("message = %q", rep.resp.Message)
+	}
+	// The policy still limits what may be asked for at all.
+	wantErr(t, r.addGrant(time.Hour, []string{"API_KEY"}, "rm"), proto.ErrRefused, proto.ReasonPolicyRefused)
+}
+
+func TestKindReachesTheApproverForEveryOp(t *testing.T) {
+	r := newRig(t)
+	r.set("API_KEY", apiKey)
+	r.run([]string{"API_KEY"}, "true")
+	r.call(&proto.Request{Op: proto.OpShow, Name: "API_KEY", Cwd: r.cwd})
+	r.addGrant(time.Hour, []string{"API_KEY"}, "true")
+	var kinds []approve.Kind
+	for _, q := range r.ap.Requests() {
+		kinds = append(kinds, q.Kind)
+	}
+	want := []approve.Kind{approve.KindRelease, approve.KindShow, approve.KindStandingGrant}
+	if len(kinds) != 3 || kinds[0] != want[0] || kinds[1] != want[1] || kinds[2] != want[2] {
+		t.Fatalf("kinds = %v, want %v", kinds, want)
+	}
+}
+
+// A standing row is under the MAC like any other: relabelling a dialog grant as
+// a standing one (or forging one outright) does not survive.
+func TestStandingKindCannotBeForgedInTheDatabase(t *testing.T) {
+	r := newRig(t)
+	r.set("API_KEY", apiKey)
+	r.ap.TTL = time.Hour
+	first := r.run([]string{"API_KEY"}, "sh", "-c", "exit 0")
+	if _, err := r.db.Exec(`UPDATE grants SET kind = 'standing', expires_at = expires_at + 3600000000000 WHERE id = ?`, first.resp.GrantID); err != nil {
+		t.Fatal(err)
+	}
+	r.run([]string{"API_KEY"}, "sh", "-c", "exit 0")
+	if r.asked() != 2 {
+		t.Fatalf("promoted row still matched (asked %d)", r.asked())
+	}
+	for _, g := range r.grants() {
+		if g.ID == first.resp.GrantID && !g.Tampered {
+			t.Errorf("relabelled grant not flagged: %+v", g)
+		}
+	}
+}
