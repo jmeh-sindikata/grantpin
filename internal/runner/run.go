@@ -73,6 +73,9 @@ type Spec struct {
 	// group (e.g. from signal.Notify). The caller owns the channel and its
 	// Notify registration; Run stops reading it when the child is done.
 	Signals <-chan os.Signal
+
+	// loopHook, if set, is called on every turn of Run's wait loop (tests).
+	loopHook func()
 }
 
 // Result is the outcome of a finished command.
@@ -115,7 +118,8 @@ type Result struct {
 //
 // Context cancellation behaves like a timeout (SIGTERM, then SIGKILL after
 // KillGrace) but TimedOut stays false and ctx's error is returned. Signals on
-// spec.Signals are forwarded to the process group. On normal exit, any
+// spec.Signals are forwarded to the process group (closing the channel just
+// stops forwarding). On normal exit, any
 // processes the command left behind in its process group are killed.
 //
 // Run never logs. Error text never contains injected values: anything derived
@@ -229,6 +233,7 @@ func Run(ctx context.Context, spec Spec, stdout, stderr io.Writer) (Result, erro
 		}
 	}()
 	ctxDone := ctx.Done()
+	sigC := spec.Signals
 	terminating := false
 	terminate := func() {
 		if terminating {
@@ -243,6 +248,9 @@ func Run(ctx context.Context, spec Spec, stdout, stderr io.Writer) (Result, erro
 
 loop:
 	for {
+		if spec.loopHook != nil {
+			spec.loopHook()
+		}
 		select {
 		case <-waitCh:
 			break loop
@@ -257,7 +265,13 @@ loop:
 		case <-killC:
 			killC = nil
 			_ = signalGroup(pid, sigKill())
-		case sig := <-spec.Signals:
+		case sig, ok := <-sigC:
+			if !ok {
+				// The caller closed the channel: stop selecting on it (a closed
+				// channel is always ready and would spin this loop).
+				sigC = nil
+				continue
+			}
 			if sig != nil {
 				_ = signalGroup(pid, sig)
 			}

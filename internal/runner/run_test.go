@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -644,5 +645,30 @@ func TestRunLargeOutputIntegrity(t *testing.T) {
 	want := strings.Repeat("a", 2000000) + "[REDACTED:S]" + strings.Repeat("b", 100)
 	if out.String() != want {
 		t.Fatalf("len %d vs %d", out.Len(), len(want))
+	}
+}
+
+// A closed Signals channel is always ready; the wait loop must stop selecting
+// on it instead of spinning until the child exits.
+func TestRunClosedSignalsChannelDoesNotSpin(t *testing.T) {
+	spec := sh(`echo started; sleep 0.6`)
+	sigs := make(chan os.Signal, 1)
+	spec.Signals = sigs
+	var turns atomic.Int64
+	spec.loopHook = func() { turns.Add(1) }
+	var so safeBuf
+	go func() {
+		for i := 0; i < 3000 && !strings.Contains(so.String(), "started"); i++ {
+			time.Sleep(10 * time.Millisecond)
+		}
+		close(sigs) // mid-run
+	}()
+	res, err := Run(context.Background(), spec, &so, nil)
+	if err != nil || res.ExitCode != 0 {
+		t.Fatalf("res=%+v err=%v", res, err)
+	}
+	// Normal turns: one at start, one for the closed channel, one for exit.
+	if n := turns.Load(); n > 10 {
+		t.Fatalf("wait loop turned %d times: it is spinning on the closed channel", n)
 	}
 }
