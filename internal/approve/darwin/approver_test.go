@@ -145,7 +145,7 @@ func TestChooserDefaultsAndOptOut(t *testing.T) {
 // never shows an LA prompt (and the fake means no dialog either).
 func TestAskChooserDenyShortCircuits(t *testing.T) {
 	f := &fakeExec{stdout: "button returned:Deny, gave up:false\n"}
-	a := &Approver{cfg: newConfig(nil), choose: newFake(f), slot: make(chan struct{}, 1)}
+	a := &Approver{cfg: newConfig(nil), choose: newFake(f)}
 	d, err := a.Ask(context.Background(), req())
 	if errors.Is(err, ErrNoGUISession) {
 		t.Skip("no GUI session")
@@ -171,7 +171,7 @@ func TestAskStandingGrantDeniedWithoutAPositiveAnswer(t *testing.T) {
 		{"no duration is never asked", "button returned:Create standing grant, gave up:false\n", func(r *approve.ApprovalRequest) { r.RequestedTTL = 0 }, 0},
 	} {
 		f := &fakeExec{stdout: tc.stdout}
-		a := &Approver{cfg: newConfig(nil), choose: newFake(f), slot: make(chan struct{}, 1)}
+		a := &Approver{cfg: newConfig(nil), choose: newFake(f)}
 		r := standingReq()
 		if tc.mut != nil {
 			tc.mut(&r)
@@ -188,7 +188,7 @@ func TestAskStandingGrantDeniedWithoutAPositiveAnswer(t *testing.T) {
 
 func TestAskShowDeniedByDeny(t *testing.T) {
 	f := &fakeExec{stdout: "button returned:Allow once, gave up:false\n"} // not the Show button
-	a := &Approver{cfg: newConfig(nil), choose: newFake(f), slot: make(chan struct{}, 1)}
+	a := &Approver{cfg: newConfig(nil), choose: newFake(f)}
 	r := req()
 	r.Kind = approve.KindShow
 	d, err := a.Ask(context.Background(), r)
@@ -202,7 +202,7 @@ func TestAskShowDeniedByDeny(t *testing.T) {
 
 func TestAskChooserFailureIsNotAllow(t *testing.T) {
 	f := &fakeExec{code: 1, stderr: "boom"}
-	a := &Approver{cfg: newConfig(nil), choose: newFake(f), slot: make(chan struct{}, 1)}
+	a := &Approver{cfg: newConfig(nil), choose: newFake(f)}
 	d, err := a.Ask(context.Background(), req())
 	if errors.Is(err, ErrNoGUISession) {
 		t.Skip("no GUI session")

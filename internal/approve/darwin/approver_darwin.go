@@ -30,15 +30,13 @@ type Approver struct {
 	cfg config
 	// choose is the osascript three-way dialog; nil when WithChooser(false).
 	choose *chooser
-	// one prompt at a time; a second Ask queues (honouring its ctx).
-	slot chan struct{}
 }
 
 var _ approve.Approver = (*Approver)(nil)
 
 // New returns an Approver. It performs no authentication and shows no UI.
 func New(opts ...Option) (approve.Approver, error) {
-	a := &Approver{cfg: newConfig(opts), slot: make(chan struct{}, 1)}
+	a := &Approver{cfg: newConfig(opts)}
 	if a.cfg.chooser {
 		a.choose = newChooser()
 	}
@@ -54,7 +52,8 @@ type laResult struct {
 	msg  string
 }
 
-// Ask blocks until the human answers or ctx is done. With the chooser enabled
+// Ask blocks until the human answers or ctx is done. It does not serialise
+// concurrent calls; the broker does. With the chooser enabled
 // (default) it first shows the dialog for req.Kind (Deny / Allow once / Allow
 // for N for a release; Deny / Reveal once for a show; Cancel / Create standing
 // grant for a standing grant; Deny or Cancel short-circuits), then the system
@@ -65,13 +64,7 @@ func (a *Approver) Ask(ctx context.Context, req approve.ApprovalRequest) (approv
 	if err := ctx.Err(); err != nil {
 		return approve.Decision{}, err
 	}
-	select {
-	case a.slot <- struct{}{}:
-		defer func() { <-a.slot }()
-	case <-ctx.Done():
-		return approve.Decision{}, ctx.Err()
-	}
-
+	// No locking here: the daemon serialises Ask calls (see approve.Approver).
 	if C.gd_has_gui_session() == 0 {
 		return approve.Decision{}, ErrNoGUISession
 	}

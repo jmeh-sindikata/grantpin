@@ -15,7 +15,9 @@ import (
 // now; windows (Hello) and linux (dialog) slot in later as sibling subpackages.
 type Approver interface {
 	// Ask blocks until the human decides or ctx is done. A cancelled or timed
-	// out ctx must yield an error (and never an implicit Allow).
+	// out ctx must yield an error (and never an implicit Allow). The daemon
+	// (the broker) serialises calls: at most one Ask is in flight at a time, so
+	// implementations need no locking or queue of their own.
 	Ask(ctx context.Context, req ApprovalRequest) (Decision, error)
 	// Tier reports the presence strength this approver provides.
 	Tier() presence.PresenceTier
