@@ -69,7 +69,7 @@ func newServiceCmd() *cobra.Command {
 			return nil
 		},
 	}
-	install.Flags().StringVar(&opts.Exe, "exe", "", "grantd binary or .app bundle the service runs (default: this executable)")
+	install.Flags().StringVar(&opts.Exe, "exe", "", "grantd binary or .app bundle the service runs; a menu-bar grantd.app resolves to its Helpers/grantd-daemon.app binary (default: this executable)")
 	install.Flags().StringVar(&opts.Socket, "socket", "", "socket path to export to the daemon as GRANTD_SOCKET")
 	install.Flags().StringVar(&opts.Path, "path", "", "PATH the daemon (and the commands it runs) get (default: PATH of this shell)")
 	install.Flags().StringVar(&opts.LogDir, "log-dir", "", "directory for daemon logs (default: ~/Library/Logs/grantd)")

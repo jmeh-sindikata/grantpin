@@ -616,7 +616,7 @@ Usage:
   grantd service install [flags]
 
 Flags:
-      --exe string       grantd binary or .app bundle the service runs (default: this executable)
+      --exe string       grantd binary or .app bundle the service runs; a menu-bar grantd.app resolves to its Helpers/grantd-daemon.app binary (default: this executable)
   -h, --help             help for install
       --log-dir string   directory for daemon logs (default: ~/Library/Logs/grantd)
       --path string      PATH the daemon (and the commands it runs) get (default: PATH of this shell)

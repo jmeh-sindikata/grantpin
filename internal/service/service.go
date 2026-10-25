@@ -28,8 +28,10 @@ type Options struct {
 	// It is resolved through symlinks and must be absolute, executable and
 	// not inside a temporary directory. It may also name a macOS app bundle
 	// (a directory ending in ".app"); the service then runs the bundle's
-	// inner binary, Contents/MacOS/<CFBundleExecutable>, which is what the
-	// bundle's signature and provisioning profile apply to.
+	// daemon binary, which is what the bundle's signature and provisioning
+	// profile apply to: for the menu-bar app that is
+	// Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd (never the
+	// app's own UI executable), for a plain bundle Contents/MacOS/<CFBundleExecutable>.
 	Exe string
 	// Socket, if set, is exported to the daemon as GRANTD_SOCKET. Must be
 	// absolute.
@@ -125,14 +127,63 @@ func resolveExe(exe string) (string, error) {
 	if fi, err := os.Stat(real); err == nil && fi.IsDir() && strings.HasSuffix(real, ".app") {
 		return bundleExe(real)
 	}
+	if err := refuseUIExecutable(real); err != nil {
+		return "", err
+	}
 	return real, nil
 }
 
-// bundleExe returns the inner binary of the app bundle at dir:
-// Contents/MacOS/<CFBundleExecutable> (default "grantd"). The name must be a
-// plain file name so a crafted Info.plist cannot point outside the bundle.
+// helperBundle is the nested bundle inside the menu-bar app that holds the Go
+// daemon binary (Contents/Helpers/grantd-daemon.app). uiExecutable is the
+// outer app's own main executable, the SwiftUI app, which must never be what
+// the service runs.
+const (
+	helperBundle = "grantd-daemon.app"
+	uiExecutable = "grantd-app"
+)
+
+// bundleExe returns the daemon binary of the app bundle at dir.
+//
+// For the menu-bar app layout, where dir contains
+// Contents/Helpers/grantd-daemon.app, that is the helper's
+// Contents/MacOS/<CFBundleExecutable>: the outer bundle's own executable is the
+// UI and is never returned. For a plain bundle (the helper bundle itself, or
+// the older single-bundle layout) it is dir's Contents/MacOS/<CFBundleExecutable>.
 func bundleExe(dir string) (string, error) {
-	name := "grantd"
+	helper := filepath.Join(dir, "Contents", "Helpers", helperBundle)
+	if fi, err := os.Stat(helper); err == nil && fi.IsDir() {
+		real, err := filepath.EvalSymlinks(helper)
+		if err != nil {
+			return "", fmt.Errorf("service: resolve helper bundle %s: %w", helper, err)
+		}
+		if !within(real, dir) {
+			return "", fmt.Errorf("service: helper bundle %s resolves outside the app bundle %s", helper, dir)
+		}
+		exe, name, err := plainBundleExe(real)
+		if err != nil {
+			return "", err
+		}
+		if name == uiExecutable {
+			return "", fmt.Errorf("service: helper bundle %s names the UI executable %q", real, name)
+		}
+		return exe, nil
+	}
+	exe, name, err := plainBundleExe(dir)
+	if err != nil {
+		return "", err
+	}
+	if name == uiExecutable {
+		return "", fmt.Errorf("service: %s is the grantd menu-bar app and has no %s inside; refusing to run the UI as the daemon", dir, helperBundle)
+	}
+	return exe, nil
+}
+
+// plainBundleExe returns the inner binary of the app bundle at dir,
+// Contents/MacOS/<CFBundleExecutable> (default "grantd"), and that name. The
+// name must be a plain file name so a crafted Info.plist cannot point outside
+// the bundle.
+func plainBundleExe(dir string) (exe, name string, err error) {
+	name = "grantd"
 	if data, err := os.ReadFile(filepath.Join(dir, "Contents", "Info.plist")); err == nil {
 		if m, perr := parsePlist(data); perr == nil {
 			if n, _ := m["CFBundleExecutable"].(string); n != "" {
@@ -141,17 +192,34 @@ func bundleExe(dir string) (string, error) {
 		}
 	}
 	if name != filepath.Base(name) || name == "." || name == ".." {
-		return "", fmt.Errorf("service: %s: invalid CFBundleExecutable %q", dir, name)
+		return "", "", fmt.Errorf("service: %s: invalid CFBundleExecutable %q", dir, name)
 	}
 	inner := filepath.Join(dir, "Contents", "MacOS", name)
 	real, err := filepath.EvalSymlinks(inner)
 	if err != nil {
-		return "", fmt.Errorf("service: app bundle %s has no executable at %s: %w", dir, inner, err)
+		return "", "", fmt.Errorf("service: app bundle %s has no executable at %s: %w", dir, inner, err)
 	}
 	if !within(real, dir) {
-		return "", fmt.Errorf("service: %s resolves outside the app bundle %s", inner, dir)
+		return "", "", fmt.Errorf("service: %s resolves outside the app bundle %s", inner, dir)
 	}
-	return real, nil
+	return real, name, nil
+}
+
+// refuseUIExecutable rejects a path that is the menu-bar app's own main
+// executable (<x>.app/Contents/MacOS/grantd-app), which would otherwise be
+// accepted as "an executable file" and installed as the daemon.
+func refuseUIExecutable(real string) error {
+	if filepath.Base(real) != uiExecutable {
+		return nil
+	}
+	macos := filepath.Dir(real)
+	contents := filepath.Dir(macos)
+	app := filepath.Dir(contents)
+	if filepath.Base(macos) != "MacOS" || filepath.Base(contents) != "Contents" || !strings.HasSuffix(app, ".app") {
+		return nil
+	}
+	return fmt.Errorf("service: %s is the grantd menu-bar app, not the daemon; use %s or the app bundle itself",
+		real, filepath.Join(app, "Contents", "Helpers", helperBundle, "Contents", "MacOS", "grantd"))
 }
 
 // checkExe refuses binaries that are unsuitable for a long-lived service: not
