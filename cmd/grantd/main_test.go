@@ -27,7 +27,7 @@ func TestVerbsReturnNotImplemented(t *testing.T) {
 		{"set", "A"}, {"list"}, {"masked", "A"}, {"delete", "A"}, {"show", "A"},
 		{"run", "--secrets", "A", "--", "true"}, {"grants"}, {"grants", "list"}, {"grants", "revoke", "x"},
 		{"audit"}, {"audit", "list"}, {"audit", "verify"}, {"audit", "export", "--csv"},
-		{"import", ".env"}, {"service", "install"}, {"service", "uninstall"}, {"service", "status"},
+		{"import", ".env"},
 		{"mcp"},
 	} {
 		root := newRootCmd()
