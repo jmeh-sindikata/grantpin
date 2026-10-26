@@ -164,12 +164,12 @@ final class PathDetectorTests: XCTestCase {
     func testAGrandchildHoldingThePipeDoesNotHangDetection() async throws {
         let d = try ScriptDir()
         // The rc file starts a background process that keeps stdout open for 4 s.
-        let sh = try d.script("daemonizing", "(sleep 4) &\nprintf '__GD_BEGIN__/opt/x/bin__GD_END__'")
+        let sh = try d.script("daemonizing", "(sleep 4) &\nprintf '__GD_BEGIN__/usr/bin:/opt/x/bin__GD_END__'")
         let shells = d.url.appendingPathComponent("shells")
         try "\(sh.path)\n".write(to: shells, atomically: true, encoding: .utf8)
         let started = Date()
         let p = await PathDetector(environment: ["SHELL": sh.path], shellsFile: shells.path).detect()
-        XCTAssertEqual(p, "/opt/x/bin")
+        XCTAssertEqual(p, "/usr/bin:/opt/x/bin")
         XCTAssertLessThan(Date().timeIntervalSince(started), 3)
     }
 
