@@ -104,6 +104,9 @@ public final class ImportViewModel {
         let out: HelperOutput
         do {
             out = try await service.runImport(from: handle, dryRun: dryRun, onConflict: mode)
+        } catch GrantdError.peerNotGrantd {
+            // Checked before the helper started: nothing was read or sent.
+            return .failed(ImportFailure(headline: PeerVerifier.mismatchMessage, detail: nil, partial: false))
         } catch {
             return .failed(ImportFailure(headline: "The helper could not be started.", detail: nil, partial: !dryRun))
         }

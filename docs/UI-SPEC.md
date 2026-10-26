@@ -577,7 +577,7 @@ Info.plist keys for the app: `LSUIElement` true, `LSMultipleInstancesProhibited`
 ### 4.6 The app must not
 
 - send `show`, `run`, or any op not listed in section 6(a);
-- read or write the vault file (except the uninstall flow's deletion after the service is stopped), read the Keychain, or call Security.framework key APIs;
+- read or write the vault file (except the uninstall flow's deletion after the service is stopped), read the Keychain, or call Security.framework key APIs (the only Security.framework calls are the code-signature reads of 4.8, which touch no key);
 - display, log, copy or persist a value;
 - click, drive or dismiss the daemon's dialogs, or request Accessibility, Automation or Screen Recording permission;
 - approve anything on the user's behalf, or create/modify a grant except through `grants` `add` with the daemon's confirmation;
@@ -599,6 +599,17 @@ Reasoning the v0.3 design has to follow:
 - A signed-requirement check also changes what `caller` can mean: the daemon could mark requests from the verified app as such, instead of trusting the label.
 
 None of this is built in v0.2. The only v0.2 consequence is the hardening in 4.5.
+
+### 4.8 Who is on the other end of the socket
+
+The socket sits in `~/Library/Application Support/grantd`, a folder the user owns. Any program running as the user can bind that path when the daemon is stopped (or move the real socket aside and bind its own), and the app would then send it whatever a request contains. For most requests that is no worse than what such a program can already read. A **typed secret value** is different, so the app checks who answers before it sends one.
+
+- **Which requests.** Every request that carries a plaintext value: `set` (the add and replace sheet), `update` if it ever carries a value (today it never does), and `.env` import. Read-only requests (`status`, `list`, `masked`, `grants list`, `audit list`, ...) and requests without a value (`delete`, `grants add`) are not checked, so polling does not pay for it.
+- **How.** After `connect` and before the first byte is written, the app reads the peer's pid from the connected socket (`getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID)`), asks for its code object (`SecCodeCopyGuestWithAttributes` with `kSecGuestAttributePid`) and runs `SecCodeCheckValidity` against `anchor apple generic and certificate leaf[subject.OU] = "<TEAMID>"`. `<TEAMID>` is the team identifier in the app's own signature, read at run time (`SecCodeCopySelf`, `SecCodeCopySigningInformation`), so a re-signed build needs no change. The string is built only from a ten-character upper-case alphanumeric team identifier (`PeerVerifier.requirement(teamID:)`), nothing else reaches the requirement language. The daemon is the helper inside the app bundle, signed with the same team, so this accepts it and refuses an unrelated program.
+- **Import.** The values of an import travel from the user's file to the helper process, which opens its own connection, so the app cannot check that connection. A real import (not the dry run, which sends nothing) first connects once, checks the peer the same way, closes and only then starts the helper. This is a pre-flight and not a guarantee: a program could swap the socket between the check and the helper's connect.
+- **On a mismatch** (or if the pid, the code object or the requirement cannot be obtained: it fails closed) the request is not written and the user sees `The process answering grantd's socket is not grantd. Nothing was sent.` (`GrantdError.peerNotGrantd`). The value buffer is wiped as on every other path.
+- **When it is skipped.** If the running app has no team identifier (an unsigned or ad-hoc development build, the unit tests), the check is skipped without a message. It is also off in development mode (`GRANTD_SOCKET` set), where the app talks to the unsigned dev daemon by design and shows the "Development socket" banner. In a signed release build the check always runs.
+- **Limits, stated.** The pid is not an audit token: a process could hand the connected descriptor to another or a pid could be reused between the check and the write. `LOCAL_PEERTOKEN` with `kSecGuestAttributeAudit` closes that and is the better primitive (section 4.7 uses it for the daemon's side). Same-team code is trusted: another app signed by the same team passes. This protects against an unrelated program on the socket path, not against the owner's own other builds.
 
 ## 5. Build and signing
 

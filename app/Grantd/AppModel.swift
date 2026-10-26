@@ -93,7 +93,7 @@ final class AppModel {
 
     init() {
         let socket = self.socket
-        let client = Client(socketPath: socket.path)
+        let client = Client(socketPath: socket.path, peerCheck: socket.isDevelopment ? .off : .automatic)
         self.client = client
         let monitor = DaemonMonitor(transport: client)
         self.monitor = monitor
@@ -102,7 +102,7 @@ final class AppModel {
         let override = socket.isDevelopment ? environment["GRANTD_HELPER"] : nil
         let helper = try? HelperLocator.resolve(bundleURL: Bundle.main.bundleURL, developmentOverride: override)
         self.helper = helper
-        self.importRunner = helper.map { ImportRunner(executable: $0, socketPath: socket.path) }
+        self.importRunner = helper.map { ImportRunner(executable: $0, socketPath: socket.path, peerCheck: socket.isDevelopment ? .off : .automatic) }
         let actions = helper.map { HelperActions(helper: $0, appBundle: Bundle.main.bundleURL) }
         self.serviceControl = actions
         // Only a real install is checked: a development build lives in a build folder.

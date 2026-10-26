@@ -56,6 +56,8 @@ public struct UserMessage: Equatable, Sendable {
             return UserMessage("That is too large to send.", detail: "A value can be 1 MiB at most.")
         case .invalidRequest(let why):
             return UserMessage("Not sent.", detail: DisplayText.sanitise(why))
+        case .peerNotGrantd:
+            return UserMessage(PeerVerifier.mismatchMessage)
         case .noResponse:
             return UserMessage("grantd closed the connection without answering.")
         case .timeout:

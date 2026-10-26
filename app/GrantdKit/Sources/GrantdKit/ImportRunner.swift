@@ -37,6 +37,7 @@ public struct ImportRunner: Sendable {
     public let executable: URL
     public let socketPath: String
     let environmentOverride: [String: String]?
+    let peerCheck: PeerCheck
 
     /// - Parameters:
     ///   - executable: the helper, `grantd` inside `grantd-daemon.app`
@@ -44,10 +45,12 @@ public struct ImportRunner: Sendable {
     ///   - socketPath: the daemon socket the helper should use, passed as
     ///     `--socket`, so it needs no environment for that.
     ///   - environment: replaces the standard minimal environment (tests).
-    public init(executable: URL, socketPath: String = SocketLocator.resolve().path, environment: [String: String]? = nil) {
+    public init(executable: URL, socketPath: String = SocketLocator.resolve().path, environment: [String: String]? = nil,
+                peerCheck: PeerCheck = .automatic) {
         self.executable = executable
         self.socketPath = socketPath
         self.environmentOverride = environment
+        self.peerCheck = peerCheck
     }
 
     /// The minimal environment of a helper process.
@@ -73,10 +76,26 @@ public struct ImportRunner: Sendable {
     /// (`HelperOutput.exitCode`), not a thrown error; the helper's stderr says
     /// why. Cancelling the task terminates the helper.
     ///
-    /// - Throws: `GrantdError.io` if the helper cannot be started.
+    /// A real import (not a dry run) first checks who answers on the socket
+    /// (`Client.verifyPeer`), because the helper is about to send the file's
+    /// values there. The helper connects on its own afterwards, so this is a
+    /// pre-flight check and not a guarantee about that connection.
+    ///
+    /// - Throws: `GrantdError.io` if the helper cannot be started, and
+    ///   `GrantdError.peerNotGrantd` if the socket is not answered by grantd
+    ///   (the helper is then not started and the file is not read).
     public func run(from file: FileHandle, dryRun: Bool, onConflict: ImportConflictMode,
                     timeout: TimeInterval = ImportRunner.timeout) async throws -> HelperOutput {
-        try await HelperProcess.run(
+        if !dryRun {
+            do {
+                try await Client(socketPath: socketPath, peerCheck: peerCheck).verifyPeer()
+            } catch GrantdError.peerNotGrantd {
+                throw GrantdError.peerNotGrantd
+            } catch {
+                // Not running, a long path, a timeout: the helper reports those itself.
+            }
+        }
+        return try await HelperProcess.run(
             executable: executable,
             arguments: Self.arguments(dryRun: dryRun, onConflict: onConflict, socketPath: socketPath),
             environment: environmentOverride ?? Self.standardEnvironment(),

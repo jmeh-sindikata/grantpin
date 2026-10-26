@@ -117,6 +117,9 @@ public enum GrantdError: Error, Equatable, Sendable {
     /// No final response within the call's timeout (not the daemon's own
     /// `timeout` reason, which arrives as `daemon`).
     case timeout
+    /// The process on the other end of the socket is not signed by this app's
+    /// team, and the request carried a secret value. Nothing was sent.
+    case peerNotGrantd
     /// A line that is not valid protocol JSON, or a result that does not decode.
     case malformedResponse(String)
     /// A socket-level failure, with the errno text.
@@ -162,6 +165,7 @@ extension GrantdError: LocalizedError {
         case .socketPathTooLong(let n): return "The socket path is \(n) bytes, over the Unix socket limit."
         case .requestTooLarge: return "The request is too large."
         case .invalidRequest(let why): return "Not sent: \(why)"
+        case .peerNotGrantd: return PeerVerifier.mismatchMessage
         case .noResponse: return "grantd closed the connection without answering."
         case .timeout: return "grantd took too long to answer."
         case .malformedResponse(let why): return "grantd printed something unexpected: \(why)"

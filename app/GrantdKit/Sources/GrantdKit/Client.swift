@@ -43,10 +43,15 @@ public struct Client: Sendable {
     /// The `caller` label every request carries. Informational and
     /// unauthenticated (docs/UI-SPEC.md 4.3).
     public let caller: String
+    /// Who may answer a request that carries a secret value (`PeerVerifier`).
+    /// Read-only requests are never checked.
+    public let peerCheck: PeerCheck
 
-    public init(socketPath: String = SocketLocator.resolve().path, caller: String = "grantd-app") {
+    public init(socketPath: String = SocketLocator.resolve().path, caller: String = "grantd-app",
+                peerCheck: PeerCheck = .automatic) {
         self.socketPath = socketPath
         self.caller = caller
+        self.peerCheck = peerCheck
     }
 
     // MARK: - Calls
@@ -65,22 +70,52 @@ public struct Client: Sendable {
     /// with zeros as soon as the request has been written, whether it succeeded
     /// or failed. The caller's `value` is overwritten with zeros too, on every
     /// path, once the call is over.
+    ///
+    /// Because the request carries a plaintext value, the peer's code is
+    /// checked first (`PeerVerifier`); a socket that is not answered by grantd
+    /// gets nothing and the call throws `GrantdError.peerNotGrantd`.
     func call(_ request: Request, value: inout Data, timeout: TimeInterval = Timeout.standard) async throws -> Response {
         defer { value.resetBytes(in: 0..<value.count) }
         var request = request
         request.caller = caller
-        return try await perform(RequestLine(request: request, value: value), timeout: timeout)
+        return try await perform(RequestLine(request: request, value: value), timeout: timeout, verifyPeer: true)
     }
 
-    func perform(_ line: RequestLine, timeout: TimeInterval) async throws -> Response {
+    /// Connects, checks the peer's code and disconnects, sending nothing.
+    /// Used before a `.env` import, whose values the helper process (not this
+    /// one) sends over its own connection: the check is a pre-flight, not a
+    /// guarantee about that later connection.
+    public func verifyPeer() async throws {
+        let path = socketPath, policy = peerCheck
+        let cancel = CancelFlag()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                Client.queue.async {
+                    do {
+                        let fd = try Client.connect(path: path, cancel: cancel)
+                        defer { close(fd) }
+                        try Client.requirePeer(fd, policy)
+                        cont.resume()
+                    } catch {
+                        cont.resume(throwing: error)
+                    }
+                }
+            }
+        } onCancel: {
+            cancel.set()
+        }
+    }
+
+    func perform(_ line: RequestLine, timeout: TimeInterval, verifyPeer: Bool = false) async throws -> Response {
         let path = socketPath
+        let peerPolicy: PeerCheck? = verifyPeer ? peerCheck : nil
         let cancel = CancelFlag()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Response, Error>) in
                 Client.queue.async {
                     defer { line.wipe() }
                     do {
-                        let response = try Client.exchange(path: path, line: line, timeout: timeout, cancel: cancel)
+                        let response = try Client.exchange(path: path, line: line, timeout: timeout, cancel: cancel, peerPolicy: peerPolicy)
                         if let error = response.error { throw error }
                         cont.resume(returning: response)
                     } catch {
@@ -104,44 +139,63 @@ public struct Client: Sendable {
         var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
     }
 
-    /// One exchange on a fresh connection. Does not wipe `line`.
-    static func exchange(path: String, line: RequestLine, timeout: TimeInterval, cancel: CancelFlag) throws -> Response {
+    /// Opens a connection to the socket at `path`. The caller closes it.
+    static func connect(path: String, cancel: CancelFlag) throws -> Int32 {
         if cancel.isSet { throw CancellationError() }
         let pathBytes = Array(path.utf8)
         guard pathBytes.count <= SocketLocator.maxBytes else { throw GrantdError.socketPathTooLong(pathBytes.count) }
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw GrantdError.io(String(cString: strerror(errno))) }
-        defer { close(fd) }
-        var on: Int32 = 1
-        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
-        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+        do {
+            var on: Int32 = 1
+            setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+            _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
 
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutableBytes(of: &addr.sun_path) { dst in
-            for (i, b) in pathBytes.enumerated() { dst[i] = b }
-            dst[pathBytes.count] = 0
-        }
-        let connected = withUnsafePointer(to: &addr) { p in
-            p.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            var addr = sockaddr_un()
+            addr.sun_family = sa_family_t(AF_UNIX)
+            withUnsafeMutableBytes(of: &addr.sun_path) { dst in
+                for (i, b) in pathBytes.enumerated() { dst[i] = b }
+                dst[pathBytes.count] = 0
             }
-        }
-        if connected != 0 {
-            switch errno {
-            case ENOENT, ECONNREFUSED: throw GrantdError.notRunning
-            case EINPROGRESS, EAGAIN:
-                // A local socket normally connects at once; wait briefly if not.
-                try waitFor(fd, events: Int16(POLLOUT), deadline: Date().addingTimeInterval(Timeout.connect), cancel: cancel)
-                var err: Int32 = 0
-                var len = socklen_t(MemoryLayout<Int32>.size)
-                getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len)
-                if err == ENOENT || err == ECONNREFUSED { throw GrantdError.notRunning }
-                if err != 0 { throw GrantdError.io(String(cString: strerror(err))) }
-            default: throw GrantdError.io(String(cString: strerror(errno)))
+            let connected = withUnsafePointer(to: &addr) { p in
+                p.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                    Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+                }
             }
+            if connected != 0 {
+                switch errno {
+                case ENOENT, ECONNREFUSED: throw GrantdError.notRunning
+                case EINPROGRESS, EAGAIN:
+                    // A local socket normally connects at once; wait briefly if not.
+                    try waitFor(fd, events: Int16(POLLOUT), deadline: Date().addingTimeInterval(Timeout.connect), cancel: cancel)
+                    var err: Int32 = 0
+                    var len = socklen_t(MemoryLayout<Int32>.size)
+                    getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len)
+                    if err == ENOENT || err == ECONNREFUSED { throw GrantdError.notRunning }
+                    if err != 0 { throw GrantdError.io(String(cString: strerror(err))) }
+                default: throw GrantdError.io(String(cString: strerror(errno)))
+                }
+            }
+            return fd
+        } catch {
+            close(fd)
+            throw error
         }
+    }
+
+    /// Throws `peerNotGrantd` unless the peer of `fd` passes `policy`.
+    static func requirePeer(_ fd: Int32, _ policy: PeerCheck) throws {
+        if PeerVerifier.check(socket: fd, using: policy) == .mismatch { throw GrantdError.peerNotGrantd }
+    }
+
+    /// One exchange on a fresh connection. Does not wipe `line`. With a
+    /// `peerPolicy` the peer's code is checked before anything is written.
+    static func exchange(path: String, line: RequestLine, timeout: TimeInterval, cancel: CancelFlag,
+                         peerPolicy: PeerCheck? = nil) throws -> Response {
+        let fd = try connect(path: path, cancel: cancel)
+        defer { close(fd) }
+        if let peerPolicy { try requirePeer(fd, peerPolicy) }
 
         let deadline = Date().addingTimeInterval(timeout)
 
