@@ -45,6 +45,13 @@ final class OnboardingModelTests: XCTestCase {
         XCTAssertEqual(m.step, .service, "later polls do not move the person around")
     }
 
+    func testAnExplicitJumpIsNotUndoneByTheFirstStatus() {
+        let m = model()
+        m.go(to: .vault)
+        m.connectionChanged(ready1)
+        XCTAssertEqual(m.step, .vault)
+    }
+
     func testDoneConditions() {
         let m = model()
         m.connectionChanged(.locked(lastError: nil))

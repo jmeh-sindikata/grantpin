@@ -153,7 +153,10 @@ public final class OnboardingModel {
         lastResult = nil
     }
 
-    public func go(to s: OnboardingStep) { step = s; lastResult = nil }
+    /// Jumps to a step (the popover's Set Up opens the window at the vault
+    /// step). Once the person or the app chose a step, later status polls no
+    /// longer move it.
+    public func go(to s: OnboardingStep) { step = s; lastResult = nil; positioned = true }
 
     // MARK: actions
 

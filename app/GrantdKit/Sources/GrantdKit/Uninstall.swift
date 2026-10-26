@@ -226,6 +226,8 @@ public final class UninstallModel {
     }
 }
 
+extension UninstallModel: Identifiable {}
+
 /// What the Uninstall sheet shows at the end.
 public struct UninstallReport: Equatable, Sendable {
     public var done: [String]

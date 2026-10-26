@@ -1,7 +1,47 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 import GrantdKit
 import Observation
+
+/// Something another part of the app asks the Secrets window to do once it is
+/// open (the popover's quick list, onboarding).
+enum SecretsIntent: Equatable {
+    case add
+    case importFile
+    case select(String)
+}
+
+/// A window to open from somewhere that has no `openWindow` of its own (the
+/// second-launch handler, onboarding). The menu bar label opens it.
+struct WindowRequest: Equatable {
+    let id: String
+    let serial: Int
+}
+
+/// The Settings tabs.
+enum SettingsTab: Hashable {
+    case general, connect, security, uninstall
+}
+
+/// The app's own login item, `SMAppService.mainApp` (docs/UI-SPEC.md 3.5).
+@MainActor
+final class SystemLoginItem: LoginItemControl {
+    private var service: SMAppService { SMAppService.mainApp }
+
+    var status: LoginItemStatus {
+        switch service.status {
+        case .enabled: return .enabled
+        case .requiresApproval: return .requiresApproval
+        case .notRegistered: return .notRegistered
+        case .notFound: return .notFound
+        @unknown default: return .notRegistered
+        }
+    }
+    func register() throws { try service.register() }
+    func unregister() throws { try service.unregister() }
+    func openSystemSettings() { SMAppService.openSystemSettingsLoginItems() }
+}
 
 /// Everything the windows share: the socket client, the monitor that polls
 /// `status`, the popover's and the Secrets window's models, and the helper
@@ -18,6 +58,30 @@ final class AppModel {
     let monitor: DaemonMonitor
     let popover: PopoverModel
     let secrets: SecretsViewModel
+    let grants: GrantsViewModel
+    let activity: ActivityViewModel
+    let settings: SettingsModel
+    let onboarding: OnboardingModel
+    let serviceWatcher: ServiceWatcher
+    let loginItem = SystemLoginItem()
+    /// Where the app runs from; outside an Applications folder the service and
+    /// vault actions are off (docs/UI-SPEC.md 2.5).
+    let location: AppLocation
+    /// The helper's `--version`, checked once per launch.
+    private(set) var helperVersion: String?
+    /// The helper as a service controller; nil without a helper.
+    let serviceControl: HelperActions?
+
+    var secretsIntent: SecretsIntent?
+    private(set) var windowRequest: WindowRequest?
+    var settingsTab: SettingsTab = .general
+    @ObservationIgnored private var windowSerial = 0
+
+    static let onboardingDoneKey = "onboardingDone"
+    static let showActivityKey = "showActivityInMenu"
+
+    /// The running instance, for the application delegate.
+    nonisolated(unsafe) static weak var current: AppModel?
 
     /// The helper (`grantd` in `grantd-daemon.app`), if it can be found.
     let helper: URL?
@@ -40,13 +104,36 @@ final class AppModel {
         self.helper = helper
         self.importRunner = helper.map { ImportRunner(executable: $0, socketPath: socket.path) }
         let actions = helper.map { HelperActions(helper: $0, appBundle: Bundle.main.bundleURL) }
+        self.serviceControl = actions
+        // Only a real install is checked: a development build lives in a build folder.
+        let location = socket.isDevelopment ? AppLocation.ok : AppLocation.check(bundleURL: Bundle.main.bundleURL)
+        self.location = location
+        let devSocket = socket.isDevelopment ? socket.path : nil
+        let refresh: @MainActor () async -> Void = { await monitor.refreshNow() }
 
         self.popover = PopoverModel(
-            audit: client, actions: actions, developmentSocket: socket.isDevelopment ? socket.path : nil,
-            onActionFinished: { await monitor.refreshNow() })
+            audit: client, actions: actions, developmentSocket: devSocket, secrets: client, location: location,
+            onActionFinished: refresh)
         self.secrets = SecretsViewModel(service: client, pasteboard: SystemPasteboard())
+        self.grants = GrantsViewModel(service: client)
+        self.activity = ActivityViewModel(service: client)
+        let login = loginItem
+        self.settings = SettingsModel(
+            control: actions, loginItem: login, developmentSocket: devSocket, resolvedSocket: socket.path,
+            location: location, onChanged: refresh)
+        self.onboarding = OnboardingModel(
+            control: actions, loginItem: login, isDevelopment: socket.isDevelopment, location: location,
+            onFinished: { UserDefaults.standard.set(true, forKey: AppModel.onboardingDoneKey) },
+            onActionFinished: refresh)
+        // The service status is only looked at while the daemon is down, and never in development mode.
+        self.serviceWatcher = ServiceWatcher(control: socket.isDevelopment ? nil : actions)
 
+        AppModel.current = self
         monitor.start()
+        startServiceWatching()
+        if let actions, !socket.isDevelopment {
+            Task { [weak self] in self?.helperVersion = await actions.helperVersion() }
+        }
         // A Mac that has just woken up may have lost the daemon or the key: look at once.
         let wake = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
@@ -60,6 +147,23 @@ final class AppModel {
             Task { @MainActor in self?.windowDidClose(closing: window) }
         }
         observers.append(closed)
+    }
+
+    /// While the daemon does not answer, asks the helper what the service is
+    /// doing (docs/UI-SPEC.md 2.5), at the monitor's cadence.
+    private func startServiceWatching() {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                if case .notRunning? = self.monitor.state {
+                    await self.serviceWatcher.poll()
+                } else {
+                    self.serviceWatcher.reset()
+                }
+                let seconds: UInt64 = self.monitor.isVisible ? 3 : 15
+                try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+            }
+        }
     }
 
     // MARK: visibility (picks the polling interval)
@@ -83,6 +187,68 @@ final class AppModel {
     func prepareToShowWindow() {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Opens a window from anywhere (see `WindowRequest`).
+    func requestWindow(_ id: String) {
+        prepareToShowWindow()
+        windowSerial += 1
+        windowRequest = WindowRequest(id: id, serial: windowSerial)
+    }
+
+    /// Opens Settings on a tab.
+    func showSettings(_ tab: SettingsTab = .general) {
+        settingsTab = tab
+        prepareToShowWindow()
+        Task {
+            // Give the activation policy a moment to take effect.
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+    }
+
+    /// A second launch of the app (`LSMultipleInstancesProhibited`) activates
+    /// this instance and opens the Secrets window (docs/UI-SPEC.md 2.7).
+    func handleReopen() {
+        requestWindow(WindowID.secrets)
+    }
+
+    /// First launch: the Welcome window opens by itself once the first status
+    /// has arrived, unless onboarding was finished before or this is a
+    /// development build.
+    func openOnboardingIfNeeded() async {
+        guard !socket.isDevelopment, !UserDefaults.standard.bool(forKey: Self.onboardingDoneKey) else { return }
+        for _ in 0..<40 where monitor.state == nil { try? await Task.sleep(nanoseconds: 100_000_000) }
+        guard monitor.state != nil else { return }
+        onboarding.connectionChanged(monitor.state)
+        requestWindow(WindowID.onboarding)
+    }
+
+    func openLogsFolder() {
+        let logs = AppPaths.logsFolder()
+        if FileManager.default.fileExists(atPath: logs.path) {
+            NSWorkspace.shared.open(logs)
+        } else {
+            NSWorkspace.shared.open(logs.deletingLastPathComponent())
+        }
+    }
+
+    /// "Move to Applications and Relaunch": copies the app next to the others,
+    /// starts the copy and quits this one. The original is left alone.
+    func moveToApplicationsAndRelaunch() -> String? {
+        do {
+            let target = try AppLocation.copyToApplications(bundleURL: Bundle.main.bundleURL)
+            let config = NSWorkspace.OpenConfiguration()
+            config.createsNewApplicationInstance = true
+            NSWorkspace.shared.openApplication(at: target, configuration: config) { _, _ in
+                DispatchQueue.main.async { NSApp.terminate(nil) }
+            }
+            return nil
+        } catch AppLocation.MoveError.alreadyThere(let path) {
+            return "grantd is already in \(DisplayText.sanitise(path, limit: 120)). Open that one instead."
+        } catch {
+            return "grantd could not be copied to your Applications folder."
+        }
     }
 
     private func windowDidClose(closing: NSWindow) {

@@ -100,6 +100,8 @@ public final class SettingsModel {
     public private(set) var loginStatus: LoginItemStatus = .notRegistered
     public private(set) var loginError: String?
     public private(set) var connection: ConnectionState?
+    /// A problem outside the helper actions, such as a failed move to Applications.
+    public private(set) var problem: String?
 
     public let developmentSocket: String?
     public let resolvedSocket: String
@@ -223,6 +225,8 @@ public final class SettingsModel {
     }
 
     public func dismissResult() { lastResult = nil }
+
+    public func noteProblem(_ text: String?) { problem = text }
 
     // MARK: PATH
 

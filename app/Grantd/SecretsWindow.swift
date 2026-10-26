@@ -47,6 +47,9 @@ struct SecretsWindow: View {
                 actions: deleteActions,
                 message: deleteMessage)
             .modifier(FileDropModifier(targeted: $dropTargeted, onDrop: beginImport))
+            .onChange(of: app.secretsIntent, initial: true) { _, _ in consumeIntent() }
+            .onChange(of: model.isEnabled) { _, _ in consumeIntent() }
+            .onChange(of: model.hasLoaded) { _, _ in consumeIntent() }
             .modifier(LifecycleModifier(app: app, sortOrder: $sortOrder))
             .background(WindowSetup())
     }
@@ -96,6 +99,13 @@ struct SecretsWindow: View {
                 ExpiryText(date: s.expiresAt)
             }
             .width(min: 70, ideal: 90, max: 130)
+            TableColumn("Updated") { s in
+                Text(s.updatedAt, format: .dateTime.month(.abbreviated).day().hour().minute())
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
+            .width(min: 90, ideal: 110, max: 150)
             TableColumn("Tags") { s in
                 Text(verbatim: DisplayText.sanitise(s.tags.joined(separator: ", ")))
                     .foregroundStyle(.secondary)
@@ -195,6 +205,21 @@ struct SecretsWindow: View {
 
     // MARK: actions
 
+    /// What the popover's quick list or onboarding asked for, once the list is
+    /// usable: select a row, open the Add sheet, or the .env picker.
+    private func consumeIntent() {
+        guard let intent = app.secretsIntent, model.isEnabled, model.hasLoaded else { return }
+        switch intent {
+        case .select(let name):
+            if model.secret(named: name) != nil { model.selection = [name] }
+        case .add:
+            addSecret()
+        case .importFile:
+            chooseEnvFile()
+        }
+        app.secretsIntent = nil
+    }
+
     private func addSecret() {
         guard model.isEnabled else { return }
         form = model.makeAddForm()
@@ -258,7 +283,7 @@ private struct EmptyState: View {
     }
 }
 
-private struct BannerView: View {
+struct BannerView: View {
     let symbol: String
     let tint: Color
     let headline: String
