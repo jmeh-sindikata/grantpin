@@ -47,6 +47,16 @@ final class UninstallModelTests: XCTestCase {
         XCTAssertEqual(UninstallModel.trashText, "To finish, drag grantd to the Trash.")
     }
 
+    func testWithoutCountsTheVaultLabelDoesNotClaimZero() {
+        let m = UninstallModel(control: FakeServiceControl(), secrets: nil, grants: nil, keystoreTier: nil, isDevelopment: false,
+                               vaultLocked: true, vaultFolder: vault, logsFolder: logs, daemonState: { .stopped }, sleep: { _ in })
+        XCTAssertEqual(m.deleteVaultLabel, "Delete my vault: all its secrets, grants and the audit log")
+        XCTAssertTrue(m.tierUnknown)
+        XCTAssertEqual(m.tierUnknownText, UninstallModel.tierLockedNote)
+        XCTAssertFalse(m.tierUnknownText.contains("did not answer"))
+        XCTAssertEqual(model(tier: nil).tierUnknownText, UninstallModel.tierUnknownNote)
+    }
+
     func testNothingDestructiveIsPreTickedExceptStoppingTheService() {
         let m = model()
         XCTAssertTrue(m.stopService)

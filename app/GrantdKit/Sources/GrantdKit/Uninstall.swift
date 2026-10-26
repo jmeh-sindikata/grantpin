@@ -124,8 +124,12 @@ public final class UninstallModel {
     public var confirmationText = ""
     public private(set) var phase: Phase = .choosing
 
-    public let secrets: Int
-    public let grants: Int
+    /// The vault's counts, or nil when `status` has no counts to give (the
+    /// daemon is down or the vault is locked).
+    public let secrets: Int?
+    public let grants: Int?
+    /// The daemon answered, but the vault is locked.
+    public let vaultLocked: Bool
     /// The vault's protection, or nil when `status` did not answer: the key
     /// options are then not offered (nothing says which key the vault uses).
     public let keystoreTier: Tier?
@@ -157,6 +161,8 @@ public final class UninstallModel {
         "The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. To remove it, tick \"Delete the hardware key\" when you uninstall."
     public static let tierUnknownNote =
         "grantd did not answer, so it is not known how the vault key is protected and no key option is offered."
+    public static let tierLockedNote =
+        "The vault is locked, so it is not known how its key is protected and no key option is offered. Unlock the vault to see it."
     public static let unknownKeyNote =
         "The vault's key may still be in your Keychain. It is useless without the vault file."
     public static let keychainItemNote =
@@ -165,7 +171,8 @@ public final class UninstallModel {
     public static let disconnectCommand = ConnectSnippets.removeCommand
     public static let trashText = "To finish, drag grantd to the Trash."
 
-    public init(control: ServiceControl?, secrets: Int, grants: Int, keystoreTier: Tier?, isDevelopment: Bool,
+    public init(control: ServiceControl?, secrets: Int?, grants: Int?, keystoreTier: Tier?, isDevelopment: Bool,
+                vaultLocked: Bool = false,
                 vaultFolder: URL = AppPaths.vaultFolder(), logsFolder: URL = AppPaths.logsFolder(),
                 keychain: KeychainItemRemoval? = nil,
                 daemonState: @escaping @Sendable () async -> DaemonState,
@@ -174,6 +181,7 @@ public final class UninstallModel {
         self.control = control
         self.secrets = secrets
         self.grants = grants
+        self.vaultLocked = vaultLocked
         self.keystoreTier = keystoreTier
         self.isDevelopment = isDevelopment
         self.vaultFolder = vaultFolder
@@ -187,7 +195,8 @@ public final class UninstallModel {
     // MARK: the sheet
 
     public var deleteVaultLabel: String {
-        "Delete my vault: \(secrets) \(secrets == 1 ? "secret" : "secrets"), \(grants) \(grants == 1 ? "grant" : "grants") and the audit log"
+        guard let secrets, let grants else { return "Delete my vault: all its secrets, grants and the audit log" }
+        return "Delete my vault: \(secrets) \(secrets == 1 ? "secret" : "secrets"), \(grants) \(grants == 1 ? "grant" : "grants") and the audit log"
     }
 
     /// The Keychain checkbox appears only for a vault protected by the Keychain.
@@ -197,6 +206,8 @@ public final class UninstallModel {
 
     /// True when the key options are hidden because the tier is not known.
     public var tierUnknown: Bool { keystoreTier == nil }
+    /// Why the key options are hidden.
+    public var tierUnknownText: String { vaultLocked ? Self.tierLockedNote : Self.tierUnknownNote }
 
     /// A key that will be deleted (only one that is offered counts).
     public var willDeleteFallbackKey: Bool { deleteKeychainItem && offersKeychainItem }

@@ -292,11 +292,13 @@ private struct UninstallSettings: View {
 
     private func makeModel() -> UninstallModel {
         let status = app.settings.status
+        var locked = false
+        if case .locked? = app.settings.connection { locked = true }
         let client = app.client
         let login = app.loginItem
         return UninstallModel(
-            control: app.serviceControl, secrets: status?.secrets ?? 0, grants: (status?.activeGrants ?? 0) + (status?.tamperedGrants ?? 0),
-            keystoreTier: status?.keystoreTier, isDevelopment: app.socket.isDevelopment,
+            control: app.serviceControl, secrets: status?.secrets, grants: status.map { $0.activeGrants + $0.tamperedGrants },
+            keystoreTier: status?.keystoreTier, isDevelopment: app.socket.isDevelopment, vaultLocked: locked,
             keychain: app.serviceControl.map { HelperKeystore(helper: $0.helper) },
             daemonState: { await DaemonState.probe(client) },
             unregisterLoginItem: { try? login.unregister() })
