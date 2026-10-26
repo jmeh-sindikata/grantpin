@@ -556,7 +556,8 @@ func TestStatusAndAuditVerifyAfterEverything(t *testing.T) {
 	r.call(&proto.Request{Op: proto.OpDelete, Name: "API_KEY"})
 
 	v := result[proto.AuditVerifyResult](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionVerify}))
-	if !v.OK || v.Entries != 7 {
+	// set, run (2 rows), denied, show, missing, revoke_all (1 row: one grant), delete.
+	if !v.OK || v.Entries != 8 {
 		t.Fatalf("verify = %+v", v)
 	}
 	csv := result[proto.AuditExportResult](t, r.call(&proto.Request{Op: proto.OpAudit, Action: proto.ActionExport})).CSV
