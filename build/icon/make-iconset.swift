@@ -1,4 +1,4 @@
-// Renders build/icon/grantd-app-icon.png onto Apple's macOS icon grid (artwork
+// Renders build/icon/grantpin-app-icon.png onto Apple's macOS icon grid (artwork
 // scaled to 824/1024 and centred on a transparent canvas) and writes the ten
 // AppIcon.appiconset PNGs. Usage: swift make-iconset.swift <src.png> <appiconset dir>
 import CoreGraphics

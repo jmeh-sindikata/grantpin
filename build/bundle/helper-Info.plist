@@ -2,10 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   Info.plist TEMPLATE for the nested helper bundle
-  dist/grantd.app/Contents/Helpers/grantd-daemon.app, whose main executable is
-  the Go binary (daemon, CLI, MCP shim). Filled in by app/Grantd/embed-helper.sh
+  dist/grantpin.app/Contents/Helpers/grantpin-daemon.app, whose main executable is
+  the Go binary (daemon, CLI, MCP shim). Filled in by app/Grantpin/embed-helper.sh
   (Xcode Run Script phase, driven by make app). Not a valid Info.plist until
-  then. The outer app's own Info.plist is app/Grantd/Info.plist.
+  then. The outer app's own Info.plist is app/Grantpin/Info.plist.
 
   Why a bundle of its own: the provisioning profile that authorises the
   restricted keychain-access-groups entitlement is only honoured for a bundle's
@@ -13,7 +13,7 @@
   launch by AMFI (docs/UI-SPEC.md section 2.1).
 
     @BUNDLE_ID@     the helper's bundle identifier: the app's (Makefile BUNDLE_ID,
-                    default dev.grantd.app) plus ".daemon".
+                    default dev.grantpin.app) plus ".daemon".
     @VERSION@       Makefile BUNDLE_VERSION: X.Y.Z for a tagged build, else VERSION
                     (git describe), shown as the version.
     @BUILD@         Makefile BUNDLE_BUILD: X.Y.Z for a tagged build, else
@@ -31,11 +31,11 @@
 	<key>CFBundleIdentifier</key>
 	<string>@BUNDLE_ID@</string>
 	<key>CFBundleName</key>
-	<string>grantd daemon</string>
+	<string>grantpin daemon</string>
 	<key>CFBundleDisplayName</key>
-	<string>grantd daemon</string>
+	<string>grantpin daemon</string>
 	<key>CFBundleExecutable</key>
-	<string>grantd</string>
+	<string>grantpin</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleInfoDictionaryVersion</key>

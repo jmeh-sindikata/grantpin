@@ -10,14 +10,14 @@
   `make sign-bundle` therefore expands the file into dist/ first:
 
     $(TeamIdentifierPrefix)   ->  "<TEAM_ID>."   (note the trailing dot)
-    @BUNDLE_ID@               ->  Makefile BUNDLE_ID      (dev.grantd.app)
-    @KEYCHAIN_GROUP@          ->  Makefile KEYCHAIN_GROUP (dev.grantd)
+    @BUNDLE_ID@               ->  Makefile BUNDLE_ID      (dev.grantpin.app)
+    @KEYCHAIN_GROUP@          ->  Makefile KEYCHAIN_GROUP (dev.grantpin)
 
   Both keys are restricted: they only take effect (and AMFI only lets the
   process launch) if the embedded provisioning profile authorises them.
   keychain-access-groups is what unlocks the data-protection keychain and so
   the Secure Enclave key (docs/MANUAL-TEST-MACOS.md 2a and 2c). The profile must
-  carry a keychain-access-groups entry covering TEAMID.dev.grantd (either that
+  carry a keychain-access-groups entry covering TEAMID.dev.grantpin (either that
   exact group or the wildcard TEAMID.*; verify with `security cms -D -i`).
 
   With a single group listed, it is also the default group new keychain items

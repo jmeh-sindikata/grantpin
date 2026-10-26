@@ -25,8 +25,8 @@ fail() { echo "verify-signing: $*" >&2; exit 1; }
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 
-app_exe=$app/Contents/MacOS/grantd-app
-helper_exe=$helper/Contents/MacOS/grantd
+app_exe=$app/Contents/MacOS/grantpin-app
+helper_exe=$helper/Contents/MacOS/grantpin
 
 # 1. Every Mach-O in the tree is one of the two main executables, which codesign
 #    seals as part of signing their bundle.

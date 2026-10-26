@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Entitlements for ad-hoc signing bin/grantd (make sign).
+  Entitlements for ad-hoc signing bin/grantpin (make sign).
 
   com.apple.application-identifier gives the data-protection keychain (and thus
   Secure Enclave keys) a default access group for this binary.
@@ -18,6 +18,6 @@
 <plist version="1.0">
 <dict>
 	<key>com.apple.application-identifier</key>
-	<string>dev.grantd.grantd</string>
+	<string>dev.grantpin.grantpin</string>
 </dict>
 </plist>

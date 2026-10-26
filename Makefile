@@ -1,7 +1,7 @@
-# grantd Makefile. `make ci` is exactly what CI runs.
+# grantpin Makefile. `make ci` is exactly what CI runs.
 GO        ?= go
 STATICCHECK ?= staticcheck
-DEV_TAG   := grantd_dev
+DEV_TAG   := grantpin_dev
 # Version, first match wins: VERSION=x on the command line, git describe, the
 # contents of a VERSION file (written by `make dist-src` so a git archive export
 # still carries the hash), then "dev".
@@ -20,33 +20,33 @@ endif
 LDFLAGS   := -X main.version=$(VERSION)
 
 # Bundle and DMG version. VERSION (git describe) is reported verbatim by
-# `grantd --version` and `grantd status`, but a tagged build must carry a plain
+# `grantpin --version` and `grantpin status`, but a tagged build must carry a plain
 # X.Y.Z in the Info.plists. VERSION_NUM is X.Y.Z when VERSION is vX.Y.Z or X.Y.Z,
 # optionally followed by git describe's -N-gHASH and -dirty suffixes; it is empty
 # for an untagged build (a bare hash, "dev"). When set: CFBundleShortVersionString
 # and CFBundleVersion are both X.Y.Z (Apple allows at most three numeric
 # components in CFBundleVersion, so the -N commit count is not appended). When
 # empty: the verbatim VERSION and the commit count, as before. DMG_VERSION is
-# X.Y.Z only for a clean tag, so the DMG is grantd-0.2.0.dmg; otherwise VERSION.
+# X.Y.Z only for a clean tag, so the DMG is grantpin-0.2.0.dmg; otherwise VERSION.
 VERSION_NUM    := $(shell printf '%s' '$(VERSION)' | sed -nE 's/^v?([0-9]+\.[0-9]+\.[0-9]+)(-[0-9]+-g[0-9a-f]+)?(-dirty)?$$/\1/p')
 DMG_VERSION    := $(shell printf '%s' '$(VERSION)' | sed -nE 's/^v?([0-9]+\.[0-9]+\.[0-9]+)$$/\1/p')
 BUNDLE_VERSION := $(or $(VERSION_NUM),$(VERSION))
 
 # Signed .app bundle (docs/UI-SPEC.md section 5; docs/MANUAL-TEST-MACOS.md 2c).
-# The app is two bundles: the outer grantd.app (SwiftUI menu-bar app, built by
-# xcodebuild from app/) and, inside it, Contents/Helpers/grantd-daemon.app
+# The app is two bundles: the outer grantpin.app (SwiftUI menu-bar app, built by
+# xcodebuild from app/) and, inside it, Contents/Helpers/grantpin-daemon.app
 # whose main executable is the Go binary. BUNDLE_ID is the outer bundle's
 # identifier and the single place it lives; it must match the App ID in the
 # developer portal. The helper's is BUNDLE_ID.daemon. KEYCHAIN_GROUP is the
 # keychain access group, without the team prefix. MIN_MACOS is the lowest macOS
 # for both (the Go binary is built for it, see `make helper`). None of this is
 # part of `make ci`; `make ci-app` is the app counterpart.
-BUNDLE_ID      ?= dev.grantd.app
-KEYCHAIN_GROUP ?= dev.grantd
+BUNDLE_ID      ?= dev.grantpin.app
+KEYCHAIN_GROUP ?= dev.grantpin
 MIN_MACOS      ?= 14.0
-APP            := dist/grantd.app
-HELPER_APP     := $(APP)/Contents/Helpers/grantd-daemon.app
-APP_PRODUCT    := build/xcode/Build/Products/Release/grantd-app.app
+APP            := dist/grantpin.app
+HELPER_APP     := $(APP)/Contents/Helpers/grantpin-daemon.app
+APP_PRODUCT    := build/xcode/Build/Products/Release/grantpin-app.app
 BUILD_NUMBER   ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 BUNDLE_BUILD   := $(or $(VERSION_NUM),$(BUILD_NUMBER))
 # codesign timestamp option; use CODESIGN_TIMESTAMP=--timestamp=none offline.
@@ -84,62 +84,62 @@ endif
 # tree (ALLOW_DIRTY=1 overrides, for a dry run only).
 RELEASE_IDENTITY ?= Developer ID Application: S.A.P. SH.P.K. (MT2QHQX6PS)
 RELEASE_TEAM_ID  ?= MT2QHQX6PS
-NOTARY_PROFILE   ?= grantd-notary
-NOTARIZE_ZIP     := dist/grantd-notarize.zip
-DMG              := dist/grantd-$(or $(DMG_VERSION),$(VERSION)).dmg
+NOTARY_PROFILE   ?= grantpin-notary
+NOTARIZE_ZIP     := dist/grantpin-notarize.zip
+DMG              := dist/grantpin-$(or $(DMG_VERSION),$(VERSION)).dmg
 DMG_STAGE        := dist/dmg-stage
 
 .PHONY: build helper helper-universal app icons bundle sign-bundle sign-release notarize dmg release release-check verify-release app-test ci-app app-dev-daemon dist-src sign test vet lint cover dev-test tools-check ci clean
 
-build: ## Build bin/grantd (production tags: no dev backends)
+build: ## Build bin/grantpin (production tags: no dev backends)
 	@echo "version: $(VERSION) ($(VERSION_SRC))"
-	@# go build refuses to overwrite a fat (lipo) bin/grantd left by helper-universal
-	@rm -f bin/grantd
-	$(GO) build -ldflags '$(LDFLAGS)' -o bin/grantd ./cmd/grantd
+	@# go build refuses to overwrite a fat (lipo) bin/grantpin left by helper-universal
+	@rm -f bin/grantpin
+	$(GO) build -ldflags '$(LDFLAGS)' -o bin/grantpin ./cmd/grantpin
 
-dist-src: ## Export HEAD to dist/grantd-src.tar.gz with a VERSION file, so builds from the export carry the hash
+dist-src: ## Export HEAD to dist/grantpin-src.tar.gz with a VERSION file, so builds from the export carry the hash
 	@v=$$(git describe --tags --always 2>/dev/null) || { echo "make dist-src: needs a git checkout" >&2; exit 1; }; \
-	rm -rf dist/src-stage && mkdir -p dist/src-stage/grantd && \
-	git archive HEAD | tar -x -C dist/src-stage/grantd && \
-	echo "$$v" > dist/src-stage/grantd/VERSION && \
-	tar -czf dist/grantd-src.tar.gz -C dist/src-stage grantd && \
+	rm -rf dist/src-stage && mkdir -p dist/src-stage/grantpin && \
+	git archive HEAD | tar -x -C dist/src-stage/grantpin && \
+	echo "$$v" > dist/src-stage/grantpin/VERSION && \
+	tar -czf dist/grantpin-src.tar.gz -C dist/src-stage grantpin && \
 	rm -rf dist/src-stage && \
-	echo "wrote dist/grantd-src.tar.gz (VERSION $$v)"
+	echo "wrote dist/grantpin-src.tar.gz (VERSION $$v)"
 
-sign: build ## Ad-hoc codesign bin/grantd with build/grantd.entitlements (macOS; see docs/MANUAL-TEST-MACOS.md 2a)
-	codesign --force --sign - --identifier dev.grantd.grantd --entitlements build/grantd.entitlements bin/grantd
-	codesign -d --entitlements - bin/grantd
+sign: build ## Ad-hoc codesign bin/grantpin with build/grantpin.entitlements (macOS; see docs/MANUAL-TEST-MACOS.md 2a)
+	codesign --force --sign - --identifier dev.grantpin.grantpin --entitlements build/grantpin.entitlements bin/grantpin
+	codesign -d --entitlements - bin/grantpin
 
-helper: ## Build bin/grantd for macOS $(MIN_MACOS) (macOS only; asserts LC_BUILD_VERSION minos)
+helper: ## Build bin/grantpin for macOS $(MIN_MACOS) (macOS only; asserts LC_BUILD_VERSION minos)
 	@[ "$$(uname -s)" = Darwin ] || { echo "make helper: macOS only" >&2; exit 2; }
 	@echo "version: $(VERSION) ($(VERSION_SRC)), minimum macOS $(MIN_MACOS)"
-	@rm -f bin/grantd
-	$(HELPER_ENV) $(GO) build -ldflags '$(LDFLAGS)' -o bin/grantd ./cmd/grantd
-	@minos=$$(otool -l bin/grantd | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $$2; exit}'); \
-	if [ "$$minos" != "$(MIN_MACOS)" ]; then echo "make helper: bin/grantd has minos '$$minos', want $(MIN_MACOS)" >&2; exit 1; fi; \
-	echo "bin/grantd: minos $$minos"
+	@rm -f bin/grantpin
+	$(HELPER_ENV) $(GO) build -ldflags '$(LDFLAGS)' -o bin/grantpin ./cmd/grantpin
+	@minos=$$(otool -l bin/grantpin | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $$2; exit}'); \
+	if [ "$$minos" != "$(MIN_MACOS)" ]; then echo "make helper: bin/grantpin has minos '$$minos', want $(MIN_MACOS)" >&2; exit 1; fi; \
+	echo "bin/grantpin: minos $$minos"
 
-helper-universal: ## Build a fat bin/grantd (arm64 + x86_64, cgo cross-built, lipo) for macOS $(MIN_MACOS)
+helper-universal: ## Build a fat bin/grantpin (arm64 + x86_64, cgo cross-built, lipo) for macOS $(MIN_MACOS)
 	@[ "$$(uname -s)" = Darwin ] || { echo "make helper-universal: macOS only" >&2; exit 2; }
 	@echo "version: $(VERSION) ($(VERSION_SRC)), minimum macOS $(MIN_MACOS), arm64 + x86_64"
-	@set -e; sdk=$$(xcrun --sdk macosx --show-sdk-path); mkdir -p bin; rm -f bin/grantd bin/grantd-arm64 bin/grantd-amd64; \
+	@set -e; sdk=$$(xcrun --sdk macosx --show-sdk-path); mkdir -p bin; rm -f bin/grantpin bin/grantpin-arm64 bin/grantpin-amd64; \
 	for pair in arm64:arm64 amd64:x86_64; do \
 	  goarch=$${pair%%:*}; carch=$${pair##*:}; \
 	  echo "go build GOARCH=$$goarch (clang -arch $$carch)"; \
 	  GOOS=darwin GOARCH=$$goarch CGO_ENABLED=1 SDKROOT=$$sdk MACOSX_DEPLOYMENT_TARGET=$(MIN_MACOS) \
 	    CC="clang -arch $$carch" CGO_CFLAGS=-mmacosx-version-min=$(MIN_MACOS) CGO_LDFLAGS=-mmacosx-version-min=$(MIN_MACOS) \
-	    $(GO) build -ldflags '$(LDFLAGS)' -o bin/grantd-$$goarch ./cmd/grantd; \
-	  minos=$$(otool -l bin/grantd-$$goarch | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $$2; exit}'); \
-	  [ "$$minos" = "$(MIN_MACOS)" ] || { echo "make helper-universal: bin/grantd-$$goarch has minos '$$minos', want $(MIN_MACOS)" >&2; exit 1; }; \
+	    $(GO) build -ldflags '$(LDFLAGS)' -o bin/grantpin-$$goarch ./cmd/grantpin; \
+	  minos=$$(otool -l bin/grantpin-$$goarch | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $$2; exit}'); \
+	  [ "$$minos" = "$(MIN_MACOS)" ] || { echo "make helper-universal: bin/grantpin-$$goarch has minos '$$minos', want $(MIN_MACOS)" >&2; exit 1; }; \
 	done; \
-	lipo -create -output bin/grantd bin/grantd-arm64 bin/grantd-amd64; \
-	rm -f bin/grantd-arm64 bin/grantd-amd64; \
-	echo "bin/grantd: $$(lipo -archs bin/grantd), minos $(MIN_MACOS) in each slice"
+	lipo -create -output bin/grantpin bin/grantpin-arm64 bin/grantpin-amd64; \
+	rm -f bin/grantpin-arm64 bin/grantpin-amd64; \
+	echo "bin/grantpin: $$(lipo -archs bin/grantpin), minos $(MIN_MACOS) in each slice"
 
-app: $(HELPER_DEP) ## Build dist/grantd.app (unsigned) with xcodebuild: SwiftUI app + nested Go helper (macOS, Xcode); UNIVERSAL=1 for arm64 + x86_64
+app: $(HELPER_DEP) ## Build dist/grantpin.app (unsigned) with xcodebuild: SwiftUI app + nested Go helper (macOS, Xcode); UNIVERSAL=1 for arm64 + x86_64
 	@command -v xcodebuild >/dev/null || { echo "make app: xcodebuild not found (install Xcode, then xcode-select it)" >&2; exit 2; }
 	rm -rf build/xcode/Build/Products
-	xcodebuild -project app/Grantd.xcodeproj -scheme Grantd -configuration Release \
+	xcodebuild -project app/Grantpin.xcodeproj -scheme Grantpin -configuration Release \
 	  -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=NO ARCHS="$(APP_ARCHS)" \
 	  MACOSX_DEPLOYMENT_TARGET=$(MIN_MACOS) MARKETING_VERSION='$(BUNDLE_VERSION)' CURRENT_PROJECT_VERSION=$(BUNDLE_BUILD) \
 	  PRODUCT_BUNDLE_IDENTIFIER=$(BUNDLE_ID) DAEMON_BUNDLE_ID=$(BUNDLE_ID).daemon DAEMON_MIN_MACOS=$(MIN_MACOS) \
@@ -148,10 +148,10 @@ app: $(HELPER_DEP) ## Build dist/grantd.app (unsigned) with xcodebuild: SwiftUI 
 	mkdir -p dist
 	ditto $(APP_PRODUCT) $(APP)
 
-bundle: app ## Assemble and check dist/grantd.app (unsigned; macOS; see docs/MANUAL-TEST-MACOS.md 2c)
+bundle: app ## Assemble and check dist/grantpin.app (unsigned; macOS; see docs/MANUAL-TEST-MACOS.md 2c)
 	@echo "bundle version: $(VERSION) ($(VERSION_SRC)); CFBundleShortVersionString $(BUNDLE_VERSION), CFBundleVersion $(BUNDLE_BUILD)"
-	@test -x $(APP)/Contents/MacOS/grantd-app || { echo "make bundle: $(APP)/Contents/MacOS/grantd-app missing"; exit 1; }
-	@test -x $(HELPER_APP)/Contents/MacOS/grantd || { echo "make bundle: $(HELPER_APP)/Contents/MacOS/grantd missing"; exit 1; }
+	@test -x $(APP)/Contents/MacOS/grantpin-app || { echo "make bundle: $(APP)/Contents/MacOS/grantpin-app missing"; exit 1; }
+	@test -x $(HELPER_APP)/Contents/MacOS/grantpin || { echo "make bundle: $(HELPER_APP)/Contents/MacOS/grantpin missing"; exit 1; }
 	plutil -lint $(APP)/Contents/Info.plist $(HELPER_APP)/Contents/Info.plist
 	@for p in $(APP)/Contents/Info.plist $(HELPER_APP)/Contents/Info.plist; do \
 	  v=$$(plutil -extract LSMinimumSystemVersion raw -o - $$p); \
@@ -161,12 +161,12 @@ bundle: app ## Assemble and check dist/grantd.app (unsigned; macOS; see docs/MAN
 	  v=$$(plutil -extract CFBundleShortVersionString raw -o - $$p); b=$$(plutil -extract CFBundleVersion raw -o - $$p); \
 	  [ "$$v" = "$(BUNDLE_VERSION)" ] && [ "$$b" = "$(BUNDLE_BUILD)" ] || { echo "make bundle: $$p has version '$$v' build '$$b', want '$(BUNDLE_VERSION)' '$(BUNDLE_BUILD)'" >&2; exit 1; }; \
 	done
-	@minos=$$(otool -l $(HELPER_APP)/Contents/MacOS/grantd | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $$2; exit}'); \
+	@minos=$$(otool -l $(HELPER_APP)/Contents/MacOS/grantpin | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $$2; exit}'); \
 	[ "$$minos" = "$(MIN_MACOS)" ] || { echo "make bundle: helper binary minos is '$$minos', want $(MIN_MACOS)" >&2; exit 1; }
-	@if [ -n "$(EXPECT_ARCHS)" ]; then build/release/check-archs.sh "$(EXPECT_ARCHS)" $(APP)/Contents/MacOS/grantd-app $(HELPER_APP)/Contents/MacOS/grantd; fi
+	@if [ -n "$(EXPECT_ARCHS)" ]; then build/release/check-archs.sh "$(EXPECT_ARCHS)" $(APP)/Contents/MacOS/grantpin-app $(HELPER_APP)/Contents/MacOS/grantpin; fi
 	@echo "built $(APP) (unsigned; run make sign-bundle to sign it, see docs/MANUAL-TEST-MACOS.md 2c)"
 
-sign-bundle: ## Sign dist/grantd.app inside-out: make sign-bundle IDENTITY="Developer ID Application: Name (TEAMID)" PROFILE=/path/x.provisionprofile TEAM_ID=TEAMID
+sign-bundle: ## Sign dist/grantpin.app inside-out: make sign-bundle IDENTITY="Developer ID Application: Name (TEAMID)" PROFILE=/path/x.provisionprofile TEAM_ID=TEAMID
 	@missing=""; \
 	[ -n "$(IDENTITY)" ] || missing="$$missing IDENTITY"; \
 	[ -n "$(PROFILE)" ]  || missing="$$missing PROFILE"; \
@@ -183,8 +183,8 @@ sign-bundle: ## Sign dist/grantd.app inside-out: make sign-bundle IDENTITY="Deve
 	if [ "$(IDENTITY)" = "-" ]; then echo "make sign-bundle: IDENTITY=- (ad-hoc) cannot carry keychain-access-groups; the process would be killed at launch" >&2; exit 2; fi; \
 	if ! echo "$(TEAM_ID)" | grep -Eq '^[A-Z0-9]{10}$$'; then echo "make sign-bundle: TEAM_ID '$(TEAM_ID)' does not look like a 10-character Team ID" >&2; exit 2; fi; \
 	[ -f "$(PROFILE)" ] || { echo "make sign-bundle: PROFILE '$(PROFILE)' is not a file" >&2; exit 2; }; \
-	[ -x $(APP)/Contents/MacOS/grantd-app ] || { echo "make sign-bundle: $(APP) not found; run make bundle first" >&2; exit 2; }; \
-	[ -x $(HELPER_APP)/Contents/MacOS/grantd ] || { echo "make sign-bundle: $(HELPER_APP) not found; run make bundle first" >&2; exit 2; }
+	[ -x $(APP)/Contents/MacOS/grantpin-app ] || { echo "make sign-bundle: $(APP) not found; run make bundle first" >&2; exit 2; }; \
+	[ -x $(HELPER_APP)/Contents/MacOS/grantpin ] || { echo "make sign-bundle: $(HELPER_APP) not found; run make bundle first" >&2; exit 2; }
 	cp "$(PROFILE)" $(APP)/Contents/embedded.provisionprofile
 	cp "$(PROFILE)" $(HELPER_APP)/Contents/embedded.provisionprofile
 	@# codesign does not expand $$(TeamIdentifierPrefix) (an Xcode build setting), so expand it here
@@ -192,10 +192,10 @@ sign-bundle: ## Sign dist/grantd.app inside-out: make sign-bundle IDENTITY="Deve
 	sed -e '/<!--/,/-->/d' \
 	    -e 's|\$$(TeamIdentifierPrefix)|$(TEAM_ID).|g' \
 	    -e 's|@BUNDLE_ID@|$(BUNDLE_ID)|g' -e 's|@KEYCHAIN_GROUP@|$(KEYCHAIN_GROUP)|g' \
-	    build/bundle/grantd-app.entitlements > dist/grantd-app.entitlements
-	plutil -lint dist/grantd-app.entitlements
+	    build/bundle/grantpin-app.entitlements > dist/grantpin-app.entitlements
+	plutil -lint dist/grantpin-app.entitlements
 	@# Inside out, no --deep: the helper first, then the outer app, whose seal records the signed helper.
-	@# Signing a .app also signs its main executable (the Go binary, grantd-app), so these two
+	@# Signing a .app also signs its main executable (the Go binary, grantpin-app), so these two
 	@# calls cover all four Mach-O steps; build/release/verify-signing.sh fails if the tree ever
 	@# holds a third Mach-O.
 	@# Hardened runtime (--options runtime) is on for both with NO exception entitlements. Both
@@ -212,17 +212,17 @@ sign-bundle: ## Sign dist/grantd.app inside-out: make sign-bundle IDENTITY="Deve
 	@#    as a child (display dialog, no events sent to another app); the child is Apple's, and it
 	@#    does not inherit this process's hardened-runtime status.
 	@# Add one only when a verification shows the signed bundle failing without it, with a comment here.
-	codesign --force --options runtime $(CODESIGN_TIMESTAMP) --sign "$(IDENTITY)" --entitlements dist/grantd-app.entitlements $(HELPER_APP)
-	codesign --force --options runtime $(CODESIGN_TIMESTAMP) --sign "$(IDENTITY)" --entitlements dist/grantd-app.entitlements $(APP)
+	codesign --force --options runtime $(CODESIGN_TIMESTAMP) --sign "$(IDENTITY)" --entitlements dist/grantpin-app.entitlements $(HELPER_APP)
+	codesign --force --options runtime $(CODESIGN_TIMESTAMP) --sign "$(IDENTITY)" --entitlements dist/grantpin-app.entitlements $(APP)
 	codesign --verify --deep --strict --verbose=2 $(APP)
 	codesign -d --entitlements - $(APP)
 	codesign -d --entitlements - $(HELPER_APP)
 	@echo
 	@echo "signed and verified: $(APP)"
 	@echo "check that the entitlements above show $(TEAM_ID).$(BUNDLE_ID) and $(TEAM_ID).$(KEYCHAIN_GROUP), then:"
-	@echo "  GRANTD_HOME=\$$(mktemp -d) $(HELPER_APP)/Contents/MacOS/grantd init     # must print: keystore tier: hardware"
+	@echo "  GRANTPIN_HOME=\$$(mktemp -d) $(HELPER_APP)/Contents/MacOS/grantpin init     # must print: keystore tier: hardware"
 
-sign-release: ## Developer ID, hardened-runtime signing of dist/grantd.app: make sign-release PROFILE=/path/Developer_ID.provisionprofile
+sign-release: ## Developer ID, hardened-runtime signing of dist/grantpin.app: make sign-release PROFILE=/path/Developer_ID.provisionprofile
 	@[ -n "$(PROFILE)" ] || { echo "make sign-release: PROFILE is required" >&2; echo "usage: make sign-release PROFILE=/path/to/Developer_ID.provisionprofile   (after make bundle; see docs/RELEASE.md)" >&2; exit 2; }
 	@[ "$(CODESIGN_TIMESTAMP)" = "--timestamp" ] || { echo "make sign-release: CODESIGN_TIMESTAMP is '$(CODESIGN_TIMESTAMP)'; a release needs a secure timestamp (--timestamp)" >&2; exit 2; }
 	@security find-identity -v -p codesigning | grep -qF '"$(RELEASE_IDENTITY)"' || { echo "make sign-release: identity '$(RELEASE_IDENTITY)' not found in the keychain (security find-identity -v -p codesigning)" >&2; exit 2; }
@@ -230,7 +230,7 @@ sign-release: ## Developer ID, hardened-runtime signing of dist/grantd.app: make
 	$(MAKE) sign-bundle IDENTITY="$(RELEASE_IDENTITY)" TEAM_ID=$(RELEASE_TEAM_ID) PROFILE="$(PROFILE)"
 	build/release/verify-signing.sh $(APP) $(HELPER_APP) $(RELEASE_TEAM_ID) $(if $(filter 1,$(RELEASE_UNIVERSAL)),"x86_64 arm64")
 
-notarize: ## Notarize dist/grantd.app and staple the ticket (after sign-release): make notarize [NOTARY_PROFILE=grantd-notary]
+notarize: ## Notarize dist/grantpin.app and staple the ticket (after sign-release): make notarize [NOTARY_PROFILE=grantpin-notary]
 	@command -v xcrun >/dev/null || { echo "make notarize: xcrun not found (install Xcode)" >&2; exit 2; }
 	@codesign --verify --deep --strict $(APP) 2>/dev/null && codesign -dv $(APP) 2>&1 | grep -q 'runtime' || { echo "make notarize: $(APP) is missing or not signed with the hardened runtime; run make sign-release first" >&2; exit 2; }
 	rm -f $(NOTARIZE_ZIP)
@@ -242,16 +242,16 @@ notarize: ## Notarize dist/grantd.app and staple the ticket (after sign-release)
 	codesign --verify --deep --strict --verbose=2 $(APP)
 	rm -f $(NOTARIZE_ZIP)
 
-dmg: ## Build, sign, notarize and staple dist/grantd-<version>.dmg (X.Y.Z for a clean vX.Y.Z tag) from the stapled app (after notarize)
+dmg: ## Build, sign, notarize and staple dist/grantpin-<version>.dmg (X.Y.Z for a clean vX.Y.Z tag) from the stapled app (after notarize)
 	@case "$(VERSION)" in *[!A-Za-z0-9._-]*) echo "make dmg: VERSION '$(VERSION)' has characters that do not belong in a file name" >&2; exit 2;; esac
 	@case "$(VERSION)" in *-dirty) [ "$(ALLOW_DIRTY)" = 1 ] || { echo "make dmg: VERSION '$(VERSION)' is a dirty tree; commit first (ALLOW_DIRTY=1 for a dry run)" >&2; exit 2; };; esac
 	@xcrun stapler validate $(APP) >/dev/null 2>&1 || { echo "make dmg: $(APP) is not notarized and stapled; run make notarize first" >&2; exit 2; }
 	rm -rf $(DMG_STAGE) $(DMG)
 	mkdir -p $(DMG_STAGE)
-	ditto $(APP) $(DMG_STAGE)/grantd.app
+	ditto $(APP) $(DMG_STAGE)/grantpin.app
 	ln -s /Applications $(DMG_STAGE)/Applications
 	cp build/release/dmg/DS_Store $(DMG_STAGE)/.DS_Store
-	hdiutil create -volname grantd -srcfolder $(DMG_STAGE) -fs HFS+ -format UDZO -ov $(DMG)
+	hdiutil create -volname grantpin -srcfolder $(DMG_STAGE) -fs HFS+ -format UDZO -ov $(DMG)
 	rm -rf $(DMG_STAGE)
 	codesign --force --sign "$(RELEASE_IDENTITY)" --timestamp $(DMG)
 	codesign --verify --verbose=2 $(DMG)
@@ -263,7 +263,7 @@ dmg: ## Build, sign, notarize and staple dist/grantd-<version>.dmg (X.Y.Z for a 
 	@echo "built $(DMG)"
 
 release-check: ## Preflight for make release: PROFILE, identity, version, notary credentials (no submission)
-	@[ -n "$(PROFILE)" ] || { echo "make release: PROFILE is required" >&2; echo "usage: make release PROFILE=/path/to/Developer_ID.provisionprofile [NOTARY_PROFILE=grantd-notary]   (see docs/RELEASE.md)" >&2; exit 2; }
+	@[ -n "$(PROFILE)" ] || { echo "make release: PROFILE is required" >&2; echo "usage: make release PROFILE=/path/to/Developer_ID.provisionprofile [NOTARY_PROFILE=grantpin-notary]   (see docs/RELEASE.md)" >&2; exit 2; }
 	@[ -f "$(PROFILE)" ] || { echo "make release: PROFILE '$(PROFILE)' is not a file" >&2; exit 2; }
 	@security find-identity -v -p codesigning | grep -qF '"$(RELEASE_IDENTITY)"' || { echo "make release: identity '$(RELEASE_IDENTITY)' not found in the keychain" >&2; exit 2; }
 	@case "$(VERSION)" in *-dirty) [ "$(ALLOW_DIRTY)" = 1 ] || { echo "make release: VERSION '$(VERSION)' is a dirty tree; commit first (ALLOW_DIRTY=1 for a dry run)" >&2; exit 2; };; esac
@@ -271,8 +271,8 @@ release-check: ## Preflight for make release: PROFILE, identity, version, notary
 	@# a read-only call that fails fast when the stored credentials are missing or wrong
 	@xcrun notarytool history --keychain-profile $(NOTARY_PROFILE) >/dev/null || { echo "make release: no working notarytool credentials in keychain profile '$(NOTARY_PROFILE)'; see docs/RELEASE.md (one-time notary setup)" >&2; exit 2; }
 
-verify-release: ## Gatekeeper assessment of dist/grantd.app and the DMG, the final check of make release
-	@if [ "$(RELEASE_UNIVERSAL)" = 1 ]; then build/release/check-archs.sh "x86_64 arm64" $(APP)/Contents/MacOS/grantd-app $(HELPER_APP)/Contents/MacOS/grantd; fi
+verify-release: ## Gatekeeper assessment of dist/grantpin.app and the DMG, the final check of make release
+	@if [ "$(RELEASE_UNIVERSAL)" = 1 ]; then build/release/check-archs.sh "x86_64 arm64" $(APP)/Contents/MacOS/grantpin-app $(HELPER_APP)/Contents/MacOS/grantpin; fi
 	xcrun stapler validate $(APP)
 	xcrun stapler validate $(DMG)
 	spctl -a -vv -t install $(APP)
@@ -288,17 +288,17 @@ release: ## Notarized, stapled DMG: make release PROFILE=/path/Developer_ID.prov
 	$(MAKE) dmg
 	$(MAKE) verify-release UNIVERSAL=$(RELEASE_UNIVERSAL)
 
-app-test: ## Swift unit tests for app/GrantdKit against the Go dev daemon (INSECURE test backends; no signing needed)
-	$(GO) build -tags $(DEV_TAG) -o build/grantd-dev ./cmd/grantd
-	GRANTD_DEV_BIN=$(CURDIR)/build/grantd-dev swift test --package-path app/GrantdKit
+app-test: ## Swift unit tests for app/GrantpinKit against the Go dev daemon (INSECURE test backends; no signing needed)
+	$(GO) build -tags $(DEV_TAG) -o build/grantpin-dev ./cmd/grantpin
+	GRANTPIN_DEV_BIN=$(CURDIR)/build/grantpin-dev swift test --package-path app/GrantpinKit
 
 ci-app: app app-test ## What the app needs on a macOS runner with Xcode: unsigned app build plus the Swift tests (not part of `make ci`)
 
-app-dev-daemon: ## Run the INSECURE dev daemon on /tmp/gd-dev/s.sock for UI work (set GRANTD_SOCKET to it; never real secrets)
-	$(GO) build -tags $(DEV_TAG) -o build/grantd-dev ./cmd/grantd
+app-dev-daemon: ## Run the INSECURE dev daemon on /tmp/gd-dev/s.sock for UI work (set GRANTPIN_SOCKET to it; never real secrets)
+	$(GO) build -tags $(DEV_TAG) -o build/grantpin-dev ./cmd/grantpin
 	mkdir -p /tmp/gd-dev && chmod 700 /tmp/gd-dev
-	@[ -f /tmp/gd-dev/vault/vault.db ] || GRANTD_HOME=/tmp/gd-dev build/grantd-dev init
-	GRANTD_HOME=/tmp/gd-dev GRANTD_DEV_APPROVE=allow build/grantd-dev daemon --socket /tmp/gd-dev/s.sock
+	@[ -f /tmp/gd-dev/vault/vault.db ] || GRANTPIN_HOME=/tmp/gd-dev build/grantpin-dev init
+	GRANTPIN_HOME=/tmp/gd-dev GRANTPIN_DEV_APPROVE=allow build/grantpin-dev daemon --socket /tmp/gd-dev/s.sock
 
 test: ## Unit tests with the race detector
 	$(GO) test -race ./...
@@ -324,7 +324,7 @@ tools-check: ## Ensure pinned deps in internal/tools still compile
 ci: build vet lint test dev-test cover tools-check ## Everything CI runs
 
 clean:
-	rm -rf bin dist coverage.out build/xcode build/grantd-dev app/GrantdKit/.build
+	rm -rf bin dist coverage.out build/xcode build/grantpin-dev app/GrantpinKit/.build
 
-icons: ## Regenerate app/Grantd/Assets.xcassets/AppIcon.appiconset from build/icon/grantd-app-icon.png (macOS icon grid, transparent margin)
-	swift build/icon/make-iconset.swift build/icon/grantd-app-icon.png app/Grantd/Assets.xcassets/AppIcon.appiconset
+icons: ## Regenerate app/Grantpin/Assets.xcassets/AppIcon.appiconset from build/icon/grantpin-app-icon.png (macOS icon grid, transparent margin)
+	swift build/icon/make-iconset.swift build/icon/grantpin-app-icon.png app/Grantpin/Assets.xcassets/AppIcon.appiconset

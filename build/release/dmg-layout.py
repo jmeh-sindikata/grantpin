@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Write the Finder layout (.DS_Store) for the grantd disk image.
+"""Write the Finder layout (.DS_Store) for the grantpin disk image.
 
 Why this exists: `hdiutil create -srcfolder` makes an image with no .DS_Store,
 so Finder opens it at the default large window with sidebar and toolbar. This
 script writes a .DS_Store that makes it open as a compact, fixed 600x400 icon
-view with grantd.app and the Applications symlink side by side.
+view with grantpin.app and the Applications symlink side by side.
 
 Why the output is committed: build/release/dmg/DS_Store is a small binary that
 `make dmg` just copies into the staging folder as `.DS_Store`, so a release
@@ -17,7 +17,7 @@ macOS permission dialog). Regenerate only when the layout below changes:
 The keys mirror what dmgbuild (core.py) writes, which are known to work:
 vSrn, bwsp, icvp, icvl on ".", and Iloc per icon. Icon positions are in the
 window's coordinate space (icon centre, in points). The volume name must be
-"grantd" and the app must be named grantd.app (see the `dmg:` target).
+"grantpin" and the app must be named grantpin.app (see the `dmg:` target).
 """
 import os
 import sys
@@ -27,7 +27,7 @@ from ds_store import DSStore
 WINDOW_ORIGIN = (200, 120)  # where the window opens on screen
 WINDOW_SIZE = (600, 400)
 ICONS = {
-    "grantd.app": (150, 190),
+    "grantpin.app": (150, 190),
     "Applications": (450, 190),
 }
 

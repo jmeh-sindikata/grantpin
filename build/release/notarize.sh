@@ -6,7 +6,7 @@
 #   usage: build/release/notarize.sh <file> <keychain-profile>
 #
 # The keychain profile is the name given to `xcrun notarytool store-credentials`
-# (grantd-notary). The JSON result is kept next to the file as <file>.notary.json.
+# (grantpin-notary). The JSON result is kept next to the file as <file>.notary.json.
 set -eu
 
 [ $# -eq 2 ] || { echo "usage: $0 <file> <keychain-profile>" >&2; exit 2; }

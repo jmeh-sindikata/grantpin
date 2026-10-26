@@ -1,7 +1,7 @@
 # Binaries
 /bin/
 /dist/
-/grantd
+/grantpin
 *.exe
 *.test
 *.out
@@ -33,10 +33,10 @@ go.work.sum
 
 # App build products (make app, make app-test)
 /build/xcode/
-/build/grantd-dev
+/build/grantpin-dev
 app/**/xcuserdata/
-app/GrantdKit/.build/
-app/GrantdKit/.swiftpm/
+app/GrantpinKit/.build/
+app/GrantpinKit/.swiftpm/
 
 # Signing material and release artifacts (never commit)
 *.provisionprofile
