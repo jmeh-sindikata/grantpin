@@ -173,10 +173,9 @@ public final class ActivityViewModel {
     /// for, and the page was not cut to fit a protocol line.
     public var windowIsComplete: Bool { !truncated && entries.count < loadedLimit }
 
-    /// All paired events, newest first.
-    public var events: [AuditEvent] {
-        AuditPairing.pair(entries, windowIsComplete: windowIsComplete, now: now())
-    }
+    /// All paired events, newest first. Paired once per load, not on every
+    /// read: a render reads this several times and up to 1,000 rows are loaded.
+    public private(set) var events: [AuditEvent] = []
 
     public var visibleEvents: [AuditEvent] {
         let q = searchText.trimmingCharacters(in: .whitespaces)
@@ -248,6 +247,7 @@ public final class ActivityViewModel {
             truncated = list.truncated
             loadedLimit = limit
             hasLoaded = true
+            events = AuditPairing.pair(entries, windowIsComplete: windowIsComplete, now: now())
             if banner?.refreshAdvised == true || bannerIsFromLoad { banner = nil; bannerIsFromLoad = false }
         } catch {
             if let e = error as? GrantdError, e.isNotRunning || e.isVaultLocked || e.isVaultNotInitialized { return }

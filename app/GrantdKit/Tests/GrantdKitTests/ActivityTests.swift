@@ -197,6 +197,22 @@ final class ActivityViewModelTests: XCTestCase {
         XCTAssertNil(m.detail(for: "nope"))
     }
 
+    func testEventsArePairedOncePerLoadNotOnEveryRead() async {
+        final class Counter: @unchecked Sendable { var n = 0 }
+        let calls = Counter()
+        let t0 = self.t0
+        let f = log([entry(1, decision: "denied_user", argv: ["rm"], secrets: ["KEY"]), entry(2, decision: "refused_policy", argv: ["curl"], secrets: ["KEY"])])
+        let m = ActivityViewModel(service: f, now: { calls.n += 1; return t0.addingTimeInterval(100) })
+        m.connectionChanged(.ready(readyStatus))
+        await m.refresh()
+        let afterLoad = calls.n
+        for _ in 0..<5 { _ = m.events; _ = m.visibleEvents; _ = m.detail(for: m.events[0].id) }
+        m.searchText = "rm"
+        XCTAssertEqual(m.visibleEvents.count, 1)
+        XCTAssertEqual(calls.n, afterLoad, "reads do not pair again")
+        XCTAssertEqual(m.events.count, 2)
+    }
+
     func testHostileTextNeverReachesTheTable() async {
         let f = log([entry(1, decision: "denied_user", caller: "a\u{202E}\u{1B}[31mevil", argv: ["x\u{0}y", String(repeating: "z", count: 5000)])])
         let m = model(f)
