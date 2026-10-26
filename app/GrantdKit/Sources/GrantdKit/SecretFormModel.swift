@@ -101,7 +101,7 @@ public final class SecretFormModel {
     /// The secret being edited; nil when adding.
     public let original: SecretInfo?
     public var mode: Mode {
-        didSet { if mode != oldValue { value = ""; showCharacters = false; error = nil } }
+        didSet { if mode != oldValue { discardSensitive(); error = nil } }
     }
 
     public var name: String

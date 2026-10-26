@@ -519,6 +519,22 @@ final class SecretFormModelTests: XCTestCase {
         XCTAssertFalse(f.canSave)
     }
 
+    func testSwitchingModeForgetsAPastedValueSoTheClipboardIsLeftAlone() async {
+        let pb = FakePasteboard(); pb.text = "pasted"
+        let o = original()
+        let svc = FakeService(secrets: [o])
+        let f = form(svc, original: o, pasteboard: pb)
+        f.mode = .replaceValue
+        f.paste()
+        XCTAssertTrue(f.pastedFromClipboard)
+        f.mode = .editDetails
+        XCTAssertFalse(f.pastedFromClipboard)
+        f.tagsText = "x"
+        _ = await f.save()
+        XCTAssertEqual(pb.cleared, 0)
+        XCTAssertEqual(pb.text, "pasted")
+    }
+
     func testSwitchingModeDropsTheTypedValue() {
         let f = form(original: original())
         f.mode = .replaceValue
