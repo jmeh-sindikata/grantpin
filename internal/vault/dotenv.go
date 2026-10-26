@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode"
 )
 
 // KV is one parsed .env entry. Its formatting methods never print the value.
@@ -69,12 +70,15 @@ func ParseDotenv(r io.Reader) ([]KV, error) {
 		}
 		startLine := line
 		line++
-		t := strings.TrimSpace(l)
-		if t == "" || t[0] == '#' {
+		if t := strings.TrimSpace(l); t == "" || t[0] == '#' {
 			continue
 		}
+		// Trim only before the key (and the opening quote): the rest of the
+		// line is the start of a quoted value, whose trailing whitespace is
+		// part of it when the value continues on the next line.
+		t := strings.TrimLeftFunc(l, unicode.IsSpace)
 		if rest, ok := strings.CutPrefix(t, "export"); ok && rest != "" && (rest[0] == ' ' || rest[0] == '\t') {
-			t = strings.TrimSpace(rest)
+			t = strings.TrimLeftFunc(rest, unicode.IsSpace)
 		}
 		eq := strings.IndexByte(t, '=')
 		if eq < 0 {

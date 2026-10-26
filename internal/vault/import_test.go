@@ -55,6 +55,26 @@ func TestParseDotenv(t *testing.T) {
 	}
 }
 
+func TestParseDotenvQuotedKeepsTrailingSpaceOnOpeningLine(t *testing.T) {
+	src := "  export  A = \"first  \t\nsecond  \"  # c\n" +
+		"B='x \ny'\n" +
+		"C=\"one line\"   \n" +
+		"D=  plain  \n"
+	kvs, err := ParseDotenv(strings.NewReader(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"A": "first  \t\nsecond  ", "B": "x \ny", "C": "one line", "D": "plain"}
+	if len(kvs) != len(want) {
+		t.Fatalf("got %d entries", len(kvs))
+	}
+	for _, kv := range kvs {
+		if string(kv.Value) != want[kv.Key] {
+			t.Errorf("%s = %q, want %q", kv.Key, kv.Value, want[kv.Key])
+		}
+	}
+}
+
 func TestParseDotenvErrors(t *testing.T) {
 	for in, wantLine := range map[string]string{
 		"JUSTAWORD\n":              "line 1",
