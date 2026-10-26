@@ -71,6 +71,8 @@ public enum AuditPairing {
         case ("allowed_once", "delete"): return "Secret deleted"
         case ("allowed_once", "show"): return "Secret revealed in a terminal"
         case ("allowed_once", let r) where r == "update" || r.hasPrefix("update"): return "Secret details changed"
+        case ("allowed_once", "grants revoke"): return "Grant revoked"
+        case ("allowed_once", "grants revoke_all"): return "All grants revoked"
         case ("allowed_once", _): return "Allowed once"
         case ("allowed_new_grant", "standing"): return "Standing grant created"
         case ("allowed_new_grant", _): return "Allowed for a while (grant created)"
@@ -172,6 +174,13 @@ public enum AuditPairing {
         return DisplayText.sanitise(names.joined(separator: ", "), limit: DisplayText.cellLimit)
     }
 
+    /// A grant revocation: `grants revoke` (one row, with the grant id) or
+    /// `grants revoke_all` (one row per removed grant, or one row without a
+    /// grant id when there was none). Never paired with a run.
+    private static func isRevocation(_ e: AuditEntry) -> Bool {
+        e.decision == "allowed_once" && (e.reason == "grants revoke" || e.reason == "grants revoke_all")
+    }
+
     private static func isLifecycle(_ e: AuditEntry) -> Bool {
         // Only a row the daemon allowed is a change. A denied or failed lower-protection
         // update has reason "update: lower min_tier..." too, and stays a refusal (with its reason).
@@ -198,6 +207,15 @@ public enum AuditPairing {
             return AuditEvent(id: e.id, rowIDs: [e.id], time: e.ts, kind: .change, title: title, command: name,
                               caller: DisplayText.sanitise(e.caller), secrets: e.secrets, result: .none,
                               summary: "\(title): \(name)")
+        }
+        if isRevocation(e) {
+            // The daemon records the revoked grant in grant_id; a revoke-all that found
+            // nothing has none.
+            let id = DisplayText.sanitise(e.grantID)
+            let summary = !id.isEmpty ? "\(title): \(id)"
+                : e.reason == "grants revoke_all" ? "\(title): none were active" : title
+            return AuditEvent(id: e.id, rowIDs: [e.id], time: e.ts, kind: .change, title: title, command: id,
+                              caller: DisplayText.sanitise(e.caller), secrets: e.secrets, result: .none, summary: summary)
         }
         if e.decision == "allowed_new_grant" && e.reason == "standing" {
             let cmd = command(e)

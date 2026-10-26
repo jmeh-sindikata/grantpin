@@ -145,6 +145,8 @@ final class AuditPairingTests: XCTestCase {
             ("allowed_once", "show", "Secret revealed in a terminal"),
             ("allowed_once", "update", "Secret details changed"),
             ("allowed_once", "update: lower min_tier", "Secret details changed"),
+            ("allowed_once", "grants revoke", "Grant revoked"),
+            ("allowed_once", "grants revoke_all", "All grants revoked"),
             ("denied_user", "", "You said no"),
             ("refused_policy", "", "Blocked by .grantd.yml"),
             ("refused_tier", "", "Blocked: protection level"),
@@ -161,6 +163,27 @@ final class AuditPairingTests: XCTestCase {
         XCTAssertEqual(ev[0].title, "Secret saved")
         XCTAssertEqual(ev[0].command, "aws/key")
         XCTAssertEqual(ev[0].summary, "Secret saved: aws/key")
+    }
+
+    func testGrantRevocationRowsAreChangesNotRuns() {
+        let one = AuditEntry(id: "1", ts: at(0), caller: "grantd-app", cwd: "/x", argv: ["grantd", "grants", "revoke", "g_1"],
+                             decision: "allowed_once", grantID: "g_1", reason: "grants revoke")
+        let all = AuditEntry(id: "2", ts: at(1), caller: "grantd-app", cwd: "/x", argv: ["grantd", "grants", "revoke", "--all", "g_2"],
+                             decision: "allowed_once", grantID: "g_2", reason: "grants revoke_all")
+        let none = AuditEntry(id: "3", ts: at(2), caller: "grantd-app", cwd: "/x", argv: ["grantd", "grants", "revoke", "--all"],
+                              decision: "allowed_once", reason: "grants revoke_all")
+        let ev = pair([one, all, none])
+        XCTAssertEqual(ev.count, 3)
+        XCTAssertEqual(ev.map(\.kind), [.change, .change, .change])
+        XCTAssertEqual(ev[2].title, "Grant revoked")
+        XCTAssertEqual(ev[2].command, "g_1")
+        XCTAssertEqual(ev[2].summary, "Grant revoked: g_1")
+        XCTAssertEqual(ev[2].caller, "grantd-app")
+        XCTAssertEqual(ev[1].title, "All grants revoked")
+        XCTAssertEqual(ev[1].summary, "All grants revoked: g_2")
+        XCTAssertEqual(ev[0].title, "All grants revoked")
+        XCTAssertEqual(ev[0].command, "")
+        XCTAssertEqual(ev[0].summary, "All grants revoked: none were active")
     }
 
     func testDeniedAndErrorRows() {

@@ -420,6 +420,7 @@ Until G3 lands, the daemon's dialog ends with "Only continue if you just ran `gr
 | `allowed_new_grant` + `released` | "Allowed for a while (grant created)" |
 | `allowed_new_grant` + `standing` | "Standing grant created" |
 | `allowed_once` + `set` / `delete` / `show` / `update` | "Secret saved" / "Secret deleted" / "Secret revealed in a terminal" / "Secret details changed" (the daemon records these with `argv` `["grantd", verb, name]`; Detail shows the name) |
+| `allowed_once` + `grants revoke` / `grants revoke_all` | "Grant revoked" / "All grants revoked" (the daemon writes one row per revoked grant, with `grant_id` set and `argv` `["grantd","grants","revoke",<id>]` or `["grantd","grants","revoke","--all",<id>]`; a revoke-all that found nothing writes one row without `grant_id`, shown as "none were active"). Detail shows the grant ID; the Caller column shows the label that asked. These are lifecycle rows: a single standalone event of kind change (in the Changes filter), never paired with a run. |
 | `denied_user` | "You said no" |
 | `refused_policy` | "Blocked by .grantd.yml" |
 | `refused_tier` | "Blocked: protection level" |
