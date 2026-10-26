@@ -207,11 +207,11 @@ macOS will probably show a "Background Items Added" notification when the Launch
 
 ### 2.6 Subprocess rules (the helper)
 
-The app spawns the helper only for `init`, `import`, `service install|uninstall|status`, `--version`. Rules:
+The app spawns the helper only for `init`, `import`, `service install|uninstall|status`, `keystore delete`, `--version`. Rules:
 
 - Executable path: `Bundle.main.bundleURL/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd`, resolved once, symlinks rejected, verified to be inside the bundle.
 - Environment: `HOME`, `USER`, `LOGNAME`, `TMPDIR`, `LANG`, `PATH=/usr/bin:/bin` and, in development mode only, `GRANTD_SOCKET`. Nothing else (no inherited environment).
-- `standardInput`: `/dev/null`, except `import` (below). stdout/stderr captured, each capped at 64 KiB. Timeouts: `init` 30 s, `import` 120 s, `service install` 20 s, `service uninstall`/`status`/`--version` 10 s; then SIGTERM.
+- `standardInput`: `/dev/null`, except `import` (below). stdout/stderr captured, each capped at 64 KiB. Timeouts: `init` 30 s, `import` 120 s, `service install` 20 s, `service uninstall`/`status`/`--version` 10 s, `keystore delete` 20 s; then SIGTERM.
 - Never put a secret value in `arguments` or `environment`. (`import` gets the `.env` bytes through an open file descriptor, section 3.2.)
 - Exit codes the app interprets: `service status` 3 = not installed. `init` and `import` use 1 for every failure; the app shows stderr, it does not branch on it, with one exception: if `init` fails and stderr contains "Secure Enclave" (case-insensitive) the app offers the weaker-protection retry (3.6). Brittle by nature; a stable error code is backlog (G7).
 
@@ -486,13 +486,17 @@ A `Window("Settings")` scene with four tabs. Everything here that changes the sy
   - [x] `Stop and remove the background service` (`service uninstall`)
   - [ ] `Delete my vault: {n} secrets, {m} grants and the audit log`
   - [ ] `Delete logs`
-  - [ ] `Delete the Keychain item used by weaker protection` (shown only if `keystore_tier == "dialog"`; runs `security delete-generic-password -s dev.grantd -a vault-kek`)
-- If "Delete my vault" is ticked, an extra paragraph and a confirmation field appear:
-  - Warning: `Deleting the vault permanently removes all secrets, grants and the audit log. grantd does not keep a copy and this can't be undone.`
-  - Field: `Type "delete" to confirm.` The button stays disabled until the field equals `delete`.
+  - [ ] `Delete the Keychain item used by weaker protection` (shown only if `keystore_tier == "dialog"` is known; runs the helper's `keystore delete --fallback --yes`)
+  - [ ] `Delete the hardware key` (shown only if `keystore_tier == "hardware"` is known; runs `keystore delete --hardware --yes`)
+  - The app never calls `security delete-generic-password`: the fallback key lives in the data-protection keychain, which `security` cannot reach (it answers exit 44, "not found", for an item that is there), and the Secure Enclave key is invisible to it. Only the signed helper can delete either. The key options are shown only when the tier is known from a `status` answer; with no answer the sheet says so and offers neither.
+- If "Delete my vault" or either key option is ticked, an extra paragraph and a confirmation field appear:
+  - Warning for the vault: `Deleting the vault permanently removes all secrets, grants and the audit log. grantd does not keep a copy and this can't be undone.`
+  - Warning for a key: `Deleting the key makes the vault permanently unreadable, even if you keep the vault file.`
+  - Field: `Type "delete" to confirm.` The button stays disabled until the field equals `delete`. A key can never be deleted without the typed word, with or without the vault.
 - Buttons: `Remove` (destructive), `Cancel`.
-- Order of operations: `service uninstall`; wait for the socket to disappear (up to 5 s); only then remove `vault.db`, `vault.db-wal`, `vault.db-shm` and a leftover `grantd.sock` in the vault folder, then the folder if empty. The vault is never deleted while the daemon may hold it open. The file operations use the default vault folder only (neither the Finder app nor the launchd job sees `GRANTD_HOME`/`XDG_DATA_HOME`).
-- Result sheet states what remains: `The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. grantd has no command to remove it yet.` (BACKLOG "Migrate a vault between key stores": the Secure Enclave key is invisible to `security` and only the signed bundle's binary can delete it; open question 6.) Then: `To disconnect Claude Code, run: claude mcp remove grantd` (Copy) and `To finish, drag grantd to the Trash.` with a **Reveal in Finder** button. The app does not delete itself.
+- Order of operations: `service uninstall`; wait for the socket to disappear (up to 5 s); only then remove `vault.db`, `vault.db-wal`, `vault.db-shm` and a leftover `grantd.sock` in the vault folder, then the folder if empty, then the logs, then the keys. The vault and the keys are never deleted while the daemon may hold them open, so ticking a key also stops the service. The app never passes `--force` to `keystore delete`.
+- `keystore delete` result codes: 0 deleted; 3 no such key (the result sheet says `Keychain item was not found, so nothing was deleted` or the same for the hardware key, as a neutral line and not as a success); 2 the daemon is still running (`grantd is still running, so the … was not deleted.`); anything else shows `The … could not be deleted.` plus the helper's stderr, sanitised. The file operations use the default vault folder only (neither the Finder app nor the launchd job sees `GRANTD_HOME`/`XDG_DATA_HOME`).
+- Result sheet states what remains: `The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. To remove it, tick "Delete the hardware key" when you uninstall.` (only when the vault was deleted and the key was not). Then: `To disconnect Claude Code, run: claude mcp remove grantd` (Copy) and `To finish, drag grantd to the Trash.` with a **Reveal in Finder** button. The app does not delete itself.
 
 ### 3.6 Onboarding
 
@@ -729,7 +733,7 @@ The implementing agent appends these (in the file's existing style, with expecte
 20. Hostile text: an agent run with `argv` containing U+202E, ESC sequences and a 5,000-character argument is displayed escaped and truncated, with no layout break, no link, no Markdown.
 21. Settings: turn the background service off and on; Start-at-login (log out and in: icon appears); PATH field: an agent running `php --version` or another Homebrew tool works after install from a Finder-launched app.
 22. Connect: both Copy buttons put exactly the displayed text on the clipboard; running the command in a new terminal registers the server; `/mcp` in Claude Code lists `secret_list`, `secret_exists`, `secret_masked`, `secret_run`; repeat with the app in a folder whose name contains a space and an apostrophe.
-23. Uninstall: each checkbox separately; vault deletion needs the typed word; afterwards the plist, vault files and logs are gone as selected; the app is still there; the dialog states the hardware key remains.
+23. Uninstall: each checkbox separately; vault deletion needs the typed word; afterwards the plist, vault files and logs are gone as selected; the app is still there; the dialog states the hardware key remains unless "Delete the hardware key" was ticked; a key box alone needs the typed word; "not found" is reported as not deleted.
 24. Privacy: System Settings > Privacy & Security shows no Accessibility, Automation or Screen Recording request from grantd; `lsof -a -p <app pid> -i` shows no network sockets.
 
 ## 7. Work breakdown
@@ -763,7 +767,7 @@ Each has a default so work can start now.
 3. **Change the standing-grant dialog sentence (G3) to "Only continue if you just asked for this yourself."?** It touches the daemon's wording and its tests, README and THREAT-MODEL 4.7. Default: yes, in step 9.
 4. **Should the app itself start at login, in addition to the background service?** Without it the menu-bar icon is gone after a restart, though agents keep working. Default: yes, on by default at the end of onboarding, with the toggle in Settings.
 5. **Which scope does the Connect panel show first for `claude mcp add`?** `--scope user` (every project) is what a non-terminal user wants, but it registers grantd in all projects. Default: `--scope user` first; "Only one project" as the second option and the `.mcp.json` snippet with the warning about committing a machine-specific path.
-6. **Uninstall cannot remove the Secure Enclave key** (invisible to `security`; only the signed bundle's binary can delete it; BACKLOG). Add a `grantd keystore remove` verb to the helper so "Uninstall everything" can offer it? Default: no for v0.2; the uninstall result says the key remains and is useless without the vault file.
+6. **Uninstall and the Secure Enclave key** (invisible to `security`; only the signed bundle's binary can delete it). Resolved: the helper has `grantd keystore delete --fallback|--hardware --yes` and Uninstall offers both options behind the typed word (3.5). The app does not pass `--force`.
 
 ## Appendix A. Not verified
 

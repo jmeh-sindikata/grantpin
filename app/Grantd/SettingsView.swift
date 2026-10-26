@@ -276,7 +276,7 @@ private struct UninstallSettings: View {
     var body: some View {
         Form {
             Section {
-                Text("Removes the background service, and optionally your vault, the logs and the Keychain item for weaker protection. Nothing is removed until you choose it on the next screen.")
+                Text("Removes the background service, and optionally your vault, the logs and the key that protects the vault. Nothing is removed until you choose it on the next screen.")
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Uninstall grantd…") { sheet = makeModel() }
             }
@@ -297,6 +297,7 @@ private struct UninstallSettings: View {
         return UninstallModel(
             control: app.serviceControl, secrets: status?.secrets ?? 0, grants: (status?.activeGrants ?? 0) + (status?.tamperedGrants ?? 0),
             keystoreTier: status?.keystoreTier ?? .hardware, isDevelopment: app.socket.isDevelopment,
+            keychain: app.serviceControl.map { HelperKeystore(helper: $0.helper) },
             isDaemonAnswering: { (try? await client.status()) != nil },
             unregisterLoginItem: { try? login.unregister() })
     }

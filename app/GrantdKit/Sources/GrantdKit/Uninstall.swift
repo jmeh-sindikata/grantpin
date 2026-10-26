@@ -1,26 +1,69 @@
 import Foundation
 import Observation
 
-/// Removes the Keychain item that holds the weaker-protection vault key
-/// (service `dev.grantd`, account `vault-kek`). The Secure Enclave key is not
-/// a Keychain item `security` can see, and this never touches it.
-public protocol KeychainItemRemoval: Sendable {
-    /// True if the item is gone afterwards (it may not have existed).
-    func removeVaultKeyItem() async -> Bool
+/// Which vault key `grantd keystore delete` removes.
+public enum VaultKeyKind: Equatable, Sendable {
+    /// The Keychain item of the weaker protection (`--fallback`).
+    case fallback
+    /// The Secure Enclave key (`--hardware`).
+    case hardware
+
+    var flag: String { self == .fallback ? "--fallback" : "--hardware" }
 }
 
-/// `security delete-generic-password -s dev.grantd -a vault-kek`.
-public struct SecurityToolKeychain: KeychainItemRemoval {
-    public static let arguments = ["delete-generic-password", "-s", "dev.grantd", "-a", "vault-kek"]
-    public init() {}
+/// What `grantd keystore delete` reported.
+public enum KeyDeletion: Equatable, Sendable {
+    /// Exit 0.
+    case deleted
+    /// Exit 3: there was no such key. Nothing was deleted.
+    case notFound
+    /// Exit 2: the daemon is still running, so the helper refused.
+    case daemonRunning
+    /// Any other result; `detail` is the helper's stderr, sanitised.
+    case failed(detail: String?)
+}
 
-    public func removeVaultKeyItem() async -> Bool {
+/// Removes a vault key through the helper (docs/UI-SPEC.md 3.5). The
+/// fallback key lives in the data-protection keychain and the hardware key in
+/// the Secure Enclave; `security` reaches neither (it answers 44, "not found",
+/// for an item that is there), so only the signed helper can delete them.
+public protocol KeychainItemRemoval: Sendable {
+    func deleteKey(_ kind: VaultKeyKind) async -> KeyDeletion
+}
+
+/// `grantd keystore delete --fallback --yes` or `--hardware --yes`. The app
+/// never passes `--force`: the service is stopped first, and a daemon that is
+/// still running is a refusal (exit 2) the sheet reports.
+public struct HelperKeystore: KeychainItemRemoval {
+    public static let timeout: TimeInterval = 20
+    public let helper: URL
+    let environment: [String: String]
+
+    public init(helper: URL, environment: [String: String]? = nil) {
+        self.helper = helper
+        self.environment = environment ?? ImportRunner.standardEnvironment()
+    }
+
+    public static func arguments(for kind: VaultKeyKind) -> [String] {
+        ["keystore", "delete", kind.flag, "--yes"]
+    }
+
+    public func deleteKey(_ kind: VaultKeyKind) async -> KeyDeletion {
         guard let out = try? await HelperProcess.run(
-            executable: URL(fileURLWithPath: "/usr/bin/security"), arguments: Self.arguments,
-            environment: ImportRunner.standardEnvironment(), standardInput: nil, timeout: 10)
-        else { return false }
-        // 44 is errSecItemNotFound: already gone.
-        return out.exitCode == 0 || out.exitCode == 44
+            executable: helper, arguments: Self.arguments(for: kind), environment: environment,
+            standardInput: nil, timeout: Self.timeout)
+        else { return .failed(detail: nil) }
+        return Self.interpret(out)
+    }
+
+    static func interpret(_ out: HelperOutput) -> KeyDeletion {
+        if out.timedOut { return .failed(detail: "The helper took too long.") }
+        switch out.exitCode {
+        case 0: return .deleted
+        case 3: return .notFound
+        case 2: return .daemonRunning
+        default: return .failed(detail: HelperActions.tail(out.stderr))
+        }
     }
 }
 
@@ -45,6 +88,7 @@ public final class UninstallModel {
     public var deleteVault = false
     public var deleteLogs = false
     public var deleteKeychainItem = false
+    public var deleteHardwareKey = false
     public var confirmationText = ""
     public private(set) var phase: Phase = .choosing
 
@@ -56,7 +100,7 @@ public final class UninstallModel {
     @ObservationIgnored private let control: ServiceControl?
     @ObservationIgnored private let vaultFolder: URL
     @ObservationIgnored private let logsFolder: URL
-    @ObservationIgnored private let keychain: KeychainItemRemoval
+    @ObservationIgnored private let keychain: KeychainItemRemoval?
     @ObservationIgnored private let isDaemonAnswering: @Sendable () async -> Bool
     @ObservationIgnored private let sleep: @Sendable (TimeInterval) async -> Void
     @ObservationIgnored private let unregisterLoginItem: @MainActor () -> Void
@@ -67,13 +111,16 @@ public final class UninstallModel {
     public static let stopLabel = "Stop and remove the background service"
     public static let logsLabel = "Delete logs"
     public static let keychainLabel = "Delete the Keychain item used by weaker protection"
+    public static let hardwareKeyLabel = "Delete the hardware key"
+    public static let keyWarning =
+        "Deleting the key makes the vault permanently unreadable, even if you keep the vault file."
     public static let deleteWarning =
         "Deleting the vault permanently removes all secrets, grants and the audit log. grantd does not keep a copy and this can't be undone."
     public static let confirmationPrompt = "Type \"delete\" to confirm."
     public static let confirmationWord = "delete"
     public static let removeLabel = "Remove"
     public static let hardwareKeyNote =
-        "The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. grantd has no command to remove it yet."
+        "The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. To remove it, tick \"Delete the hardware key\" when you uninstall."
     public static let keychainItemNote =
         "The Keychain item for weaker protection stays. It is useless without the vault file."
     public static let disconnectText = "To disconnect Claude Code, run:"
@@ -82,7 +129,7 @@ public final class UninstallModel {
 
     public init(control: ServiceControl?, secrets: Int, grants: Int, keystoreTier: Tier, isDevelopment: Bool,
                 vaultFolder: URL = AppPaths.vaultFolder(), logsFolder: URL = AppPaths.logsFolder(),
-                keychain: KeychainItemRemoval = SecurityToolKeychain(),
+                keychain: KeychainItemRemoval? = nil,
                 isDaemonAnswering: @escaping @Sendable () async -> Bool,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
                 unregisterLoginItem: @escaping @MainActor () -> Void = {}) {
@@ -107,12 +154,23 @@ public final class UninstallModel {
 
     /// The Keychain checkbox appears only for a vault protected by the Keychain.
     public var offersKeychainItem: Bool { keystoreTier.rank == 1 }
+    /// The hardware-key checkbox appears only for a hardware-protected vault.
+    public var offersHardwareKey: Bool { keystoreTier.rank == 2 }
 
-    /// Deleting the vault needs the service stopped first.
-    public var stopIsForced: Bool { deleteVault }
-    public var willStopService: Bool { stopService || deleteVault }
+    /// A key that will be deleted (only one that is offered counts).
+    public var willDeleteFallbackKey: Bool { deleteKeychainItem && offersKeychainItem }
+    public var willDeleteHardwareKey: Bool { deleteHardwareKey && offersHardwareKey }
+    public var willDeleteKey: Bool { willDeleteFallbackKey || willDeleteHardwareKey }
 
-    public var needsTypedConfirmation: Bool { deleteVault }
+    /// Deleting the vault or a key needs the service stopped first (the
+    /// helper refuses to delete a key while the daemon runs).
+    public var stopIsForced: Bool { deleteVault || willDeleteKey }
+    public var willStopService: Bool { stopService || stopIsForced }
+
+    /// The vault, or a key whose loss makes the vault unreadable.
+    public var needsTypedConfirmation: Bool { deleteVault || willDeleteKey }
+    /// Shown when a key is ticked.
+    public var showsKeyWarning: Bool { willDeleteKey }
     public var confirmationMatches: Bool { confirmationText == Self.confirmationWord }
 
     public var disabledReason: String? {
@@ -123,8 +181,8 @@ public final class UninstallModel {
 
     public var canRemove: Bool {
         guard disabledReason == nil, phase == .choosing else { return false }
-        guard willStopService || deleteLogs || (deleteKeychainItem && offersKeychainItem) else { return false }
-        return !deleteVault || confirmationMatches
+        guard willStopService || deleteLogs else { return false }
+        return !needsTypedConfirmation || confirmationMatches
     }
 
     // MARK: running
@@ -134,9 +192,11 @@ public final class UninstallModel {
     public func remove() async {
         guard canRemove, let control else { return }
         var done = [String]()
+        var notices = [String]()
         var problem: String?
         var vaultDeleted = false
-        var keychainDeleted = false
+        var fallbackGone = false
+        var hardwareGone = false
 
         if willStopService {
             phase = .running("Stopping the background service…")
@@ -149,9 +209,15 @@ public final class UninstallModel {
             }
         }
 
-        if problem == nil, deleteVault {
+        // Neither the vault nor a key is touched while the daemon may hold them.
+        var daemonStopped = false
+        if problem == nil, deleteVault || willDeleteKey {
             phase = .running("Waiting for grantd to stop…")
-            if await waitForDaemonToStop() {
+            daemonStopped = await waitForDaemonToStop()
+        }
+
+        if problem == nil, deleteVault {
+            if daemonStopped {
                 phase = .running("Deleting the vault…")
                 if let failure = removeVaultFiles() {
                     problem = failure
@@ -169,27 +235,70 @@ public final class UninstallModel {
             if let failure = removeLogs() { problem = failure } else { done.append("The logs were deleted.") }
         }
 
-        if problem == nil, deleteKeychainItem, offersKeychainItem {
+        if problem == nil, willDeleteFallbackKey {
             phase = .running("Deleting the Keychain item…")
-            if await keychain.removeVaultKeyItem() {
-                keychainDeleted = true
-                done.append("The Keychain item was deleted.")
-            } else {
-                problem = "The Keychain item could not be deleted."
-            }
+            let r = await deleteKey(.fallback, daemonStopped: daemonStopped, what: "Keychain item")
+            fallbackGone = r.gone
+            if let line = r.done { done.append(line) }
+            if let line = r.notice { notices.append(line) }
+            problem = r.problem
+        }
+
+        if problem == nil, willDeleteHardwareKey {
+            phase = .running("Deleting the hardware key…")
+            let r = await deleteKey(.hardware, daemonStopped: daemonStopped, what: "hardware key")
+            hardwareGone = r.gone
+            if let line = r.done { done.append(line) }
+            if let line = r.notice { notices.append(line) }
+            problem = r.problem
         }
 
         var remains = [String]()
         if vaultDeleted {
             if keystoreTier.rank == 1 {
-                if !keychainDeleted { remains.append(Self.keychainItemNote) }
-            } else {
+                if !fallbackGone { remains.append(Self.keychainItemNote) }
+            } else if !hardwareGone {
                 remains.append(Self.hardwareKeyNote)
             }
         } else if problem == nil, willStopService {
             remains.append("Your vault is still in \(DisplayText.sanitise(vaultFolder.path, limit: 200)).")
         }
-        phase = .finished(UninstallReport(done: done, problem: problem, remains: remains, vaultDeleted: vaultDeleted))
+        phase = .finished(UninstallReport(done: done, notices: notices, problem: problem, remains: remains, vaultDeleted: vaultDeleted))
+    }
+
+    private struct KeyStep {
+        var gone = false
+        var done: String?
+        var notice: String?
+        var problem: String?
+    }
+
+    /// One `keystore delete` run, worded for the result sheet. "Not found" is
+    /// reported as what it is: nothing was deleted.
+    private func deleteKey(_ kind: VaultKeyKind, daemonStopped: Bool, what: String) async -> KeyStep {
+        var step = KeyStep()
+        let capital = what.prefix(1).uppercased() + what.dropFirst()
+        guard daemonStopped else {
+            step.problem = "grantd is still running, so the \(what) was not deleted."
+            return step
+        }
+        guard let keychain else {
+            step.problem = "The \(what) could not be deleted: the helper inside this app could not be found."
+            return step
+        }
+        switch await keychain.deleteKey(kind) {
+        case .deleted:
+            step.gone = true
+            step.done = "The \(what) was deleted."
+        case .notFound:
+            step.gone = true
+            step.notice = "\(capital) was not found, so nothing was deleted. It may have been removed already."
+        case .daemonRunning:
+            step.problem = "grantd is still running, so the \(what) was not deleted."
+        case .failed(let detail):
+            step.problem = "The \(what) could not be deleted." + (detail.map { " \($0)" } ?? "")
+        }
+        return step
     }
 
     /// Up to 5 seconds for the daemon to stop answering.
@@ -231,6 +340,8 @@ extension UninstallModel: Identifiable {}
 /// What the Uninstall sheet shows at the end.
 public struct UninstallReport: Equatable, Sendable {
     public var done: [String]
+    /// Steps that found nothing to do (a key that was not there).
+    public var notices: [String] = []
     public var problem: String?
     /// What stays on this Mac and why it is harmless.
     public var remains: [String]

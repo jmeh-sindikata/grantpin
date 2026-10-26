@@ -32,8 +32,10 @@ final class UninstallModelTests: XCTestCase {
         XCTAssertEqual(UninstallModel.keychainLabel, "Delete the Keychain item used by weaker protection")
         XCTAssertEqual(UninstallModel.deleteWarning, "Deleting the vault permanently removes all secrets, grants and the audit log. grantd does not keep a copy and this can't be undone.")
         XCTAssertEqual(UninstallModel.confirmationPrompt, "Type \"delete\" to confirm.")
+        XCTAssertEqual(UninstallModel.hardwareKeyLabel, "Delete the hardware key")
+        XCTAssertEqual(UninstallModel.keyWarning, "Deleting the key makes the vault permanently unreadable, even if you keep the vault file.")
         XCTAssertEqual(UninstallModel.removeLabel, "Remove")
-        XCTAssertEqual(UninstallModel.hardwareKeyNote, "The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. grantd has no command to remove it yet.")
+        XCTAssertEqual(UninstallModel.hardwareKeyNote, "The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. To remove it, tick \"Delete the hardware key\" when you uninstall.")
         XCTAssertEqual(UninstallModel.disconnectCommand, "claude mcp remove grantd")
         XCTAssertEqual(UninstallModel.trashText, "To finish, drag grantd to the Trash.")
     }
@@ -71,10 +73,17 @@ final class UninstallModelTests: XCTestCase {
     func testKeychainOptionOnlyForWeakerProtection() {
         XCTAssertFalse(model(tier: .hardware).offersKeychainItem)
         XCTAssertTrue(model(tier: .dialog).offersKeychainItem)
+        XCTAssertTrue(model(tier: .hardware).offersHardwareKey)
+        XCTAssertFalse(model(tier: .dialog).offersHardwareKey)
         let hw = model(tier: .hardware)
         hw.stopService = false
         hw.deleteKeychainItem = true
         XCTAssertFalse(hw.canRemove, "an option that is not offered does not count")
+        XCTAssertFalse(hw.needsTypedConfirmation)
+        let weak = model(tier: .dialog)
+        weak.stopService = false
+        weak.deleteHardwareKey = true
+        XCTAssertFalse(weak.canRemove, "the hardware key option is not offered for a Keychain vault")
     }
 
     func testNothingChosenMeansNothingToRemove() {
@@ -195,8 +204,9 @@ final class UninstallModelTests: XCTestCase {
         m.confirmationText = "delete"
         await m.remove()
         guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
-        XCTAssertEqual(k.calls.n, 1)
+        XCTAssertEqual(k.calls.all, [.fallback])
         XCTAssertTrue(r.succeeded)
+        XCTAssertTrue(r.done.contains("The Keychain item was deleted."))
         XCTAssertTrue(r.remains.isEmpty, "the key item is gone; there is no hardware key")
     }
 
@@ -211,16 +221,138 @@ final class UninstallModelTests: XCTestCase {
         XCTAssertEqual(r.remains, [UninstallModel.keychainItemNote])
     }
 
-    func testKeychainFailureIsReported() async {
-        let m = model(tier: .dialog, keychain: FakeKeychain(succeeds: false))
+    func testDeletingAKeyAloneNeedsTheTypedWordAndShowsTheWarning() {
+        let m = model(tier: .dialog)
         m.stopService = false
         m.deleteKeychainItem = true
-        await m.remove()
-        guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
-        XCTAssertEqual(r.problem, "The Keychain item could not be deleted.")
+        XCTAssertTrue(m.needsTypedConfirmation)
+        XCTAssertTrue(m.showsKeyWarning)
+        XCTAssertFalse(m.canRemove, "no typed word, no deletion")
+        m.confirmationText = "delete"
+        XCTAssertTrue(m.canRemove)
+        let hw = model(tier: .hardware)
+        hw.stopService = false
+        hw.deleteHardwareKey = true
+        XCTAssertTrue(hw.needsTypedConfirmation)
+        XCTAssertFalse(hw.canRemove)
+        hw.confirmationText = "delete"
+        XCTAssertTrue(hw.canRemove)
+        XCTAssertFalse(model().showsKeyWarning)
     }
 
-    func testTheSecurityCommand() {
-        XCTAssertEqual(SecurityToolKeychain.arguments, ["delete-generic-password", "-s", "dev.grantd", "-a", "vault-kek"])
+    func testDeletingAKeyForcesStoppingTheService() async {
+        let c = FakeServiceControl()
+        let k = FakeKeychain()
+        let m = model(control: c, tier: .dialog, keychain: k)
+        m.stopService = false
+        m.deleteKeychainItem = true
+        m.confirmationText = "delete"
+        XCTAssertTrue(m.stopIsForced)
+        XCTAssertTrue(m.willStopService)
+        await m.remove()
+        XCTAssertEqual(c.uninstalls, 1)
+        XCTAssertEqual(k.calls.all, [.fallback])
+        guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
+        XCTAssertTrue(r.succeeded, r.problem ?? "")
+        XCTAssertTrue(exists(vault.appendingPathComponent("vault.db")), "the vault file is not touched")
+    }
+
+    func testTheHardwareKeyIsDeletedOnlyWhenAsked() async {
+        let k = FakeKeychain()
+        let m = model(tier: .hardware, keychain: k)
+        m.deleteVault = true
+        m.deleteHardwareKey = true
+        m.confirmationText = "delete"
+        await m.remove()
+        guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
+        XCTAssertEqual(k.calls.all, [.hardware])
+        XCTAssertTrue(r.done.contains("The hardware key was deleted."))
+        XCTAssertTrue(r.remains.isEmpty)
+        let k2 = FakeKeychain()
+        let m2 = model(tier: .hardware, keychain: k2)
+        m2.deleteVault = true
+        m2.confirmationText = "delete"
+        await m2.remove()
+        XCTAssertEqual(k2.calls.n, 0)
+        guard case .finished(let r2) = m2.phase else { return XCTFail("\(m2.phase)") }
+        XCTAssertEqual(r2.remains, [UninstallModel.hardwareKeyNote])
+    }
+
+    func testAKeyThatIsNotFoundIsReportedAsNotDeleted() async {
+        let m = model(tier: .dialog, keychain: FakeKeychain(result: .notFound))
+        m.deleteVault = true
+        m.deleteKeychainItem = true
+        m.confirmationText = "delete"
+        await m.remove()
+        guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
+        XCTAssertTrue(r.succeeded)
+        XCTAssertFalse(r.done.contains { $0.contains("Keychain item was deleted") }, "nothing was deleted, so no success line")
+        XCTAssertEqual(r.notices, ["Keychain item was not found, so nothing was deleted. It may have been removed already."])
+        XCTAssertTrue(r.remains.isEmpty, "there is nothing left to mention")
+    }
+
+    func testAKeyDeletionFailureIsReportedWithTheHelpersMessage() async {
+        let m = model(tier: .dialog, keychain: FakeKeychain(result: .failed(detail: "keystore: access denied")))
+        m.stopService = false
+        m.deleteKeychainItem = true
+        m.confirmationText = "delete"
+        await m.remove()
+        guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
+        XCTAssertEqual(r.problem, "The Keychain item could not be deleted. keystore: access denied")
+    }
+
+    func testAHelperRefusalBecauseTheDaemonRunsIsReported() async {
+        let k = FakeKeychain(result: .daemonRunning)
+        let m = model(tier: .hardware, keychain: k)
+        m.deleteHardwareKey = true
+        m.confirmationText = "delete"
+        await m.remove()
+        guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
+        XCTAssertEqual(r.problem, "grantd is still running, so the hardware key was not deleted.")
+    }
+
+    func testAKeyIsNeverDeletedWhileTheDaemonAnswers() async {
+        let k = FakeKeychain()
+        let m = model(tier: .dialog, answering: { true }, keychain: k)
+        m.deleteKeychainItem = true
+        m.confirmationText = "delete"
+        await m.remove()
+        XCTAssertEqual(k.calls.n, 0)
+        guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
+        XCTAssertEqual(r.problem, "grantd is still running, so the Keychain item was not deleted.")
+    }
+
+    func testTheHelperCommandForEachKey() {
+        XCTAssertEqual(HelperKeystore.arguments(for: .fallback), ["keystore", "delete", "--fallback", "--yes"])
+        XCTAssertEqual(HelperKeystore.arguments(for: .hardware), ["keystore", "delete", "--hardware", "--yes"])
+        XCTAssertFalse(HelperKeystore.arguments(for: .fallback).contains("--force"))
+        XCTAssertFalse(HelperKeystore.arguments(for: .hardware).contains("--force"))
+    }
+
+    func testTheHelperExitCodesAreRead() {
+        func out(_ code: Int32, _ err: String = "", timedOut: Bool = false) -> HelperOutput {
+            HelperOutput(exitCode: code, stdout: "", stderr: err, timedOut: timedOut)
+        }
+        XCTAssertEqual(HelperKeystore.interpret(out(0)), .deleted)
+        XCTAssertEqual(HelperKeystore.interpret(out(3, "no such key")), .notFound)
+        XCTAssertEqual(HelperKeystore.interpret(out(2, "daemon is running")), .daemonRunning)
+        XCTAssertEqual(HelperKeystore.interpret(out(1, "boom\n")), .failed(detail: "boom"))
+        XCTAssertEqual(HelperKeystore.interpret(out(1)), .failed(detail: nil))
+        if case .failed = HelperKeystore.interpret(out(0, "", timedOut: true)) {} else { XCTFail("a timeout is a failure") }
+    }
+
+    /// The real runner against a scripted helper: no Keychain is touched.
+    func testTheRealRunnerAgainstAScriptedHelper() async throws {
+        let script = try temp.file("fake-grantd.sh", "#!/bin/sh\necho \"$@\" > \"$0.args\"\nif [ \"$3\" = --hardware ]; then echo 'no such key' >&2; exit 3; fi\nexit 0\n")
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+        let keystore = HelperKeystore(helper: script, environment: ["PATH": "/usr/bin:/bin"])
+        let a = await keystore.deleteKey(.fallback)
+        XCTAssertEqual(a, .deleted)
+        XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: script.path + ".args"), encoding: .utf8), "keystore delete --fallback --yes\n")
+        let b = await keystore.deleteKey(.hardware)
+        XCTAssertEqual(b, .notFound)
+        let missing = HelperKeystore(helper: URL(fileURLWithPath: "/nonexistent/grantd"))
+        let c = await missing.deleteKey(.fallback)
+        XCTAssertEqual(c, .failed(detail: nil))
     }
 }

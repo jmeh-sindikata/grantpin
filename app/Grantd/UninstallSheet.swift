@@ -42,18 +42,28 @@ struct UninstallSheet: View {
             Section("Remove") {
                 Toggle(UninstallModel.stopLabel, isOn: $model.stopService)
                     .disabled(model.stopIsForced)
-                    .help(model.stopIsForced ? "The vault is only deleted after the background service has stopped." : "")
+                    .help(model.stopIsForced ? "The vault and its key are only deleted after the background service has stopped." : "")
                 Toggle(model.deleteVaultLabel, isOn: $model.deleteVault)
                 Toggle(UninstallModel.logsLabel, isOn: $model.deleteLogs)
                 if model.offersKeychainItem {
                     Toggle(UninstallModel.keychainLabel, isOn: $model.deleteKeychainItem)
                 }
+                if model.offersHardwareKey {
+                    Toggle(UninstallModel.hardwareKeyLabel, isOn: $model.deleteHardwareKey)
+                }
             }
-            if model.deleteVault {
+            if model.needsTypedConfirmation {
                 Section {
-                    Label {
-                        Text(verbatim: UninstallModel.deleteWarning).fixedSize(horizontal: false, vertical: true)
-                    } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red) }
+                    if model.deleteVault {
+                        Label {
+                            Text(verbatim: UninstallModel.deleteWarning).fixedSize(horizontal: false, vertical: true)
+                        } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red) }
+                    }
+                    if model.showsKeyWarning {
+                        Label {
+                            Text(verbatim: UninstallModel.keyWarning).fixedSize(horizontal: false, vertical: true)
+                        } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red) }
+                    }
                     TextField(UninstallModel.confirmationPrompt, text: $model.confirmationText, prompt: Text("delete"))
                         .autocorrectionDisabled()
                 }
@@ -77,6 +87,9 @@ struct UninstallSheet: View {
             Section {
                 ForEach(report.done, id: \.self) { line in
                     Label { Text(verbatim: line) } icon: { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                }
+                ForEach(report.notices, id: \.self) { line in
+                    Label { Text(verbatim: line).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: "info.circle.fill").foregroundStyle(.secondary) }
                 }
                 if let problem = report.problem {
                     Label {

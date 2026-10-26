@@ -147,10 +147,16 @@ final class FakeLoginItem: LoginItemControl {
 }
 
 struct FakeKeychain: KeychainItemRemoval {
-    var succeeds = true
-    final class Calls: @unchecked Sendable { var n = 0 }
+    var result = KeyDeletion.deleted
+    final class Calls: @unchecked Sendable {
+        private let lock = NSLock()
+        private var kinds = [VaultKeyKind]()
+        func add(_ k: VaultKeyKind) { lock.withLock { kinds.append(k) } }
+        var all: [VaultKeyKind] { lock.withLock { kinds } }
+        var n: Int { all.count }
+    }
     let calls = Calls()
-    func removeVaultKeyItem() async -> Bool { calls.n += 1; return succeeds }
+    func deleteKey(_ kind: VaultKeyKind) async -> KeyDeletion { calls.add(kind); return result }
 }
 
 func daemonError(_ category: ErrorCategory, _ reason: ErrorReason, _ message: String = "") -> GrantdError {
