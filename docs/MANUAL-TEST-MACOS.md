@@ -158,7 +158,7 @@ Layout produced by `make bundle` (v0.2; see [UI-SPEC.md](UI-SPEC.md) section 2.1
 ```
 dist/grantd.app/Contents/
   Info.plist                 from app/Grantd/Info.plist; id dev.grantd.app; CFBundleExecutable grantd-app (the SwiftUI app)
-  MacOS/grantd-app           the menu-bar app (a stub so far: icon, status line, Quit)
+  MacOS/grantd-app           the menu-bar app (popover, Secrets, Grants, Activity, Welcome and Settings)
   embedded.provisionprofile  added by make sign-bundle
   Helpers/grantd-daemon.app/
     Contents/
@@ -515,3 +515,141 @@ security find-generic-password -s dev.grantd.test     # should find nothing left
 Test keys are deleted by `t.Cleanup`; an interrupted run may leave
 `dev.grantd.test.*` items. Delete any with
 `security delete-generic-password -s dev.grantd.test -a <account>`.
+
+## 8. v0.2 app
+
+The menu-bar app (`dist/grantd.app`, [UI-SPEC.md](UI-SPEC.md)) was compiled and
+rendered offscreen against the dev daemon, never opened on a screen. This is the
+first real look at it. Do items 1 to 4 with the signed bundle from 2c. For the
+screens, a development session is safer for items 10 to 20: `make app-dev-daemon`
+in one terminal, then start the app with `GRANTD_SOCKET=/tmp/gd-dev/s.sock` (the
+app then shows "Development socket: ..." and touches neither the launchd job, the
+vault, nor the login item). Items 5 to 9, 21, 23 and the Move-to-Applications
+part of 7 need the real install and a spare account or a Mac you can reset.
+
+1. `make helper`: `otool -l bin/grantd | grep -A3 LC_BUILD_VERSION` shows `minos 14.0`.
+2. `make app && make sign-bundle IDENTITY=... PROFILE=... TEAM_ID=...`:
+   `codesign --verify --deep --strict dist/grantd.app` passes;
+   `codesign -d --entitlements - dist/grantd.app` and the same for
+   `dist/grantd.app/Contents/Helpers/grantd-daemon.app` show `TEAMID.dev.grantd.app`
+   and `TEAMID.dev.grantd`; `LSMinimumSystemVersion` is `14.0` in both Info.plists;
+   neither shows `get-task-allow` or `app-sandbox`.
+3. Helper alone: `GRANTD_HOME=$(mktemp -d) dist/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd init`
+   prints `keystore tier: hardware`.
+4. Negative control (documents the layout finding): a copy of the Go binary at
+   `Contents/Helpers/grantd`, signed the same way, exits 137 and the log says
+   `No matching profile found`.
+5. Fresh install: drag to `/Applications`, open. The Welcome window opens by
+   itself. Steps: Welcome, Install Service, Create Vault (Touch ID is not asked),
+   first secret (Add Secret... and Import .env... open the Secrets window; Skip
+   works), Connect Claude Code with "Start grantd when I log in" ticked. Note
+   whether macOS shows a "background item added" notification.
+   `launchctl print gui/$(id -u)/dev.grantd.daemon` names the helper path. Closing
+   the window half-way is fine: the popover says what is left ("No vault yet" with
+   **Set Up...** opens the window at the vault step). Opening grantd again from
+   Finder while it runs opens the Secrets window and does not start a second copy.
+6. Upgrade over the live pre-v0.2 install: the popover says "The background
+   service points to a file that no longer exists" with **Repair**; Repair fixes
+   it; the vault opens, secrets and grants are intact. Settings > Connect shows
+   "Already connected with an older path?" with `claude mcp remove grantd` and
+   Copy; the old registration is reported there.
+7. Run from `~/Downloads` or a mounted disk image: the popover and Settings say
+   "Move grantd to your Applications folder first", Start, Repair, Install Service,
+   Create Vault and the login toggle are off, and **Move to Applications and
+   Relaunch** copies the app (it never replaces an app of the same name) and starts
+   the copy.
+8. Quit the app from the popover: the daemon keeps running and a Claude Code
+   `secret_run` still prompts.
+9. `launchctl kill SIGTERM gui/$(id -u)/dev.grantd.daemon`: the popover turns red
+   (3 s open, 15 s closed) and recovers on its own. A repeated kill within a minute
+   shows "grantd keeps stopping" with **Open Logs Folder**. With the service
+   removed (`grantd service uninstall`) the popover says "grantd is not set up to
+   run in the background" with **Start**; with the app moved away, "The background
+   service points to a file that no longer exists" with **Repair**.
+10. Add a secret with the SecureField, with Paste, with Show characters (hides on
+    focus loss and after 30 s) and with the multi-line toggle (PEM). Afterwards
+    `grep -r <sentinel>` over `~/Library/Logs/grantd`, `~/Library/Preferences`,
+    `~/Library/Saved Application State` and the app's temp dirs finds nothing;
+    `grantd list` shows metadata only. The popover lists the six newest secrets
+    (a click opens the Secrets window with that row selected); the Secrets table
+    has an Updated column.
+11. Replace and Delete show the exact texts of 3.2 (`Replace "{name}"?`,
+    `Delete "{name}"?`); Cancel changes nothing.
+12. Import: dry-run preview, Skip, Overwrite (`Overwrite {n} existing secrets?`),
+    a file with a bad line (shows "Line N: ..."), an empty value; the `.env` file is
+    untouched; no value in any log.
+13. "Hardware" protection is disabled on a Keychain-fallback vault.
+14. Edit details: tags, URL, notes, expiry change; value and protection do not.
+15. Grants: an "Allow for 1h" from a real agent run appears within 5 s, with the
+    caller, command, folder, secrets and "in N min". **Revoke** (button, context
+    menu or Delete key) asks `Revoke this grant?` / `{caller} will have to ask you
+    again before it can use {secrets} in {folder}. A command that is already running
+    keeps running.` with **Revoke** and Cancel. **Revoke All** asks `Revoke all {n}
+    grants?` / `Every agent will have to ask you again, including for standing
+    grants you created on purpose. Commands already running keep running.` with
+    **Revoke All** and Cancel. The next agent run prompts again. The popover's
+    "Grants (n)..." row opens the window.
+16. Standing grant (New Standing Grant...): the form's button is **Ask Me to
+    Confirm...**. Pressing it shows "Waiting for you to confirm in the grantd dialog,
+    then Touch ID." and the daemon's "Create a standing grant?" dialog and Touch ID
+    both appear. Cancel at the dialog, Cancel at Touch ID and Esc each give "Not
+    created. You cancelled the confirmation."; **Cancel Request** while the dialog is
+    open withdraws the dialog and creates nothing; approving shows the toast
+    `Standing grant created. {caller} can run "{command}" with {secrets} in {folder}
+    until {date, time}.`; the next agent run needs no prompt; the app never shows an
+    approve button of its own. The caller field offers `claude-code` and callers seen
+    in the activity log; the folder picker shows the symlink-resolved path.
+17. Standing grant with a custom lifetime of 91 d is stopped in the form ("A
+    standing grant lasts 90 days at most."). A `.grantd.yml` with
+    `max_standing_grant_ttl: 1h` in the folder and a 7 day request shows the
+    daemon's message (naming the ceiling and the file) as it is. A policy that does
+    not list the command shows "A .grantd.yml in that folder does not allow this:".
+    A lone `bash`, `sh` or other interpreter prefix shows the red "This lets {caller}
+    run any code with these secrets" and needs "I understand".
+18. Tampered grant: edit a `grants` row with `sqlite3` (or insert a row with a wrong
+    MAC, see `internal/e2e` `TestForgedGrantRowDoesNotBypassThePrompt`); the popover
+    shows the TAMPERED warning with **Review**, the row turns red with the
+    "Tampered" badge, only its ID and "Failed verification. grantd ignores it. Remove
+    it."; **Remove** asks `Remove this grant?` / `grantd could not verify this grant,
+    so it is ignored and never allows anything. Removing it clears the warning.`
+19. Activity: an agent run shows as one event with its exit code and duration;
+    `kill -9` the daemon mid-run and restart it: the run shows "No result recorded".
+    A denial shows "You said no" with a hand icon and "Denied"; a policy or tier
+    refusal shows "Blocked ...". Filter (All, Runs, Denied or blocked, Changes) and
+    search work. **Verify Log** shows "Log verified: {n} entries, chain intact." with
+    its caption; after editing an audit row with `sqlite3` it shows "Log check failed
+    at entry {id}..." with **Export CSV...**. **Export CSV...** opens a save panel
+    named `grantd-audit-YYYY-MM-DD.csv` and the file opens in a text editor with 12
+    columns. **Load More** appears when 200 rows are loaded and more exist, up to
+    1,000; past that the footer says "Older entries are only in the CSV export.".
+20. Hostile text: an agent run with `argv` containing U+202E, ESC sequences and a
+    5,000-character argument is displayed escaped and truncated, with no layout
+    break, no link, no Markdown, in Activity, Grants and the popover.
+21. Settings: General. Turn the background service off (`Stop the background
+    service?`, button **Stop Service**) and on; "Start grantd when I log in" (log out
+    and in: the icon appears; if macOS asks, the text "Allow grantd in System
+    Settings > General > Login Items" and the button open that pane); the PATH field
+    ("Where grantd looks for commands"): Re-detect, then Apply restarts the service and an
+    agent running `php --version` or another Homebrew tool works after an install from
+    a Finder-launched app; Version shows `{version} · protocol 1`, and after replacing
+    the app with a newer build Settings and the popover say "grantd was updated.
+    Restart the background service to finish." with **Restart**.
+22. Connect: both Copy buttons put exactly the displayed text on the clipboard;
+    running the command in a new terminal registers the server; `/mcp` in Claude Code
+    lists `secret_list`, `secret_exists`, `secret_masked`, `secret_run`; repeat with
+    the app in a folder whose name contains a space and an apostrophe. **Test
+    Connection** answers "grantd answered. Claude Code asks it the same way." with
+    the service running and an error with it stopped.
+23. Uninstall (Settings > Uninstall, or "Uninstall grantd..." in the app menu): each
+    checkbox separately. Only "Stop and remove the background service" is ticked;
+    ticking "Delete my vault: {n} secrets, {m} grants and the audit log" shows the
+    warning and needs the typed word `delete` before **Remove** is enabled. Afterwards
+    the plist, vault files and logs are gone as selected, the app is still there, the
+    result says "The hardware key in your Keychain stays. It can't be exported and is
+    useless without the vault file. grantd has no command to remove it yet.", shows
+    `claude mcp remove grantd` with Copy and "To finish, drag grantd to the Trash."
+    with **Reveal in Finder**. With weaker protection the Keychain checkbox appears and
+    `security find-generic-password -s dev.grantd -a vault-kek` finds nothing after it.
+24. Privacy: System Settings > Privacy & Security shows no Accessibility, Automation
+    or Screen Recording request from grantd; `lsof -a -p <app pid> -i` shows no
+    network sockets.
