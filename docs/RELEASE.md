@@ -221,6 +221,14 @@ hdiutil detach /Volumes/grantpin
 
 Publish a checksum next to the download: `shasum -a 256 grantpin-<version>.dmg`.
 
+## Update the Homebrew tap
+
+The last step of a release, once the DMG is attached to the GitHub release:
+in the `homebrew-grantpin` repo (the tap `jmeh-sindikata/grantpin`) run
+`bin/bump X.Y.Z`, review the diff, commit, push. `bin/bump` downloads the
+release DMG, computes its sha256 and rewrites `version` and `sha256` in
+`Casks/grantpin.rb`.
+
 ## Troubleshooting
 
 - **Notarization `Invalid`.** The log is printed. Usual causes: a binary that is

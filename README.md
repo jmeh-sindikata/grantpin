@@ -6,13 +6,21 @@ Website: <https://jmeh-sindikata.github.io/grantpin-web/>
 
 ## Install
 
-Download the latest DMG from the [releases page](https://github.com/jmeh-sindikata/grantpin/releases/latest). It is a universal (Apple Silicon and Intel), Developer ID signed and notarized build for macOS 14 or later.
+With Homebrew:
+
+```sh
+brew install --cask jmeh-sindikata/grantpin/grantpin
+```
+
+Then open grantpin from Applications (step 2 below). Update with `brew upgrade --cask grantpin`.
+
+Or download the latest DMG from the [releases page](https://github.com/jmeh-sindikata/grantpin/releases/latest). It is a universal (Apple Silicon and Intel), Developer ID signed and notarized build for macOS 14 or later.
 
 1. Open the DMG and drag grantpin to Applications.
 2. Open grantpin from Applications. It lives in the menu bar; there is no Dock icon.
 3. The Welcome window walks you through creating the vault, installing the background service, adding a first secret and connecting Claude Code.
 
-There is no auto-update yet: to update, download the new DMG and drag the app over the old one. Your vault is in `~/Library/Application Support/grantpin` and is not touched.
+There is no auto-update yet: to update, run `brew upgrade --cask grantpin`, or download the new DMG and drag the app over the old one. Your vault is in `~/Library/Application Support/grantpin` and is not touched.
 
 ## Connect Claude Code
 
@@ -56,7 +64,7 @@ grantpin was called grantd until v0.2.0, which shipped as grantd. There is no au
 
 ## Status
 
-v0.2, macOS only, early software. The CLI, the daemon and the menu-bar app work; a Linux and a Windows backend, Homebrew and auto-update are not done. Known gaps and planned work are in [docs/BACKLOG.md](docs/BACKLOG.md). Other docs: [docs/PROTOCOL.md](docs/PROTOCOL.md) (the daemon's socket protocol) and [docs/MANUAL-TEST-MACOS.md](docs/MANUAL-TEST-MACOS.md) (hardware test checklist).
+v0.2, macOS only, early software. The CLI, the daemon and the menu-bar app work; a Linux and a Windows backend and auto-update are not done. Homebrew works through a [personal tap](https://github.com/jmeh-sindikata/homebrew-grantpin); the official homebrew-cask is not done. Known gaps and planned work are in [docs/BACKLOG.md](docs/BACKLOG.md). Other docs: [docs/PROTOCOL.md](docs/PROTOCOL.md) (the daemon's socket protocol) and [docs/MANUAL-TEST-MACOS.md](docs/MANUAL-TEST-MACOS.md) (hardware test checklist).
 
 ## License
 
