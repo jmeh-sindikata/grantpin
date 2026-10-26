@@ -236,9 +236,11 @@ public final class SettingsModel {
         pathMessage = nil
     }
 
-    /// Loads the field once, from the shell.
+    /// Loads the field once, from the shell. Not when the service controls are
+    /// off (development mode, no helper, wrong location): the PATH cannot be
+    /// applied there, so no login shell is started for it.
     public func loadPathIfNeeded() async {
-        if pathText.isEmpty { await redetectPath() }
+        if controlsDisabledReason == nil, pathText.isEmpty { await redetectPath() }
     }
 
     /// A problem with the PATH field, or nil. Only absolute folders count

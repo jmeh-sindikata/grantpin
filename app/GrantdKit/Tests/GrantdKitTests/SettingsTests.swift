@@ -116,6 +116,22 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertEqual(m.pathText, "/custom", "loading does not overwrite what the person typed")
     }
 
+    func testLoadingThePathSpawnsNoShellWhenTheControlsAreDisabled() async throws {
+        let d = try ScriptDir()
+        let sh = try d.script("myshell", #"printf '__GD_BEGIN__%s__GD_END__' "/opt/test/bin:/usr/bin""#)
+        let shells = d.url.appendingPathComponent("shells")
+        try "\(sh.path)\n".write(to: shells, atomically: true, encoding: .utf8)
+        let detector = PathDetector(environment: ["SHELL": sh.path], shellsFile: shells.path)
+        let dev = SettingsModel(control: FakeServiceControl(), loginItem: nil, developmentSocket: "/dev.sock", resolvedSocket: "/s",
+                                pathDetector: detector)
+        await dev.loadPathIfNeeded()
+        XCTAssertEqual(dev.pathText, "", "development mode: no shell")
+        let moved = SettingsModel(control: FakeServiceControl(), loginItem: nil, developmentSocket: nil, resolvedSocket: "/s",
+                                  location: .translocated, pathDetector: detector)
+        await moved.loadPathIfNeeded()
+        XCTAssertEqual(moved.pathText, "", "wrong location: no shell")
+    }
+
     func testLoginItem() {
         let l = FakeLoginItem()
         let m = model(login: l)
