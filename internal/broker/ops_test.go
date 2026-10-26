@@ -116,6 +116,7 @@ func TestSetValidation(t *testing.T) {
 		"empty name":   {Op: proto.OpSet, Name: "", Value: "value-1234"},
 		"empty value":  {Op: proto.OpSet, Name: "X"},
 		"huge value":   {Op: proto.OpSet, Name: "X", Value: strings.Repeat("a", maxValueBytes+1)},
+		"NUL in value": {Op: proto.OpSet, Name: "X", Value: "abc\x00def"},
 		"long url":     {Op: proto.OpSet, Name: "X", Value: "value-1234", URL: strings.Repeat("u", maxURLBytes+1)},
 		"long notes":   {Op: proto.OpSet, Name: "X", Value: "value-1234", Notes: strings.Repeat("n", maxNotesBytes+1)},
 		"bad tier":     {Op: proto.OpSet, Name: "X", Value: "value-1234", MinTier: &bad},

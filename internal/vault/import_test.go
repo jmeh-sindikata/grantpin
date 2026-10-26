@@ -184,6 +184,26 @@ func TestImportErrorModeIsAtomic(t *testing.T) {
 	}
 }
 
+func TestImportRejectsNULInValue(t *testing.T) {
+	v, _, _ := newVault(t)
+	kvs := []KV{{"GOOD", []byte("fine")}, {"BAD", []byte("a\x00b")}}
+	for _, dry := range []bool{true, false} {
+		for _, mode := range []ConflictMode{ConflictSkip, ConflictOverwrite, ConflictError} {
+			_, err := v.Import(ctx, kvs, mode, dry)
+			if !errors.Is(err, ErrInvalidValue) || !strings.Contains(err.Error(), "BAD") {
+				t.Fatalf("dry=%v mode=%s: err = %v", dry, mode, err)
+			}
+		}
+	}
+	if ok, _ := v.Exists(ctx, "GOOD"); ok {
+		t.Fatal("partial import happened")
+	}
+	// A later duplicate that replaces the bad one makes the import valid.
+	if _, err := v.Import(ctx, []KV{{"BAD", []byte("a\x00b")}, {"BAD", []byte("ab")}}, ConflictSkip, false); err != nil {
+		t.Fatalf("last-wins duplicate: %v", err)
+	}
+}
+
 func TestKVFormattingRedacts(t *testing.T) {
 	kv := KV{Key: "K", Value: []byte("topsecret")}
 	if strings.Contains(kv.String()+kv.GoString(), "topsecret") {

@@ -429,6 +429,30 @@ func TestSetValidation(t *testing.T) {
 	}
 }
 
+func TestSetRejectsNULInValue(t *testing.T) {
+	v, _, _ := newVault(t)
+	err := v.Set(ctx, Meta{Name: "N"}, []byte("abc\x00def"), false)
+	if !errors.Is(err, ErrInvalidValue) {
+		t.Fatalf("err = %v, want ErrInvalidValue", err)
+	}
+	if strings.Contains(err.Error(), "abc") || !strings.Contains(err.Error(), "NUL") {
+		t.Errorf("message %q must name the problem and never echo the value", err)
+	}
+	if ok, _ := v.Exists(ctx, "N"); ok {
+		t.Error("rejected value was stored")
+	}
+	// Overwrite is checked too, and the old value survives.
+	if err := v.Set(ctx, Meta{Name: "N"}, []byte("good-value"), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Set(ctx, Meta{Name: "N"}, []byte("\x00"), true); !errors.Is(err, ErrInvalidValue) {
+		t.Fatalf("overwrite err = %v", err)
+	}
+	if got, _ := v.Resolve(ctx, []string{"N"}); string(got["N"]) != "good-value" {
+		t.Error("old value lost")
+	}
+}
+
 func TestMinTierDefaults(t *testing.T) {
 	v, ks, path := newVault(t, WithDefaultMinTier(presence.TierDialog))
 	_ = v.Set(ctx, Meta{Name: "d"}, []byte("v"), false)

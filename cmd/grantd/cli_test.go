@@ -301,6 +301,23 @@ func TestReadValue(t *testing.T) {
 	}
 }
 
+func TestCLIRejectsNULValues(t *testing.T) {
+	startTestDaemon(t, true)
+	_, _, err := cli(t, "abc\x00def-value", "set", "NUL_KEY")
+	if err == nil || !strings.Contains(err.Error(), "NUL") || strings.Contains(err.Error(), "abc") {
+		t.Errorf("set err = %v", err)
+	}
+	file := writeFile(t, ".env", "OK_KEY=okokokokokok\nNUL_KEY=\"abc\x00def\"\n")
+	for _, args := range [][]string{{"import", file}, {"import", file, "--dry-run"}} {
+		if _, _, err := cli(t, "", args...); err == nil || !strings.Contains(err.Error(), "NUL_KEY") || strings.Contains(err.Error(), "abc") {
+			t.Errorf("%v err = %v", args, err)
+		}
+	}
+	if o := mustCLI(t, "", "list"); strings.Contains(o, "NUL_KEY") || strings.Contains(o, "OK_KEY") {
+		t.Errorf("something was stored: %q", o)
+	}
+}
+
 func TestSetFlagErrors(t *testing.T) {
 	for _, args := range [][]string{
 		{"set", "A", "--expires", "bogus"}, {"set", "A", "--expires", "0s"}, {"set", "A", "--min-tier", "bogus"},

@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -86,6 +87,18 @@ func (v *Vault) Set(ctx context.Context, m Meta, value []byte, overwrite bool) e
 	return nil
 }
 
+// ValidateValue checks a secret value the way Set does, so callers can refuse
+// it before any approval or write: a value containing a NUL byte is rejected
+// (ErrInvalidValue) because it cannot be put in a process environment, so
+// the runner would refuse it after approval. Emptiness and size are checked by
+// Set itself. The value is never echoed.
+func ValidateValue(name string, value []byte) error {
+	if bytes.IndexByte(value, 0) >= 0 {
+		return fmt.Errorf("%w: %s contains a NUL byte, which cannot be passed to a command", ErrInvalidValue, name)
+	}
+	return nil
+}
+
 // setTx is Set's body; the caller holds the read lock and owns the transaction.
 func (v *Vault) setTx(ctx context.Context, ex execer, m Meta, value []byte, overwrite bool) error {
 	if err := ValidateName(m.Name); err != nil {
@@ -96,6 +109,9 @@ func (v *Vault) setTx(ctx context.Context, ex execer, m Meta, value []byte, over
 	}
 	if len(value) > maxValueLen {
 		return errors.New("vault: secret value too large")
+	}
+	if err := ValidateValue(m.Name, value); err != nil {
+		return err
 	}
 	tags, err := normalizeTags(m.Tags)
 	if err != nil {

@@ -77,6 +77,12 @@ func (v *Vault) Import(ctx context.Context, kvs []KV, onConflict ConflictMode, d
 	}
 	var todo []action
 	for _, n := range names {
+		// Before the dry-run return, so a dry run predicts the real import.
+		if err := ValidateValue(n, last[n]); err != nil {
+			return ImportReport{DryRun: dryRun}, err
+		}
+	}
+	for _, n := range names {
 		if len(last[n]) == 0 {
 			rep.Empty = append(rep.Empty, n)
 			continue

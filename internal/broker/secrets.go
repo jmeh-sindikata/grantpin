@@ -40,7 +40,7 @@ func (b *Broker) vaultFail(ctx context.Context, w daemon.ResponseWriter, op stri
 		fail(w, proto.ErrBadRequest, proto.ReasonSecretExists, "secret already exists (overwrite to replace)")
 	case errors.Is(err, vault.ErrExpired):
 		fail(w, proto.ErrRefused, proto.ReasonSecretExpired, "")
-	case errors.Is(err, vault.ErrInvalidName), errors.Is(err, vault.ErrInvalidTag):
+	case errors.Is(err, vault.ErrInvalidName), errors.Is(err, vault.ErrInvalidTag), errors.Is(err, vault.ErrInvalidValue):
 		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())
 	case ctx.Err() != nil:
 		fail(w, proto.ErrFailed, ctxFailure(ctx), "")

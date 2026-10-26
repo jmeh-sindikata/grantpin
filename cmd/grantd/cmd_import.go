@@ -72,6 +72,11 @@ func importKVs(cmd *cobra.Command, socket string, kvs []vault.KV, mode vault.Con
 		}
 		last[kv.Key] = kv.Value
 	}
+	for _, k := range order {
+		if err := vault.ValidateValue(k, last[k]); err != nil {
+			return err
+		}
+	}
 	var added, overwritten, skipped, empty, conflicts []string
 	var todo []string
 	for _, k := range order {

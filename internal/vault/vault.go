@@ -40,6 +40,7 @@ var (
 	ErrExpired            = errors.New("vault: secret expired")
 	ErrInvalidName        = errors.New("vault: invalid secret name")
 	ErrInvalidTag         = errors.New("vault: invalid tag")
+	ErrInvalidValue       = errors.New("vault: invalid secret value")
 	ErrDecrypt            = errors.New("vault: decryption failed (corrupt data or wrong key)")
 )
 
