@@ -42,9 +42,9 @@ func open(key []byte, name string, tier presence.PresenceTier, ct, nonce []byte)
 }
 
 // aadPrefix versions the additional-data encoding.
-const aadPrefix = "grantd.secret.v1\x00"
+const aadPrefix = "grantpin.secret.v1\x00"
 
-// aad is the GCM additional data: "grantd.secret.v1\x00" || name || "\x00" ||
+// aad is the GCM additional data: "grantpin.secret.v1\x00" || name || "\x00" ||
 // byte(tier). Names cannot contain NUL, so the encoding is unambiguous. A tier
 // outside 0..255 yields a marker that never authenticates.
 func aad(name string, tier presence.PresenceTier) []byte {

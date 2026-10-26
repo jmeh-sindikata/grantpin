@@ -51,8 +51,8 @@ const (
 	encV1 = 1
 	encV2 = 2
 
-	tagV1       = "grantd.audit.v1\x00"
-	tagV2       = "grantd.audit.v2\x00"
+	tagV1       = "grantpin.audit.v1\x00"
+	tagV2       = "grantpin.audit.v2\x00"
 	hmacLen     = sha256.Size
 	defaultList = 100
 )

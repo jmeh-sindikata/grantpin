@@ -22,7 +22,7 @@
 //
 // Version 1: canonical(entry) is the concatenation of, in this order:
 //
-//	"grantd.audit.v1\x00"            domain/version tag (16 bytes)
+//	"grantpin.audit.v1\x00"          domain/version tag (18 bytes)
 //	id        uint64 big-endian      row id (so rows cannot be re-numbered)
 //	ts        string                 UTC, time.RFC3339Nano, as stored
 //	caller    string
@@ -39,7 +39,7 @@
 // Length prefixes make the encoding injective (no field-boundary ambiguity).
 // A nil and an empty slice encode identically.
 //
-// Version 2 uses the tag "grantd.audit.v2\x00" and adds one field, expanded
+// Version 2 uses the tag "grantpin.audit.v2\x00" and adds one field, expanded
 // (a list encoded like secrets: the concrete names after glob expansion),
 // directly after secrets. Everything else is as in version 1.
 //

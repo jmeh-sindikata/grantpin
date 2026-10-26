@@ -97,14 +97,14 @@ func (s *Store) SetLogger(l *slog.Logger) {
 // key. Rows without a kind keep the original v1 encoding, so grants stored
 // before kinds existed still verify.
 const (
-	canonicalTag     = "grantd.grant.v1\x00"
-	canonicalTagKind = "grantd.grant.v2\x00"
+	canonicalTag     = "grantpin.grant.v1\x00"
+	canonicalTagKind = "grantpin.grant.v2\x00"
 )
 
 // canonical is the MAC input for one row, built from decoded values so that
 // JSON whitespace is irrelevant:
 //
-//	"grantd.grant.v1\x00"      domain/version tag
+//	"grantpin.grant.v1\x00"      domain/version tag
 //	id, caller, cwd_prefix     string: uint64 big-endian length, then bytes
 //	secrets, cmd_prefix        uint64 count, then count strings
 //	created_at, expires_at     int64 big-endian, unix nanoseconds

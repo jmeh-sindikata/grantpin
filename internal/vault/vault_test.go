@@ -857,7 +857,7 @@ func TestSetOverwriteChangesTierAndReencrypts(t *testing.T) {
 
 func TestAADEncoding(t *testing.T) {
 	got := aad("a/b", presence.TierDialog)
-	if string(got) != "grantd.secret.v1\x00a/b\x00\x01" {
+	if string(got) != "grantpin.secret.v1\x00a/b\x00\x01" {
 		t.Fatalf("%q", got)
 	}
 	if bytes.Equal(aad("a", presence.TierNone), aad("a", presence.TierHardware)) || bytes.Equal(aad("a", 300), aad("a", 44)) {

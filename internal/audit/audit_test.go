@@ -49,7 +49,7 @@ func TestGoldenCanonicalHMAC(t *testing.T) {
 	ts := e.TS.UTC().Format(time.RFC3339Nano)
 	canon := canonicalV1(7, ts, &e)
 	got := hex.EncodeToString(l.mac(canon, make([]byte, 32)))
-	const want = "ae0373c4242f70d0d55c9cd9d59f7d1dd28e350795779bdff0ae577f9c510a22"
+	const want = "052f07faf6eff63738a5f9d592c2e56f4ca0652b1606b8e151b1aa63ea4b6c04"
 	if got != want {
 		t.Fatalf("v1 canonical encoding changed (existing rows would stop verifying): got %s", got)
 	}
@@ -62,11 +62,11 @@ func TestGoldenCanonicalHMACV2(t *testing.T) {
 	e.Expanded = []string{"aws/key", "aws/secret"}
 	ts := e.TS.UTC().Format(time.RFC3339Nano)
 	canon := canonicalV2(7, ts, &e)
-	if !bytes.HasPrefix(canon, []byte("grantd.audit.v2\x00")) {
+	if !bytes.HasPrefix(canon, []byte("grantpin.audit.v2\x00")) {
 		t.Fatalf("v2 tag missing: %q", canon[:16])
 	}
 	got := hex.EncodeToString(l.mac(canon, make([]byte, 32)))
-	const want = "f8dfb7c509fb87957dfa910d86e8cdbd785fc9a684db81ed3898013c38889114"
+	const want = "7938770c8b2de27fb2023a16ece656e797f60d4ef4a291d4b367f070fc63e2b1"
 	if got != want {
 		t.Fatalf("v2 canonical encoding changed: got %s", got)
 	}

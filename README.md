@@ -52,7 +52,7 @@ A from-source build is not signed with a provisioning profile, so it cannot use 
 
 ## Renamed from grantd
 
-grantpin was called grantd until v0.2.0, which shipped as grantd. There is no automatic migration: the new app uses its own bundle identifier (`dev.grantpin.app`), launchd label, data directory, Keychain key and environment variables (`GRANTPIN_*`), so the two never share state. To move over, remove the grantd install with its own Settings, Uninstall (tick everything), then install grantpin and add your secrets again.
+grantpin was called grantd until v0.2.0, which shipped as grantd. There is no automatic migration: the new app uses its own bundle identifier (`dev.grantpin.app`), launchd label, data directory, Keychain key and environment variables (`GRANTPIN_*`), so the two never share state. To move over, remove the grantd install with its own Settings, Uninstall (tick everything), then install grantpin and add your secrets again. The on-disk formats are not compatible either: the vault, audit log and grants use grantpin-specific encryption and MAC domain tags, so a grantd vault cannot be opened by grantpin.
 
 ## Status
 
