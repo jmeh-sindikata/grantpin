@@ -44,6 +44,43 @@ final class AuditPairingTests: XCTestCase {
         XCTAssertEqual(ev[0].result, .finished(exitCode: 0, durationMS: 1200))
     }
 
+    func testRetryAfterAnOrphanedRunPairsWithTheRetry() {
+        // The first run's daemon died after "released"; the retry started 100 s
+        // later and finished 2 s after that.
+        let rows = [released("1", 0), released("2", 100), completed("3", 102, ms: 2000)]
+        let ev = pair(rows, now: 200)
+        XCTAssertEqual(ev.map(\.rowIDs), [["2", "3"], ["1"]])
+        XCTAssertEqual(ev[0].result, .finished(exitCode: 0, durationMS: 2000))
+        XCTAssertEqual(ev[1].result, .running)
+        // An hour on, the orphan is shown as never completed.
+        XCTAssertEqual(pair(rows, now: 3700)[1].result, .noResultRecorded)
+    }
+
+    func testConcurrentIdenticalRunsFinishingOutOfOrderKeepTheirOwnResults() {
+        // Run A starts at 0 and takes 10 s; run B starts at 1 and takes 2 s,
+        // so B's completed row is written first.
+        let rows = [released("A", 0), released("B", 1),
+                    completed("cB", 3, exit: 7, ms: 2000), completed("cA", 10, exit: 0, ms: 10_000)]
+        let ev = pair(rows, now: 20)
+        XCTAssertEqual(ev.map(\.rowIDs), [["B", "cB"], ["A", "cA"]])
+        XCTAssertEqual(ev[0].result, .finished(exitCode: 7, durationMS: 2000))
+        XCTAssertEqual(ev[1].result, .finished(exitCode: 0, durationMS: 10_000))
+    }
+
+    func testCompletedWithNoRowAtOrBeforeItsStartFallsBackToTheNewestOpenRow() {
+        // The computed start (0) precedes both open rows by more than the
+        // tolerance (a run that failed after the released row, timed from the
+        // request): use the newest one.
+        let rows = [released("1", 50), released("2", 60), completed("3", 61, ms: 61_000)]
+        XCTAssertEqual(pair(rows, now: 100).map(\.rowIDs), [["2", "3"], ["1"]])
+    }
+
+    func testMillisecondRoundingBetweenReleasedAndStartIsTolerated() {
+        // The completed row says the run started 5 ms before its released row.
+        let rows = [released("1", 0), released("2", 10), completed("3", 12, ms: 2005)]
+        XCTAssertEqual(pair(rows, now: 20).map(\.rowIDs), [["2", "3"], ["1"]])
+    }
+
     func testDifferentCommandsDoNotPair() {
         let rows = [released("1", 0, argv: ["a"]), released("2", 1, argv: ["b"]), completed("3", 2, argv: ["b"])]
         let ev = pair(rows)

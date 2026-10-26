@@ -110,7 +110,7 @@ public enum AuditPairing {
                 events.append(tagged(event(for: entry, now: now), entry))
                 open.append(Open(index: events.count - 1, entry: entry))
             } else if entry.decision == "completed" {
-                if let k = open.firstIndex(where: { sameRun($0.entry, entry) }) {
+                if let k = partner(for: entry, in: open.map(\.entry)) {
                     let o = open.remove(at: k)
                     events[o.index] = tagged(merged(released: o.entry, completed: entry), o.entry)
                 } else {
@@ -132,6 +132,29 @@ public enum AuditPairing {
 
     static func isReleased(_ e: AuditEntry) -> Bool {
         e.decision.hasPrefix("allowed_") && e.reason == "released" && e.exitCode == nil
+    }
+
+    /// How far after a run's computed start a `released` row may be and still
+    /// count as its own (millisecond rounding: the daemon writes the released row before it
+    /// spawns the command, so a run never starts before its own row).
+    static let startTolerance: TimeInterval = 0.01
+
+    /// The index (into `open`, oldest first) of the `released` row that
+    /// `completed` belongs to, or nil when no open row has the same shape.
+    ///
+    /// There is no run ID, so identical runs are told apart by time: the
+    /// completed row's start is its `ts` minus `durationMS`, and the owner is
+    /// the open row nearest at or before that instant (`startTolerance`
+    /// allowed after it). That keeps a retry from attaching to an older run
+    /// whose daemon died (the orphan stays "no result recorded") and keeps
+    /// concurrent identical runs that finish out of order from swapping
+    /// results. If no open row qualifies, the newest matching one is used.
+    static func partner(for completed: AuditEntry, in open: [AuditEntry]) -> Int? {
+        let candidates = open.indices.filter { sameRun(open[$0], completed) }
+        guard let newest = candidates.last else { return nil }
+        let start = completed.ts.addingTimeInterval(-Double(max(completed.durationMS, 0)) / 1000)
+        let limit = start.addingTimeInterval(startTolerance)
+        return candidates.filter { open[$0].ts <= limit }.max(by: { open[$0].ts < open[$1].ts }) ?? newest
     }
 
     static func sameRun(_ a: AuditEntry, _ b: AuditEntry) -> Bool {
