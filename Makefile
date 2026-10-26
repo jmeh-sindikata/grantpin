@@ -41,7 +41,7 @@ CODESIGN_TIMESTAMP ?= --timestamp
 # machine's macOS as its minimum (minos) and will not start on older releases.
 HELPER_ENV     := CGO_ENABLED=1 CGO_CFLAGS=-mmacosx-version-min=$(MIN_MACOS) CGO_LDFLAGS=-mmacosx-version-min=$(MIN_MACOS)
 
-.PHONY: build helper app bundle sign-bundle app-test ci-app app-dev-daemon dist-src sign test vet lint cover dev-test tools-check ci clean
+.PHONY: build helper app icons bundle sign-bundle app-test ci-app app-dev-daemon dist-src sign test vet lint cover dev-test tools-check ci clean
 
 build: ## Build bin/grantd (production tags: no dev backends)
 	@echo "version: $(VERSION) ($(VERSION_SRC))"
@@ -169,3 +169,6 @@ ci: build vet lint test dev-test cover tools-check ## Everything CI runs
 
 clean:
 	rm -rf bin dist coverage.out build/xcode build/grantd-dev app/GrantdKit/.build
+
+icons: ## Regenerate app/Grantd/Assets.xcassets/AppIcon.appiconset from build/icon/grantd-app-icon.png (macOS icon grid, transparent margin)
+	swift build/icon/make-iconset.swift build/icon/grantd-app-icon.png app/Grantd/Assets.xcassets/AppIcon.appiconset

@@ -23,6 +23,7 @@
 		DB02A0913F062C1925A5CF02 /* UninstallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5CDC3A723274EC7827AF47 /* UninstallSheet.swift */; };
 		FE0DEE0537977F1CEE05FA67 /* OnboardingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F95BDCB1329220F307BF1B4 /* OnboardingWindow.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* Localizable.xcstrings */; };
+		A1B2C3D4E5F60718293A4B6C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B6D /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +44,7 @@
 		3C5CDC3A723274EC7827AF47 /* UninstallSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallSheet.swift; sourceTree = "<group>"; };
 		6F95BDCB1329220F307BF1B4 /* OnboardingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWindow.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5D /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B6D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -93,6 +95,7 @@
 				11CAE5DAF7B121CAFE0605AC /* SecretFormSheet.swift */,
 				E7B0A23336AD0A85A341E85F /* ImportSheet.swift */,
 				A1B2C3D4E5F60718293A4B5D /* Localizable.xcstrings */,
+				A1B2C3D4E5F60718293A4B6D /* Assets.xcassets */,
 				3D076848E31080C820CA96C5 /* GrantsWindow.swift */,
 				1EE85902319010E915CCF309 /* StandingGrantSheet.swift */,
 				168F438447F084B217B99F57 /* ActivityWindow.swift */,
@@ -170,6 +173,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1B2C3D4E5F60718293A4B5C /* Localizable.xcstrings in Resources */,
+				A1B2C3D4E5F60718293A4B6C /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

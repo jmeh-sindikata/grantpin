@@ -19,8 +19,7 @@ struct MenuBarLabel: View {
 
     var body: some View {
         let icon = MenuBarIcon.from(app.monitor.state)
-        Image(systemName: icon.symbol)
-            .symbolRenderingMode(.monochrome)
+        Image("MenuBarIcon")
             .opacity(icon.subdued ? 0.6 : 1)
             .accessibilityLabel(Text(verbatim: icon.label))
             .help(Text(verbatim: icon.label))
