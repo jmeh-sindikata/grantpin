@@ -37,3 +37,13 @@ go.work.sum
 app/**/xcuserdata/
 app/GrantdKit/.build/
 app/GrantdKit/.swiftpm/
+
+# Signing material and release artifacts (never commit)
+*.provisionprofile
+*.mobileprovision
+*.p12
+*.cer
+*.p8
+*.pem
+*.dmg
+.claude/
