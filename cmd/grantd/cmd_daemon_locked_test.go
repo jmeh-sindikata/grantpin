@@ -114,7 +114,8 @@ func TestDaemonStaysUpWhileKeystoreLocked(t *testing.T) {
 	sock, done := startWithKS(t, ks, logs)
 
 	// The socket comes up even though the vault cannot be opened.
-	st := waitStatus(t, sock, func(*proto.StatusResult) bool { return true })
+	// (The socket is up before the first open attempt finishes, so wait for its outcome.)
+	st := waitStatus(t, sock, func(s *proto.StatusResult) bool { return strings.Contains(s.VaultLockedError, "-25308") })
 	if !st.VaultInitialized || !st.VaultLocked || !strings.Contains(st.VaultLockedError, "-25308") {
 		t.Fatalf("status = %+v, want initialized+locked with the keystore error", st)
 	}

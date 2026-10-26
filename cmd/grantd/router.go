@@ -73,6 +73,11 @@ type brokerHolder struct {
 	mu sync.Mutex
 	v  *vault.Vault
 	b  *broker.Broker
+	// opening is non-nil while one goroutine runs the keystore call and the
+	// rest of the vault open. h.mu is NOT held meanwhile (the call can block on
+	// the OS), so status and other requests stay responsive; requests wait on
+	// opening.done for a bounded time (openWait) instead of opening again.
+	opening *vaultOpening
 
 	// Locked state: the vault file exists but the keystore transiently refuses
 	// to unwrap the data key (screen locked, session not unlocked yet).
@@ -90,6 +95,21 @@ var (
 	retryBackoffMin = time.Second
 	retryBackoffMax = 30 * time.Second
 )
+
+// vaultOpening is one open of the vault in progress.
+type vaultOpening struct {
+	done chan struct{} // closed when the attempt has finished
+	err  error         // its outcome; valid after done is closed
+}
+
+// openWait is how long a request waits for an open that is already in progress
+// before it is answered vault_locked.
+var openWait = 3 * time.Second
+
+// errVaultOpening means the vault is still being opened by another request (or
+// the start-up attempt) and did not finish within openWait. Like
+// errVaultLocked it is temporary: the caller is answered vault_locked.
+var errVaultOpening = errors.New("vault is being opened")
 
 // errVaultLocked means the vault exists but the keystore is temporarily
 // unavailable. It wraps the keystore's error for the log and status.
@@ -115,23 +135,89 @@ func newBrokerHolder(be backends, socket string, logger *slog.Logger) (*brokerHo
 // but cannot be opened is an error (it is not silently treated as missing). If
 // the keystore is only transiently unavailable the error is an *errVaultLocked
 // and the next call tries again.
+//
+// Only one goroutine opens at a time and none holds h.mu while it does: the
+// keystore call may block on the OS (Keychain, Secure Enclave), and holding the
+// mutex there froze status, every other request and the retry loop with it.
+// Callers that arrive meanwhile wait for that attempt's outcome, for at most
+// openWait or until ctx ends (then errVaultOpening).
 func (h *brokerHolder) get(ctx context.Context) (*broker.Broker, error) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	if h.b != nil {
-		return h.b, nil
+		b := h.b
+		h.mu.Unlock()
+		return b, nil
+	}
+	if op := h.opening; op != nil {
+		h.mu.Unlock()
+		return h.waitOpen(ctx, op)
 	}
 	if _, err := os.Stat(h.path); errors.Is(err, os.ErrNotExist) {
 		h.lockedErr = ""
+		h.mu.Unlock()
 		return nil, errVaultMissing
 	}
+	op := &vaultOpening{done: make(chan struct{})}
+	h.opening = op
+	h.mu.Unlock()
+
+	// The open belongs to the daemon, not to the request that happened to start
+	// it: a client that hangs up must not abort it for everyone waiting.
+	v, b, err := h.open(h.bg)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.opening = nil
+	var locked *errVaultLocked
+	switch {
+	case errors.As(err, &locked):
+		h.markLocked(locked.cause)
+	case err == nil && h.bg.Err() != nil:
+		// close ran while this attempt was in flight; do not leak the vault.
+		_ = v.Close()
+		b, err = nil, h.bg.Err()
+	case err == nil:
+		h.v, h.b = v, b
+		if h.lockedErr != "" {
+			h.lockedErr = ""
+			h.logger.Info("vault keystore available again; vault opened")
+		}
+	}
+	op.err = err
+	close(op.done)
+	return b, err
+}
+
+// waitOpen waits for the open in progress and returns its outcome.
+func (h *brokerHolder) waitOpen(ctx context.Context, op *vaultOpening) (*broker.Broker, error) {
+	t := time.NewTimer(openWait)
+	defer t.Stop()
+	select {
+	case <-op.done:
+	case <-t.C:
+		return nil, errVaultOpening
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	if op.err != nil {
+		return nil, op.err
+	}
+	if b := h.loaded(); b != nil {
+		return b, nil
+	}
+	return nil, errVaultOpening // closed again in the meantime
+}
+
+// open runs the keystore unwrap and builds the vault, grants, audit log and
+// broker. It touches no brokerHolder state, so it needs no lock; get installs
+// the result. A transient keystore failure comes back as *errVaultLocked.
+func (h *brokerHolder) open(ctx context.Context) (*vault.Vault, *broker.Broker, error) {
 	v, err := vault.Open(ctx, h.path, h.be.ks)
 	if err != nil {
 		if keystore.IsTransient(err) && h.bg.Err() == nil {
-			h.markLocked(err)
-			return nil, &errVaultLocked{cause: err}
+			return nil, nil, &errVaultLocked{cause: err}
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	closeVault := func() { _ = v.Close() }
 	// vault.Open checks the keystore tier before it unwraps the key; a keystore
@@ -139,20 +225,20 @@ func (h *brokerHolder) get(ctx context.Context) (*broker.Broker, error) {
 	// tier afterwards. Never run a vault on a weaker keystore than it was made for.
 	if t := h.be.ks.Tier(); !t.Meets(v.Info().KeystoreTier) {
 		closeVault()
-		return nil, fmt.Errorf("keystore tier %s is weaker than the %s the vault was created with; refusing to downgrade", t, v.Info().KeystoreTier)
+		return nil, nil, fmt.Errorf("keystore tier %s is weaker than the %s the vault was created with; refusing to downgrade", t, v.Info().KeystoreTier)
 	}
 	if err := grant.Migrate(ctx, v.DB()); err != nil {
 		closeVault()
-		return nil, err
+		return nil, nil, err
 	}
 	if err := audit.Migrate(ctx, v.DB()); err != nil {
 		closeVault()
-		return nil, err
+		return nil, nil, err
 	}
 	alog, err := audit.New(ctx, v.DB(), v.DeriveKey("audit-hmac"))
 	if err != nil {
 		closeVault()
-		return nil, err
+		return nil, nil, err
 	}
 	grants := grant.NewStore(v.DB(), v.DeriveKey("grant-mac"))
 	grants.SetLogger(h.logger)
@@ -163,14 +249,9 @@ func (h *brokerHolder) get(ctx context.Context) (*broker.Broker, error) {
 	})
 	if err != nil {
 		closeVault()
-		return nil, err
+		return nil, nil, err
 	}
-	h.v, h.b = v, b
-	if h.lockedErr != "" {
-		h.lockedErr = ""
-		h.logger.Info("vault keystore available again; vault opened")
-	}
-	return b, nil
+	return v, b, nil
 }
 
 // markLocked records a transient keystore failure. The caller holds h.mu. It
@@ -183,10 +264,15 @@ func (h *brokerHolder) markLocked(err error) {
 	h.lockedErr = err.Error()
 }
 
-// lockedState returns the last transient error, or "" if the vault is not locked.
+// lockedState returns the last transient error, "vault is being opened" while
+// an open is in progress, or "" if the vault is neither. It never waits for an
+// open: h.mu is not held while one runs.
 func (h *brokerHolder) lockedState() string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.lockedErr == "" && h.opening != nil {
+		return errVaultOpening.Error()
+	}
 	return h.lockedErr
 }
 
@@ -221,7 +307,7 @@ func (h *brokerHolder) startRetry() {
 			switch {
 			case err == nil, errors.Is(err, errVaultMissing), ctx.Err() != nil:
 				return
-			case errors.As(err, &locked):
+			case errors.As(err, &locked), errors.Is(err, errVaultOpening):
 				delay = min(delay*2, h.backoffMax)
 			default:
 				// Permanent now (for example the file changed): stop retrying;
@@ -264,6 +350,14 @@ func (h *brokerHolder) handle(ctx context.Context, req *proto.Request, w daemon.
 		r := daemon.Failure(proto.ErrFailed, proto.ReasonVaultLocked)
 		r.Message = "vault keystore unavailable (screen locked?); retrying"
 		_ = w.Finish(r)
+	case errors.Is(err, errVaultOpening):
+		// Another attempt has the keystore call and it is slow; do not queue
+		// behind it any longer.
+		r := daemon.Failure(proto.ErrFailed, proto.ReasonVaultLocked)
+		r.Message = "vault is being opened; retry shortly"
+		_ = w.Finish(r)
+	case ctx.Err() != nil:
+		_ = w.Finish(daemon.Failure(proto.ErrFailed, ctxReason(ctx)))
 	case errors.Is(err, errVaultMissing):
 		r := daemon.Failure(proto.ErrFailed, proto.ReasonVaultNotInitialized)
 		r.Message = "vault not initialized; run `grantd init`"
@@ -305,4 +399,12 @@ func (h *brokerHolder) statusFunc() daemon.StatusFunc {
 			st.VaultLocked, st.VaultLockedError = true, msg
 		}
 	}
+}
+
+// ctxReason maps a finished request context to the failure reason.
+func ctxReason(ctx context.Context) string {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return proto.ReasonTimeout
+	}
+	return proto.ReasonCanceled
 }
