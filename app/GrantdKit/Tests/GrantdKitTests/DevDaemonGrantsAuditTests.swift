@@ -295,13 +295,15 @@ final class DevDaemonGrantsAuditTests: DevDaemonCase {
     func testLoadMoreAndTruncatedWithRealRows() async throws {
         try await startDaemon()
         try await put("BIG", "big-secret-value-0123456789")
-        // 12 runs whose command line is ~200 KB each: 24 rows of 200 KB overflow one 4 MiB page
-        let huge = String(repeating: "x", count: 200_000)
-        for _ in 0..<12 { try await run(["sh", "-c", "exit 0", huge], secrets: ["BIG"]) }
+        // The daemon caps every audit field (an argv element at 16 KiB, the argv column at
+        // 64 KiB), so one row can no longer outgrow a page by itself; many large rows still
+        // do. 36 runs with four 16 KiB arguments are 72 rows of ~64 KiB: over one 4 MiB page.
+        let big = String(repeating: "x", count: 16_000)
+        for _ in 0..<36 { try await run(["sh", "-c", "exit 0", big, big, big, big], secrets: ["BIG"]) }
         let m = try await activityModel()
         await m.refresh()
         XCTAssertTrue(m.truncated, "the page did not fit in one line")
-        XCTAssertLessThan(m.entries.count, 25)
+        XCTAssertLessThan(m.entries.count, 73)
         XCTAssertGreaterThan(m.entries.count, 5)
         XCTAssertFalse(m.canLoadMore)
         XCTAssertFalse(m.windowIsComplete)
@@ -311,9 +313,9 @@ final class DevDaemonGrantsAuditTests: DevDaemonCase {
         // the export does not fit either, and says so
         let out = await m.exportCSV()
         XCTAssertEqual(out, .failed(UserMessage(ActivityViewModel.tooLargeText)))
-        // the chain still verifies (13 sets/runs: 1 set + 24 run rows)
+        // the chain still verifies (1 set + 72 run rows)
         await m.verifyLog()
-        XCTAssertEqual(m.verify, .ok(entries: 25))
+        XCTAssertEqual(m.verify, .ok(entries: 73))
     }
 
     @MainActor

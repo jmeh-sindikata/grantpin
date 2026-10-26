@@ -830,7 +830,7 @@ func TestSetAndUpdateRejectTerminalControlsInMetadata(t *testing.T) {
 
 	bad := []string{
 		"a\x1b[2Jb", "a\x1b]0;title\x07", "a\nb", "a\rb", "a\tb", "a\x00b", "a\x7fb", "a\u009bb",
-		"a‮b", "a‪b", "a‫b", "a‬b", "a‭b", "a⁦b", "a⁧b", "a⁨b", "a⁩b",
+		"a\u202eb", "a\u202ab", "a\u202bb", "a\u202cb", "a\u202db", "a\u2066b", "a\u2067b", "a\u2068b", "a\u2069b",
 	}
 	for _, s := range bad {
 		for field, mk := range map[string]func(op string) *proto.Request{
@@ -867,7 +867,7 @@ func TestSetAndUpdateRejectTerminalControlsInMetadata(t *testing.T) {
 	}
 
 	// Ordinary text, including non-ASCII and characters next to the banned ranges, is fine.
-	for _, s := range []string{"https://例え.jp/path?q=1&r=%1B", "naïve — café ✓ 😀", "a b⁥c⁪d"} {
+	for _, s := range []string{"https://例え.jp/path?q=1&r=%1B", "naïve — café ✓ 😀", "a\u202fb\u2065c\u206ad"} {
 		wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "aws/key", URL: s, Notes: s}))
 	}
 }
