@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 func TestSecretsCell(t *testing.T) {

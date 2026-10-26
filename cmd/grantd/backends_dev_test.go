@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
-	"grantd/internal/approve"
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 func TestDevApproverDefaultsToDeny(t *testing.T) {

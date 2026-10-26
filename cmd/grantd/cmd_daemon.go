@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
 )
 
 func newDaemonCmd() *cobra.Command {

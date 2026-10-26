@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/client"
 )
 
 func newStatusCmd() *cobra.Command {

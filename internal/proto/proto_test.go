@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 func TestRequestRoundTrip(t *testing.T) {

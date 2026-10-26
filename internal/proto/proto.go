@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // Version is the wire protocol version carried in Request.V.

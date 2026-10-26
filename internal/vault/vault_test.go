@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // fakeKS is a test-only KeyStore (AES-GCM under a random per-instance key).

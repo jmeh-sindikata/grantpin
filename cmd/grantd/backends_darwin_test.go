@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"grantd/internal/approve"
-	approvedarwin "grantd/internal/approve/darwin"
-	"grantd/internal/keystore"
-	keystoredarwin "grantd/internal/keystore/darwin"
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	approvedarwin "github.com/jmeh-sindikata/grantd/internal/approve/darwin"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	keystoredarwin "github.com/jmeh-sindikata/grantd/internal/keystore/darwin"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // These tests replace the constructors: nothing here touches the Keychain, the

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
 )
 
 // osascriptPath is absolute on purpose: no PATH lookup, so nothing the agent

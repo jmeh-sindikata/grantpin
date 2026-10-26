@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 // secretExists asks the daemon whether name is stored. There is deliberately no

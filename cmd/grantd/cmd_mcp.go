@@ -10,7 +10,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
-	"grantd/internal/mcp"
+	"github.com/jmeh-sindikata/grantd/internal/mcp"
 )
 
 func newMCPCmd() *cobra.Command {

@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"grantd/internal/proto"
-	"grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 func newImportCmd() *cobra.Command {

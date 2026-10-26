@@ -1,4 +1,4 @@
-module grantd
+module github.com/jmeh-sindikata/grantd
 
 go 1.27.3
 

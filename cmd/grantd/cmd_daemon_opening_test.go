@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/client"
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 // blockingKS is testKS whose Unwrap announces itself and then waits to be

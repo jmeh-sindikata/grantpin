@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/approve"
-	"grantd/internal/client"
-	"grantd/internal/presence"
-	"grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 // testKS is an identity keystore (test-only, no protection).

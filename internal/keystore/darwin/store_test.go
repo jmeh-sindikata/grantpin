@@ -7,7 +7,7 @@ import (
 	"errors"
 	"testing"
 
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // These tests need no Keychain/SE access: they use blobs that are rejected

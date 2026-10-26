@@ -18,8 +18,8 @@ import (
 	"sync"
 	"unsafe"
 
-	"grantd/internal/keystore"
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // Store implements keystore.KeyStore with the Secure Enclave, or (opt-in) a

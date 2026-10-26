@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/client"
-	"grantd/internal/keystore"
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 // errLocked stands in for the macOS errSecInteractionNotAllowed (-25308), which

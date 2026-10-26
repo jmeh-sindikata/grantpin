@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"io"
 
-	"grantd/internal/keystore"
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // Enabled reports whether the dev backend is compiled in. True in this build.

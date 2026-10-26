@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"grantd/internal/presence"
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 func newSetCmd() *cobra.Command {

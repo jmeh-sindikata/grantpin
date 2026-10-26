@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // Approver asks the human whether a secret release may proceed.

@@ -16,7 +16,7 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"gopkg.in/yaml.v3"
 
-	"grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 // FileName is the per-repo policy file name.

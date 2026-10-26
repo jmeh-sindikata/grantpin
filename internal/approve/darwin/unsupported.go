@@ -5,7 +5,7 @@ package darwin
 import (
 	"errors"
 
-	"grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
 )
 
 // ErrUnsupported is returned by New when the package is built without cgo or

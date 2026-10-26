@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 // fakeDaemon answers every request with the given result, ignoring the request.

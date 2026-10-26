@@ -11,7 +11,7 @@ import (
 	"os"
 	"testing"
 
-	"grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
 )
 
 // Everything here touches the real Secure Enclave / Keychain. It is skipped

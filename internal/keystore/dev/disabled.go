@@ -5,7 +5,7 @@ package dev
 import (
 	"errors"
 
-	"grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
 )
 
 // Enabled reports whether the dev backend is compiled in. False in this build.

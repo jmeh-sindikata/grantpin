@@ -7,8 +7,8 @@ import (
 	"context"
 	"testing"
 
-	"grantd/internal/keystore"
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 func TestSatisfiesKeyStore(t *testing.T) {

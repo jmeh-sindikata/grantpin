@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"grantd/internal/approve"
-	"grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 const (

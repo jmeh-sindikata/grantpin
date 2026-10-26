@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
 )
 
 // fakeDeleter records what it was asked to delete. No test in this package may

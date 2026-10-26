@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"runtime"
 
-	"grantd/internal/approve"
-	"grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
 )
 
 // openKeyStore has no production backend on this platform/build: macOS needs

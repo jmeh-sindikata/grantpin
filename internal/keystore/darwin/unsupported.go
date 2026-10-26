@@ -5,7 +5,7 @@ package darwin
 import (
 	"errors"
 
-	"grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
 )
 
 // ErrUnsupported is returned by New when the package is built without cgo or

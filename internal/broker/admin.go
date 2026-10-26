@@ -7,10 +7,10 @@ import (
 	"errors"
 	"strconv"
 
-	"grantd/internal/audit"
-	"grantd/internal/daemon"
-	"grantd/internal/grant"
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/audit"
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantd/internal/grant"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 func (b *Broker) handleGrants(ctx context.Context, req *proto.Request, w daemon.ResponseWriter) {

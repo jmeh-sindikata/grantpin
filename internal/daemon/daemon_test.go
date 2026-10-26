@@ -17,7 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 func routerWith(op string, f HandlerFunc) *Router {

@@ -10,7 +10,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
-	"grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
 )
 
 const (

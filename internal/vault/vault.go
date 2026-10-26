@@ -20,8 +20,8 @@ import (
 
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 
-	"grantd/internal/keystore"
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // SchemaVersion is the on-disk vault format version written by Init.

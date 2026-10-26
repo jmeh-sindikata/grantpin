@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
 )
 
 type fakeExec struct {

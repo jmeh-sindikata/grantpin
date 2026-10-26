@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"grantd/internal/approve"
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // Enabled reports whether the dev backend is compiled in. True in this build.

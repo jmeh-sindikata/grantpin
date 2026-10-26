@@ -7,7 +7,7 @@ import (
 	"slices"
 	"sync"
 
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 // Handler serves one validated request. It must send exactly one final

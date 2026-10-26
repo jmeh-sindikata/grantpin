@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"grantd/internal/client"
-	"grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
 )
 
 // Result is the outcome of one launchctl invocation.

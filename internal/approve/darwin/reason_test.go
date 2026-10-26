@@ -6,8 +6,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"grantd/internal/approve"
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 func req() approve.ApprovalRequest {

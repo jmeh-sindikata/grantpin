@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 // shortDir returns a short temp dir under /tmp (macOS limits sun_path to 104

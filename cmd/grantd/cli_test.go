@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/client"
-	"grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 const secretValue = "s3cr3t-value-ABCDEFG"

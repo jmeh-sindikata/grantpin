@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/client"
-	"grantd/internal/daemon"
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 func shortDir(t *testing.T) string {

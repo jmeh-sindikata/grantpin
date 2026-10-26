@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // Meta is a secret's non-sensitive metadata (§6). It never contains the value.

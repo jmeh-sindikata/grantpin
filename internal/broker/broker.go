@@ -10,13 +10,13 @@ import (
 	"time"
 	"unicode"
 
-	"grantd/internal/approve"
-	"grantd/internal/audit"
-	"grantd/internal/daemon"
-	"grantd/internal/grant"
-	"grantd/internal/presence"
-	"grantd/internal/proto"
-	"grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/audit"
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantd/internal/grant"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 // DefaultCaller is used when a request carries no caller label.

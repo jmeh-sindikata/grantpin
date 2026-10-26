@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"grantd/internal/proto"
-	"grantd/internal/service"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/service"
 )
 
 type fakeMgr struct {

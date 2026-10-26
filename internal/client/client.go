@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"time"
 
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 // ErrNotRunning means nothing is listening on the daemon socket (it does not

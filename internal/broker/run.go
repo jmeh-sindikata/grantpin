@@ -10,14 +10,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"grantd/internal/approve"
-	"grantd/internal/audit"
-	"grantd/internal/daemon"
-	"grantd/internal/grant"
-	"grantd/internal/policy"
-	"grantd/internal/proto"
-	"grantd/internal/runner"
-	"grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/audit"
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantd/internal/grant"
+	"github.com/jmeh-sindikata/grantd/internal/policy"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/runner"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 // killGrace is the SIGTERM->SIGKILL delay. It is shorter than the daemon's

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 func TestRetryableAccept(t *testing.T) {

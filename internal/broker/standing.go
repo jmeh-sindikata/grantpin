@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"grantd/internal/approve"
-	"grantd/internal/audit"
-	"grantd/internal/daemon"
-	"grantd/internal/grant"
-	"grantd/internal/policy"
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/audit"
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantd/internal/grant"
+	"github.com/jmeh-sindikata/grantd/internal/policy"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 // ReasonStanding is the audit reason of the allowed_new_grant row written when

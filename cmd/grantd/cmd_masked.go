@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 func newMaskedCmd() *cobra.Command {

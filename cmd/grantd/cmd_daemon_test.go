@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/client"
-	"grantd/internal/presence"
-	"grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 func shortSocket(t *testing.T) string {

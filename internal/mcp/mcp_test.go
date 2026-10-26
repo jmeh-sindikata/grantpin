@@ -14,9 +14,9 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"grantd/internal/daemon"
-	"grantd/internal/presence"
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 // ---- fake daemon ----

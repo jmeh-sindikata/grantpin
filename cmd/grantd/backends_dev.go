@@ -5,10 +5,10 @@ package main
 import (
 	"os"
 
-	"grantd/internal/approve"
-	devap "grantd/internal/approve/dev"
-	"grantd/internal/keystore"
-	devks "grantd/internal/keystore/dev"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	devap "github.com/jmeh-sindikata/grantd/internal/approve/dev"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	devks "github.com/jmeh-sindikata/grantd/internal/keystore/dev"
 )
 
 // devApproveEnv, when set to "allow", makes the dev approver auto-allow

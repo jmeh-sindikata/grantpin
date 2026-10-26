@@ -11,14 +11,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"grantd/internal/approve"
-	"grantd/internal/audit"
-	"grantd/internal/broker"
-	"grantd/internal/daemon"
-	"grantd/internal/grant"
-	"grantd/internal/keystore"
-	"grantd/internal/proto"
-	"grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/audit"
+	"github.com/jmeh-sindikata/grantd/internal/broker"
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantd/internal/grant"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 // backends are the platform seams the daemon runs on.

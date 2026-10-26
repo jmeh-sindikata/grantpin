@@ -14,7 +14,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
 )
 
 var testKey = []byte("grant-test-mac-key-0123456789abcd")

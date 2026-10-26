@@ -7,12 +7,12 @@ import (
 	"slices"
 	"time"
 
-	"grantd/internal/approve"
-	"grantd/internal/audit"
-	"grantd/internal/daemon"
-	"grantd/internal/presence"
-	"grantd/internal/proto"
-	"grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/audit"
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 func infoOf(m vault.Meta) proto.SecretInfo {

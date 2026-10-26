@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // Op-specific payloads carried in Response.Result. Owners of each op may extend

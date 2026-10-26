@@ -15,8 +15,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"grantd/internal/client"
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 // Exit codes (sysexits.h flavoured). A command run through `grantd run` exits

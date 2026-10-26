@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // KeyStore wraps and unwraps the vault data key using OS-protected storage.

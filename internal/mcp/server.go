@@ -16,8 +16,8 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"grantd/internal/client"
-	"grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 )
 
 // Tool names. These are fixed by HANDOFF §9; do not add to this list.

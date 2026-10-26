@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
 )
 
 func TestCLIGrantsAddCreatesAStandingGrant(t *testing.T) {

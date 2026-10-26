@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/approve"
-	"grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
 )
 
 // LA result codes mirrored from la_darwin.h (cgo cannot be used in _test files).

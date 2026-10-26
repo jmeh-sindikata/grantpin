@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"grantd/internal/client"
-	"grantd/internal/service"
+	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/service"
 )
 
 // Exit codes for `grantd service status`.

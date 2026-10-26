@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"grantd/internal/client"
-	"grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
 )
 
 // Exit codes of `grantd keystore delete` (besides 0 and 1).

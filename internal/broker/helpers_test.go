@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"grantd/internal/approve"
-	"grantd/internal/audit"
-	"grantd/internal/grant"
-	"grantd/internal/presence"
-	"grantd/internal/proto"
-	"grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/audit"
+	"github.com/jmeh-sindikata/grantd/internal/grant"
+	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 // idKeyStore is a no-op keystore: wrap is the identity. Test-only.

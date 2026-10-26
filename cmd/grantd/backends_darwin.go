@@ -5,10 +5,10 @@ package main
 import (
 	"fmt"
 
-	"grantd/internal/approve"
-	approvedarwin "grantd/internal/approve/darwin"
-	"grantd/internal/keystore"
-	keystoredarwin "grantd/internal/keystore/darwin"
+	"github.com/jmeh-sindikata/grantd/internal/approve"
+	approvedarwin "github.com/jmeh-sindikata/grantd/internal/approve/darwin"
+	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	keystoredarwin "github.com/jmeh-sindikata/grantd/internal/keystore/darwin"
 )
 
 // Constructors, replaceable in tests so they can check the wiring without
