@@ -131,7 +131,7 @@ private struct StatusHeader: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     if let result = popover.lastResult {
-                        ResultView(result: result)
+                        ResultLine(result: result).font(.callout)
                     }
                 }
             }
@@ -276,32 +276,6 @@ private struct QuickSecrets: View {
         case 2: return "Hardware"
         case 1: return "Dialog"
         default: return ""
-        }
-    }
-}
-
-private struct ResultView: View {
-    let result: ActionResult
-    @State private var showDetail = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label {
-                Text(verbatim: result.summary).fixedSize(horizontal: false, vertical: true)
-            } icon: {
-                Image(systemName: result.isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(result.isSuccess ? Color.green : Color.red)
-            }
-            .font(.callout)
-            if let detail = result.detail {
-                DisclosureGroup("Details", isExpanded: $showDetail) {
-                    Text(verbatim: detail)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .font(.caption)
-            }
         }
     }
 }
