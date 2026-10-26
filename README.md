@@ -2,7 +2,7 @@
 
 grantpin is a local secrets broker for AI coding agents on macOS. It lets an agent such as Claude Code run a command that needs credentials (an API key, a database URL) without the agent ever receiving the credential. You keep your secrets in an encrypted vault on your Mac. The agent asks to run a command with named secrets, grantpin shows you the exact command and asks for Touch ID, and only then runs it. It is for developers who use coding agents and do not want API keys in a `.env` file, in the chat history or in the model provider's logs. Local only: no cloud, no account.
 
-Website: <https://jmeh-sindikata.github.io/grantpin-web/>
+Website: <https://grantpin.dev>
 
 ## Install
 
