@@ -170,6 +170,56 @@ final class AppLocationTests: XCTestCase {
         }
     }
 
+    /// Copies part of the bundle and then fails, like a full disk.
+    private final class HalfCopyingFileManager: FileManager {
+        override func copyItem(at srcURL: URL, to dstURL: URL) throws {
+            try createDirectory(at: dstURL.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+            try "partial".write(to: dstURL.appendingPathComponent("Contents/Info.plist"), atomically: true, encoding: .utf8)
+            throw CocoaError(.fileWriteOutOfSpace)
+        }
+    }
+
+    func testAFailedCopyLeavesNoHalfCopiedBundleAndNoTemporaryFolder() throws {
+        let t = try TempDir()
+        let src = try t.file("Downloads/grantd.app/Contents/Info.plist").deletingLastPathComponent().deletingLastPathComponent()
+        let dest = t.url.appendingPathComponent("Apps/grantd.app")
+        XCTAssertThrowsError(try AppLocation.copyToApplications(bundleURL: src, destinations: [dest], fileManager: HalfCopyingFileManager())) {
+            XCTAssertEqual($0 as? AppLocation.MoveError, .failed)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dest.path))
+        let left = (try? FileManager.default.contentsOfDirectory(atPath: dest.deletingLastPathComponent().path)) ?? []
+        XCTAssertEqual(left, [], "the temporary copy is removed")
+    }
+
+    func testTheBundleAppearsOnlyWhole() throws {
+        let t = try TempDir()
+        let src = try t.file("Downloads/grantd.app/Contents/Info.plist").deletingLastPathComponent().deletingLastPathComponent()
+        let dest = t.url.appendingPathComponent("Apps/grantd.app")
+        _ = try AppLocation.copyToApplications(bundleURL: src, destinations: [dest])
+        let names = try FileManager.default.contentsOfDirectory(atPath: dest.deletingLastPathComponent().path)
+        XCTAssertEqual(names, ["grantd.app"], "no temporary name remains after the rename")
+    }
+
+    func testARaceWithAnAppOfTheSameNameIsNotReplaced() throws {
+        // The destination appears between the check and the rename.
+        final class RacingFileManager: FileManager {
+            override func copyItem(at srcURL: URL, to dstURL: URL) throws {
+                try super.copyItem(at: srcURL, to: dstURL)
+                let target = dstURL.deletingLastPathComponent().appendingPathComponent("grantd.app")
+                try createDirectory(at: target, withIntermediateDirectories: true)
+                try "theirs".write(to: target.appendingPathComponent("marker"), atomically: true, encoding: .utf8)
+            }
+        }
+        let t = try TempDir()
+        let src = try t.file("Downloads/grantd.app/Contents/Info.plist").deletingLastPathComponent().deletingLastPathComponent()
+        let dest = t.url.appendingPathComponent("Apps/grantd.app")
+        XCTAssertThrowsError(try AppLocation.copyToApplications(bundleURL: src, destinations: [dest], fileManager: RacingFileManager())) {
+            guard case AppLocation.MoveError.alreadyThere = $0 else { return XCTFail("\($0)") }
+        }
+        XCTAssertEqual(try String(contentsOf: dest.appendingPathComponent("marker"), encoding: .utf8), "theirs")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dest.deletingLastPathComponent().path), ["grantd.app"])
+    }
+
     func testDestinationsPreferTheSystemFolder() {
         let d = AppLocation.destinations(bundleName: "grantd.app", home: home)
         XCTAssertEqual(d.map(\.path), ["/Applications/grantd.app", "/Users/me/Applications/grantd.app"])

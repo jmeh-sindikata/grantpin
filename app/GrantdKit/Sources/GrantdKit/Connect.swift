@@ -154,6 +154,12 @@ public enum AppLocation: Equatable, Sendable {
     /// Copies the app to the first destination that works and returns it. The
     /// original is left where it is (a translocated or disk-image copy cannot
     /// be moved out), and an existing app of the same name is never replaced.
+    ///
+    /// The copy goes to a hidden temporary name next to the destination and is
+    /// renamed into place in one step (`renamex_np` with `RENAME_EXCL`, which
+    /// also refuses to replace anything), so a copy that stops half-way never
+    /// leaves a broken `grantd.app` behind; the temporary copy is removed on
+    /// failure.
     public static func copyToApplications(
         bundleURL: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser,
         destinations: [URL]? = nil, fileManager fm: FileManager = .default
@@ -162,11 +168,18 @@ public enum AppLocation: Equatable, Sendable {
         var lastExisting: String?
         for target in targets {
             if fm.fileExists(atPath: target.path) { lastExisting = target.path; continue }
+            let folder = target.deletingLastPathComponent()
+            let temporary = folder.appendingPathComponent(".\(target.lastPathComponent).\(UUID().uuidString.prefix(8)).partial")
             do {
-                try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try fm.copyItem(at: bundleURL, to: target)
+                try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                try fm.copyItem(at: bundleURL, to: temporary)
+                guard renamex_np(temporary.path, target.path, UInt32(RENAME_EXCL)) == 0 else {
+                    if errno == EEXIST { lastExisting = target.path }
+                    throw MoveError.failed
+                }
                 return target
             } catch {
+                try? fm.removeItem(at: temporary)
                 continue
             }
         }

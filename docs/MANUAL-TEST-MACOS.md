@@ -560,6 +560,17 @@ part of 7 need the real install and a spare account or a Mac you can reset.
    Create Vault and the login toggle are off, and **Move to Applications and
    Relaunch** copies the app (it never replaces an app of the same name) and starts
    the copy.
+   The copy is made under a hidden temporary name and renamed into place, so after
+   a failure (fill the disk, or pull the target volume) there is no half-copied
+   `grantd.app` and no `.grantd.app.*.partial` left in `~/Applications`. Relaunch
+   check, which needs a real screen: `Info.plist` has `LSMultipleInstancesProhibited`
+   and the app asks for `createsNewApplicationInstance`, so macOS may hand back the
+   already running instance instead of starting the copy. Press the button and
+   confirm that (a) the copy in `~/Applications` is running afterwards (its icon
+   appears and `ps` shows its path), (b) the original from `~/Downloads` has
+   quit, and (c) if the copy does not start, the original stays open and does not
+   quit itself (the app quits only when the started process is a different one).
+   Record which of these happens.
 8. Quit the app from the popover: the daemon keeps running and a Claude Code
    `secret_run` still prompts.
 9. `launchctl kill SIGTERM gui/$(id -u)/dev.grantd.daemon`: the popover turns red

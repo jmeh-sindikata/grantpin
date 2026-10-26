@@ -235,7 +235,12 @@ final class AppModel {
             let target = try AppLocation.copyToApplications(bundleURL: Bundle.main.bundleURL)
             let config = NSWorkspace.OpenConfiguration()
             config.createsNewApplicationInstance = true
-            NSWorkspace.shared.openApplication(at: target, configuration: config) { _, _ in
+            // Quit only when a different process was started: with
+            // LSMultipleInstancesProhibited the system may hand back this very
+            // instance (or fail), and quitting then would leave nothing running.
+            let ownPID = ProcessInfo.processInfo.processIdentifier
+            NSWorkspace.shared.openApplication(at: target, configuration: config) { launched, error in
+                guard error == nil, let launched, launched.processIdentifier != ownPID else { return }
                 DispatchQueue.main.async { NSApp.terminate(nil) }
             }
             return nil
