@@ -659,10 +659,28 @@ part of 7 need the real install and a spare account or a Mac you can reset.
     warning and needs the typed word `delete` before **Remove** is enabled. Afterwards
     the plist, vault files and logs are gone as selected, the app is still there, the
     result says "The hardware key in your Keychain stays. It can't be exported and is
-    useless without the vault file. grantd has no command to remove it yet.", shows
-    `claude mcp remove grantd` with Copy and "To finish, drag grantd to the Trash."
-    with **Reveal in Finder**. With weaker protection the Keychain checkbox appears and
-    `security find-generic-password -s dev.grantd -a vault-kek` finds nothing after it.
+    useless without the vault file. To remove it, tick "Delete the hardware key" when
+    you uninstall.", shows `claude mcp remove grantd` with Copy and "To finish, drag
+    grantd to the Trash." with **Reveal in Finder**. Keys: with a hardware vault the
+    checkbox "Delete the hardware key" appears, with weaker protection "Delete the
+    Keychain item used by weaker protection" does; ticking either shows "Deleting the
+    key makes the vault permanently unreadable, even if you keep the vault file." and
+    needs the typed word `delete`, with or without "Delete my vault". The service is
+    stopped first. Afterwards `grantd keystore delete --hardware --yes` (or
+    `--fallback`) run by hand exits 3, and the Uninstall sheet shows "... was not
+    found, so nothing was deleted" (not a success line) if the key is already gone.
+    Do NOT use `security find-generic-password` to check: it cannot see the
+    data-protection keychain and answers "not found" either way. With the daemon not
+    answering when the sheet opens, no key checkbox is offered and the sheet says so.
 24. Privacy: System Settings > Privacy & Security shows no Accessibility, Automation
     or Screen Recording request from grantd; `lsof -a -p <app pid> -i` shows no
     network sockets.
+25. Impostor on the socket (signed bundle only; use a spare vault). Stop the service
+    (`grantd service uninstall`), start a listener on
+    `~/Library/Application Support/grantd/grantd.sock` that logs what it receives
+    (`python3 -c` with `socket`, or `nc -lU`), open the app and Save a new secret with
+    a sentinel value. The sheet says "The process answering grantd's socket is not
+    grantd. Nothing was sent." and the listener received nothing. A `.env` import
+    (not the dry run) says the same and does not start the helper. Stop the
+    listener, Start the service from the popover: Save works. The popover polling
+    (`status`) still works against any listener; only requests with a value are checked.
