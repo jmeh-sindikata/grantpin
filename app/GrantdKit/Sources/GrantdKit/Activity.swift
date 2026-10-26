@@ -248,6 +248,7 @@ public final class ActivityViewModel {
             loadedLimit = limit
             hasLoaded = true
             events = AuditPairing.pair(entries, windowIsComplete: windowIsComplete, now: now())
+            if let id = selection, !events.contains(where: { $0.id == id }) { selection = nil }
             if banner?.refreshAdvised == true || bannerIsFromLoad { banner = nil; bannerIsFromLoad = false }
         } catch {
             if let e = error as? GrantdError, e.isNotRunning || e.isVaultLocked || e.isVaultNotInitialized { return }

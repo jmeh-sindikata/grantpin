@@ -213,6 +213,19 @@ final class ActivityViewModelTests: XCTestCase {
         XCTAssertEqual(m.events.count, 2)
     }
 
+    func testSelectionIsDroppedWhenItsEventDisappears() async {
+        let f = log([entry(1, decision: "denied_user", argv: ["rm"], secrets: ["KEY"]), entry(2, decision: "refused_policy", argv: ["curl"], secrets: ["KEY"])])
+        let m = model(f)
+        await m.refresh()
+        let id = m.events[0].id
+        m.selection = id
+        await m.refresh()
+        XCTAssertEqual(m.selection, id, "still there")
+        f.rows = []
+        await m.refresh()
+        XCTAssertNil(m.selection)
+    }
+
     func testHostileTextNeverReachesTheTable() async {
         let f = log([entry(1, decision: "denied_user", caller: "a\u{202E}\u{1B}[31mevil", argv: ["x\u{0}y", String(repeating: "z", count: 5000)])])
         let m = model(f)

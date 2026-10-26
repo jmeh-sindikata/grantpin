@@ -12,7 +12,6 @@ import GrantdKit
 /// with `Text(verbatim:)`.
 struct ActivityWindow: View {
     let app: AppModel
-    @State private var selection: String?
     @State private var showDetail: Bool
     @State private var exportMessage: UserMessage?
 
@@ -29,7 +28,7 @@ struct ActivityWindow: View {
             .safeAreaInset(edge: .top, spacing: 0) { banners }
             .safeAreaInset(edge: .bottom, spacing: 0) { footer }
             .inspector(isPresented: $showDetail) {
-                ActivityDetailPane(model: model, selection: selection)
+                ActivityDetailPane(model: model, selection: model.selection)
                     .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
             }
             .searchable(text: Bindable(model).searchText, placement: .toolbar, prompt: "Search")
@@ -66,7 +65,7 @@ struct ActivityWindow: View {
     // MARK: table
 
     private var table: some View {
-        Table(model.visibleEvents, selection: $selection) {
+        Table(model.visibleEvents, selection: Bindable(model).selection) {
             TableColumn("Time") { e in
                 Text(e.time, format: .dateTime.month(.abbreviated).day().hour().minute().second())
                     .monospacedDigit()
