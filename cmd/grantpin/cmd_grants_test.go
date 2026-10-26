@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
 )
 
 func TestCLIGrantsAddCreatesAStandingGrant(t *testing.T) {
@@ -123,7 +123,7 @@ func TestCLIGrantsAddDeniedAndRefused(t *testing.T) {
 		t.Errorf("a denied grant is listed: %q", o)
 	}
 	d.ap.allow = true
-	if err := os.WriteFile(".grantd.yml", []byte("version: 1\nsecrets: [OTHER]\ncommands:\n  - [true]\n"), 0o600); err != nil {
+	if err := os.WriteFile(".grantpin.yml", []byte("version: 1\nsecrets: [OTHER]\ncommands:\n  - [true]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	asked := d.ap.asked()

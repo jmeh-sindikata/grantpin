@@ -1,4 +1,4 @@
-//go:build !grantd_dev
+//go:build !grantpin_dev
 
 package dev
 
@@ -9,7 +9,7 @@ import (
 
 func TestDisabledInNormalBuild(t *testing.T) {
 	if Enabled {
-		t.Fatal("Enabled must be false without grantd_dev")
+		t.Fatal("Enabled must be false without grantpin_dev")
 	}
 	ks, err := Open()
 	if ks != nil || !errors.Is(err, ErrDisabled) {

@@ -11,19 +11,19 @@ import (
 	"os"
 	"testing"
 
-	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantpin/internal/keystore"
 )
 
 // Everything here touches the real Secure Enclave / Keychain. It is skipped
-// unless GRANTD_MANUAL_TEST=1. See docs/MANUAL-TEST-MACOS.md.
+// unless GRANTPIN_MANUAL_TEST=1. See docs/MANUAL-TEST-MACOS.md.
 //
 // Tests use throwaway, uniquely named keys so they never touch the real vault
-// key (tag dev.grantd.vault-kek).
+// key (tag dev.grantpin.vault-kek).
 
 func manual(t *testing.T) {
 	t.Helper()
-	if os.Getenv("GRANTD_MANUAL_TEST") != "1" {
-		t.Skip("set GRANTD_MANUAL_TEST=1 to run (touches the Keychain / Secure Enclave)")
+	if os.Getenv("GRANTPIN_MANUAL_TEST") != "1" {
+		t.Skip("set GRANTPIN_MANUAL_TEST=1 to run (touches the Keychain / Secure Enclave)")
 	}
 }
 
@@ -32,7 +32,7 @@ func tempNames(t *testing.T) (tag, svc, acc string) {
 	var r [6]byte
 	_, _ = rand.Read(r[:])
 	id := hex.EncodeToString(r[:])
-	return "dev.grantd.test." + id, "dev.grantd.test", "vault-kek-" + id
+	return "dev.grantpin.test." + id, "dev.grantpin.test", "vault-kek-" + id
 }
 
 func openTemp(t *testing.T, fallback bool) *Store {
@@ -152,8 +152,8 @@ func TestManualDeleteKeyMaterial(t *testing.T) {
 // vault becomes permanently unreadable. Requires an extra explicit opt-in.
 func TestManualRemoveProductionKey(t *testing.T) {
 	manual(t)
-	if os.Getenv("GRANTD_MANUAL_REMOVE_PRODUCTION_KEY") != "yes" {
-		t.Skip("set GRANTD_MANUAL_REMOVE_PRODUCTION_KEY=yes to delete the real vault key")
+	if os.Getenv("GRANTPIN_MANUAL_REMOVE_PRODUCTION_KEY") != "yes" {
+		t.Skip("set GRANTPIN_MANUAL_REMOVE_PRODUCTION_KEY=yes to delete the real vault key")
 	}
 	s, err := newStore(config{allowFallback: true}, KeyTag, KeychainService, KeychainAccount)
 	if err != nil {

@@ -17,7 +17,7 @@ func TestRunMCPListsFourTools(t *testing.T) {
 	t1, t2 := sdk.NewInMemoryTransports()
 	done := make(chan error, 1)
 	go func() {
-		done <- runMCP(ctx, "/nonexistent/grantd.sock", slog.New(slog.NewTextHandler(io.Discard, nil)), t1)
+		done <- runMCP(ctx, "/nonexistent/grantpin.sock", slog.New(slog.NewTextHandler(io.Discard, nil)), t1)
 	}()
 	cs, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(ctx, t2, nil)
 	if err != nil {

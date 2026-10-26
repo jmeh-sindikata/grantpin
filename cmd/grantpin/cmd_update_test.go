@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// listRow returns the `grantd list` line for name, split on runs of spaces.
+// listRow returns the `grantpin list` line for name, split on runs of spaces.
 func listRow(t *testing.T, name string) []string {
 	t.Helper()
 	for _, line := range strings.Split(mustCLI(t, "", "list"), "\n") {

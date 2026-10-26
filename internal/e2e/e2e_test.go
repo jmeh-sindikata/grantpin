@@ -1,4 +1,4 @@
-//go:build grantd_dev
+//go:build grantpin_dev
 
 package e2e
 
@@ -18,17 +18,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	devap "github.com/jmeh-sindikata/grantd/internal/approve/dev"
-	"github.com/jmeh-sindikata/grantd/internal/audit"
-	"github.com/jmeh-sindikata/grantd/internal/broker"
-	"github.com/jmeh-sindikata/grantd/internal/client"
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
-	"github.com/jmeh-sindikata/grantd/internal/grant"
-	devks "github.com/jmeh-sindikata/grantd/internal/keystore/dev"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	devap "github.com/jmeh-sindikata/grantpin/internal/approve/dev"
+	"github.com/jmeh-sindikata/grantpin/internal/audit"
+	"github.com/jmeh-sindikata/grantpin/internal/broker"
+	"github.com/jmeh-sindikata/grantpin/internal/client"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/grant"
+	devks "github.com/jmeh-sindikata/grantpin/internal/keystore/dev"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 const apiKey = "sk_live_0123456789_SUPERSECRET"
@@ -390,7 +390,7 @@ func TestPolicyRefusalNeverReachesTheApprover(t *testing.T) {
 	r.set("API_KEY", apiKey)
 	r.set("OTHER", "other-secret-value-123")
 	policy := "version: 1\nsecrets: [API_KEY]\ncommands:\n  - [sh, -c]\nmax_grant_ttl: 10m\n"
-	if err := os.WriteFile(filepath.Join(r.cwd, ".grantd.yml"), []byte(policy), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(r.cwd, ".grantpin.yml"), []byte(policy), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -450,7 +450,7 @@ func TestShowIsPresenceGatedEveryTime(t *testing.T) {
 		t.Fatalf("show = %+v", rep.resp)
 	}
 	reqs := r.ap.Requests()
-	if len(reqs) != 1 || strings.Join(reqs[0].Argv, " ") != "grantd show API_KEY" || strings.Join(reqs[0].Secrets, ",") != "API_KEY" {
+	if len(reqs) != 1 || strings.Join(reqs[0].Argv, " ") != "grantpin show API_KEY" || strings.Join(reqs[0].Secrets, ",") != "API_KEY" {
 		t.Fatalf("approval requests = %+v", reqs)
 	}
 	if a := lastAudit(t, r); a.Decision != audit.DecisionAllowedOnce || a.Reason != "show" {
@@ -650,7 +650,7 @@ func TestDialogGrantFollowsThePolicyTTLButNeverPastADay(t *testing.T) {
 			r := newRig(t)
 			r.set("API_KEY", apiKey)
 			policy := "version: 1\nsecrets: [API_KEY]\ncommands:\n  - [sh, -c]\nmax_grant_ttl: " + tc.policyTTL + "\n"
-			if err := os.WriteFile(filepath.Join(r.cwd, ".grantd.yml"), []byte(policy), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(r.cwd, ".grantpin.yml"), []byte(policy), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			r.ap.TTL = 30 * 24 * time.Hour // a human who clicks "Allow for N" with whatever is on offer
@@ -745,7 +745,7 @@ func TestStandingGrantIsCreatedByTheHumanAndUsedWithoutAPrompt(t *testing.T) {
 	}
 }
 
-func TestStandingGrantDeniedByTheHumanCreatesNothing(t *testing.T) {
+func TestDeniedStandingGrantByTheHumanCreatesNothing(t *testing.T) {
 	r := newRig(t)
 	r.set("API_KEY", apiKey)
 	r.ap.SetDenyStanding(true) // everything else is still allowed
@@ -787,7 +787,7 @@ func TestStandingGrantCeilings(t *testing.T) {
 	// A policy's max_grant_ttl does not apply to standing grants; its
 	// max_standing_grant_ttl does.
 	policy := "version: 1\nsecrets: [API_KEY]\ncommands:\n  - [sh, -c]\nmax_grant_ttl: 10m\nmax_standing_grant_ttl: 14d\n"
-	if err := os.WriteFile(filepath.Join(r.cwd, ".grantd.yml"), []byte(policy), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(r.cwd, ".grantpin.yml"), []byte(policy), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if rep := r.addGrant(14*24*time.Hour, []string{"API_KEY"}, "sh", "-c"); !rep.resp.OK {
@@ -849,7 +849,7 @@ func TestUpdateOverTheWire(t *testing.T) {
 	// hardware on a tier-none backend: refused until the tier is lowered
 	wantErr(t, r.run([]string{"API_KEY"}, "true"), proto.ErrRefused, proto.ReasonTierUnmet)
 
-	rep := r.call(&proto.Request{Op: proto.OpUpdate, Caller: "grantd-app", Name: "API_KEY", Tags: []string{"b", "a"}, Notes: "new"})
+	rep := r.call(&proto.Request{Op: proto.OpUpdate, Caller: "grantpin-app", Name: "API_KEY", Tags: []string{"b", "a"}, Notes: "new"})
 	if !rep.resp.OK || rep.resp.AuditID == "" {
 		t.Fatalf("update = %+v", rep.resp)
 	}
@@ -863,7 +863,7 @@ func TestUpdateOverTheWire(t *testing.T) {
 	if found == nil || strings.Join(found.Tags, ",") != "a,b" || found.Notes != "new" || found.MinTier != hw {
 		t.Fatalf("after update: %+v", found)
 	}
-	if a := lastAudit(t, r); a.Decision != audit.DecisionAllowedOnce || a.Reason != "update" || a.Caller != "grantd-app" || strings.Join(a.Argv, " ") != "grantd update API_KEY" {
+	if a := lastAudit(t, r); a.Decision != audit.DecisionAllowedOnce || a.Reason != "update" || a.Caller != "grantpin-app" || strings.Join(a.Argv, " ") != "grantpin update API_KEY" {
 		t.Fatalf("audit = %+v", a)
 	}
 
@@ -875,7 +875,7 @@ func TestUpdateOverTheWire(t *testing.T) {
 	// KindLowerTier request naming the secret and both levels, and the audit
 	// row says so.
 	none := presence.TierNone
-	if rep := r.call(&proto.Request{Op: proto.OpUpdate, Caller: "grantd-app", Name: "API_KEY", MinTier: &none}); !rep.resp.OK {
+	if rep := r.call(&proto.Request{Op: proto.OpUpdate, Caller: "grantpin-app", Name: "API_KEY", MinTier: &none}); !rep.resp.OK {
 		t.Fatalf("lower tier: %+v", rep.resp)
 	}
 	reqs := r.ap.Requests()
@@ -883,7 +883,7 @@ func TestUpdateOverTheWire(t *testing.T) {
 		strings.Join(reqs[0].Secrets, ",") != "API_KEY" {
 		t.Fatalf("approver saw %+v", reqs)
 	}
-	if a := lastAudit(t, r); a.Decision != audit.DecisionAllowedOnce || a.Reason != "update: lower min_tier" || a.Caller != "grantd-app" {
+	if a := lastAudit(t, r); a.Decision != audit.DecisionAllowedOnce || a.Reason != "update: lower min_tier" || a.Caller != "grantpin-app" {
 		t.Fatalf("audit after lowering = %+v", a)
 	}
 	run := r.run([]string{"API_KEY"}, "sh", "-c", `printf %s "$API_KEY"`)

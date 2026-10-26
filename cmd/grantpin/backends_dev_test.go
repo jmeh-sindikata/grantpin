@@ -1,4 +1,4 @@
-//go:build grantd_dev
+//go:build grantpin_dev
 
 package main
 
@@ -6,8 +6,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 func TestDevApproverDefaultsToDeny(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 // LA result codes mirrored from la_darwin.h (cgo cannot be used in _test files).
@@ -79,10 +79,10 @@ func TestDecideOnlyOKAllows(t *testing.T) {
 
 // TestManualPromptsOnce runs the full chain: the osascript chooser, then (for
 // either Allow button) one Touch ID / password prompt.
-// Skipped unless GRANTD_MANUAL_TEST=1. See docs/MANUAL-TEST-MACOS.md.
+// Skipped unless GRANTPIN_MANUAL_TEST=1. See docs/MANUAL-TEST-MACOS.md.
 func TestManualPromptsOnce(t *testing.T) {
-	if os.Getenv("GRANTD_MANUAL_TEST") != "1" {
-		t.Skip("set GRANTD_MANUAL_TEST=1 to run (shows a Touch ID / password prompt)")
+	if os.Getenv("GRANTPIN_MANUAL_TEST") != "1" {
+		t.Skip("set GRANTPIN_MANUAL_TEST=1 to run (shows a Touch ID / password prompt)")
 	}
 	a, err := New()
 	if err != nil {
@@ -91,8 +91,8 @@ func TestManualPromptsOnce(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	d, err := a.Ask(ctx, approve.ApprovalRequest{
-		Caller:        "grantd-manual-test",
-		Cwd:           "/tmp/grantd-manual-test",
+		Caller:        "grantpin-manual-test",
+		Cwd:           "/tmp/grantpin-manual-test",
 		Argv:          []string{"echo", "hello"},
 		Secrets:       []string{"MANUAL_TEST_SECRET"},
 		PolicyPresent: false,
@@ -102,10 +102,10 @@ func TestManualPromptsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
 	}
-	if os.Getenv("GRANTD_MANUAL_EXPECT") == "deny" && d.Allow {
+	if os.Getenv("GRANTPIN_MANUAL_EXPECT") == "deny" && d.Allow {
 		t.Fatal("expected deny, got allow")
 	}
-	if os.Getenv("GRANTD_MANUAL_EXPECT") == "allow" && !d.Allow {
+	if os.Getenv("GRANTPIN_MANUAL_EXPECT") == "allow" && !d.Allow {
 		t.Fatalf("expected allow, got deny: %s", d.Reason)
 	}
 }
@@ -113,14 +113,14 @@ func TestManualPromptsOnce(t *testing.T) {
 // TestManualCancelViaContext shows one prompt and cancels it from Go after 3s;
 // the prompt must disappear and Ask must return context.DeadlineExceeded.
 func TestManualCancelViaContext(t *testing.T) {
-	if os.Getenv("GRANTD_MANUAL_TEST") != "1" {
-		t.Skip("set GRANTD_MANUAL_TEST=1 to run (shows a Touch ID / password prompt)")
+	if os.Getenv("GRANTPIN_MANUAL_TEST") != "1" {
+		t.Skip("set GRANTPIN_MANUAL_TEST=1 to run (shows a Touch ID / password prompt)")
 	}
 	a, _ := New(WithChooser(false))
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	start := time.Now()
-	d, err := a.Ask(ctx, approve.ApprovalRequest{Caller: "grantd-manual-test", Cwd: "/tmp", Argv: []string{"true"}, Secrets: []string{"X"}})
+	d, err := a.Ask(ctx, approve.ApprovalRequest{Caller: "grantpin-manual-test", Cwd: "/tmp", Argv: []string{"true"}, Secrets: []string{"X"}})
 	if d.Allow {
 		t.Fatal("allowed after cancel")
 	}
@@ -158,7 +158,7 @@ func TestAskChooserDenyShortCircuits(t *testing.T) {
 // The standing-grant paths below only exercise answers that deny BEFORE
 // LocalAuthentication; an allow answer would reach the Touch ID prompt, so no
 // test feeds one to Ask.
-func TestAskStandingGrantDeniedWithoutAPositiveAnswer(t *testing.T) {
+func TestAskDeniedStandingGrantWithoutAPositiveAnswer(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		stdout string
@@ -214,10 +214,10 @@ func TestAskChooserFailureIsNotAllow(t *testing.T) {
 
 // TestManualChooserOnly shows ONLY the osascript dialog (no Touch ID).
 func TestManualChooserOnly(t *testing.T) {
-	if os.Getenv("GRANTD_MANUAL_TEST") != "1" {
-		t.Skip("set GRANTD_MANUAL_TEST=1 to run (shows an osascript dialog)")
+	if os.Getenv("GRANTPIN_MANUAL_TEST") != "1" {
+		t.Skip("set GRANTPIN_MANUAL_TEST=1 to run (shows an osascript dialog)")
 	}
-	r := approve.ApprovalRequest{Caller: "grantd-manual-test", Cwd: "/tmp/grantd-manual-test",
+	r := approve.ApprovalRequest{Caller: "grantpin-manual-test", Cwd: "/tmp/grantpin-manual-test",
 		Argv: []string{"echo", "hello"}, Secrets: []string{"MANUAL_TEST_SECRET"}, SuggestedTTL: time.Hour}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -230,13 +230,13 @@ func TestManualChooserOnly(t *testing.T) {
 
 // TestManualLAOnly is the original single-prompt test with the chooser off.
 func TestManualLAOnly(t *testing.T) {
-	if os.Getenv("GRANTD_MANUAL_TEST") != "1" {
-		t.Skip("set GRANTD_MANUAL_TEST=1 to run (shows a Touch ID / password prompt)")
+	if os.Getenv("GRANTPIN_MANUAL_TEST") != "1" {
+		t.Skip("set GRANTPIN_MANUAL_TEST=1 to run (shows a Touch ID / password prompt)")
 	}
 	a, _ := New(WithChooser(false))
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	d, err := a.Ask(ctx, approve.ApprovalRequest{Caller: "grantd-manual-test", Cwd: "/tmp/grantd-manual-test",
+	d, err := a.Ask(ctx, approve.ApprovalRequest{Caller: "grantpin-manual-test", Cwd: "/tmp/grantpin-manual-test",
 		Argv: []string{"echo", "hello"}, Secrets: []string{"MANUAL_TEST_SECRET"}})
 	t.Logf("decision=%+v err=%v", d, err)
 	if err != nil {

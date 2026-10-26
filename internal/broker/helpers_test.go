@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/audit"
-	"github.com/jmeh-sindikata/grantd/internal/grant"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/audit"
+	"github.com/jmeh-sindikata/grantpin/internal/grant"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 // idKeyStore is a no-op keystore: wrap is the identity. Test-only.
@@ -292,7 +292,7 @@ func decode[T any](t *testing.T, w *recWriter) T {
 
 func writePolicy(t *testing.T, dir, body string, mode os.FileMode) {
 	t.Helper()
-	p := filepath.Join(dir, ".grantd.yml")
+	p := filepath.Join(dir, ".grantpin.yml")
 	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}

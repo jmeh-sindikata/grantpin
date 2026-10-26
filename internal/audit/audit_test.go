@@ -72,7 +72,7 @@ func TestGoldenCanonicalHMACV2(t *testing.T) {
 	}
 }
 
-// oldSchemaLog builds a database exactly as a pre-Expanded grantd left it: the
+// oldSchemaLog builds a database exactly as a pre-Expanded grantpin left it: the
 // original table (no enc/expanded columns) with rows written by the v1 encoder.
 func oldSchemaLog(t *testing.T, n int) (*sql.DB, *Log) {
 	t.Helper()

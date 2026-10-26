@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/client"
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/client"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 const secretValue = "s3cr3t-value-ABCDEFG"
@@ -97,7 +97,7 @@ func TestCLIEndToEnd(t *testing.T) {
 	d.ap.allow = true
 
 	// refused (policy) -> 78
-	if err := os.WriteFile(".grantd.yml", []byte("version: 1\nsecrets: [OTHER]\ncommands:\n  - [true]\n"), 0o600); err != nil {
+	if err := os.WriteFile(".grantpin.yml", []byte("version: 1\nsecrets: [OTHER]\ncommands:\n  - [true]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	asked := d.ap.asked()
@@ -108,7 +108,7 @@ func TestCLIEndToEnd(t *testing.T) {
 	if d.ap.asked() != asked {
 		t.Error("approver asked for policy-refused run")
 	}
-	if err := os.Remove(".grantd.yml"); err != nil {
+	if err := os.Remove(".grantpin.yml"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -233,7 +233,7 @@ func TestCLIImport(t *testing.T) {
 func TestDaemonPicksUpVaultCreatedAfterStart(t *testing.T) {
 	startTestDaemon(t, false)
 	_, _, err := cli(t, "", "list")
-	if err == nil || !strings.Contains(err.Error(), "vault_not_initialized") || !strings.Contains(err.Error(), "grantd init") {
+	if err == nil || !strings.Contains(err.Error(), "vault_not_initialized") || !strings.Contains(err.Error(), "grantpin init") {
 		t.Fatalf("list before init err = %v", err)
 	}
 	if out := mustCLI(t, "", "status"); !strings.Contains(out, "not initialized") {
@@ -250,7 +250,7 @@ func TestDaemonPicksUpVaultCreatedAfterStart(t *testing.T) {
 func TestDaemonRefusesUnusableVault(t *testing.T) {
 	useFakeBackends(t)
 	initTestVault(t)
-	vp := os.Getenv("GRANTD_HOME") + "/vault.db"
+	vp := os.Getenv("GRANTPIN_HOME") + "/vault.db"
 	if err := os.WriteFile(vp, []byte("not a database"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -261,13 +261,13 @@ func TestDaemonRefusesUnusableVault(t *testing.T) {
 }
 
 func TestNotRunningExitCode(t *testing.T) {
-	t.Setenv("GRANTD_SOCKET", shortSocket(t))
+	t.Setenv("GRANTPIN_SOCKET", shortSocket(t))
 	for _, args := range [][]string{
 		{"list"}, {"masked", "A"}, {"delete", "A"}, {"update", "A", "--notes", "x"}, {"grants"}, {"audit"}, {"audit", "verify"},
 		{"run", "--secrets", "A", "--", "true"}, {"set", "A"}, {"import", "-"}, {"status"},
 	} {
 		_, _, err := cli(t, "A=bbbbbbbbbbbb\n", args...)
-		if !errors.Is(err, client.ErrNotRunning) || exitCodeOf(err) != 69 || !strings.Contains(err.Error(), "grantd daemon") {
+		if !errors.Is(err, client.ErrNotRunning) || exitCodeOf(err) != 69 || !strings.Contains(err.Error(), "grantpin daemon") {
 			t.Errorf("%v: err = %v (code %d)", args, err, exitCodeOf(err))
 		}
 	}
@@ -343,7 +343,7 @@ func TestRunInterruptedBySignal(t *testing.T) {
 	mustCLI(t, secretValue, "set", "API_KEY")
 	pidFile := t.TempDir() + "/pid"
 	go func() {
-		// Wait until the child is up, then interrupt grantd itself.
+		// Wait until the child is up, then interrupt grantpin itself.
 		for range 200 {
 			if _, err := os.Stat(pidFile); err == nil {
 				break

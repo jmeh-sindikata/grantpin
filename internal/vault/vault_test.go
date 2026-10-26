@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 // fakeKS is a test-only KeyStore (AES-GCM under a random per-instance key).
@@ -698,13 +698,13 @@ func TestConcurrentUse(t *testing.T) {
 }
 
 func TestDefaultPath(t *testing.T) {
-	t.Setenv("GRANTD_HOME", "/tmp/gh")
+	t.Setenv("GRANTPIN_HOME", "/tmp/gh")
 	t.Setenv("XDG_DATA_HOME", "/tmp/xdg")
 	if p, _ := DefaultPath(); p != "/tmp/gh/vault.db" {
 		t.Fatal(p)
 	}
-	t.Setenv("GRANTD_HOME", "")
-	if p, _ := DefaultPath(); p != "/tmp/xdg/grantd/vault.db" {
+	t.Setenv("GRANTPIN_HOME", "")
+	if p, _ := DefaultPath(); p != "/tmp/xdg/grantpin/vault.db" {
 		t.Fatal(p)
 	}
 	t.Setenv("XDG_DATA_HOME", "relative/ignored")
@@ -713,9 +713,9 @@ func TestDefaultPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "/home/u/.local/share/grantd/vault.db"
+	want := "/home/u/.local/share/grantpin/vault.db"
 	if runtime.GOOS == "darwin" {
-		want = "/home/u/Library/Application Support/grantd/vault.db"
+		want = "/home/u/Library/Application Support/grantpin/vault.db"
 	}
 	if runtime.GOOS != "windows" && p != want {
 		t.Fatalf("%s != %s", p, want)

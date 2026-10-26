@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 // With the process out of file descriptors, Accept fails with EMFILE. The

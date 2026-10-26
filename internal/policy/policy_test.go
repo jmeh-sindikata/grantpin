@@ -141,12 +141,12 @@ func TestWalkPastNonDirAndDirNamedPolicy(t *testing.T) {
 	if err := os.WriteFile(f, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// cwd is a regular file: .grantd.yml under it gives ENOTDIR, keep walking.
+	// cwd is a regular file: .grantpin.yml under it gives ENOTDIR, keep walking.
 	p, err := Load(f)
 	if err != nil || !p.Present() {
 		t.Fatalf("got %v %v", p, err)
 	}
-	// A directory called .grantd.yml is refused, not skipped.
+	// A directory called .grantpin.yml is refused, not skipped.
 	sub := filepath.Join(root, "sub")
 	if err := os.MkdirAll(filepath.Join(sub, FileName), 0o755); err != nil {
 		t.Fatal(err)

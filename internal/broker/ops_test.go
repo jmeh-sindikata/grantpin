@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/audit"
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/audit"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 func TestNewValidates(t *testing.T) {
@@ -56,7 +56,7 @@ func TestSetListExistsMaskedDelete(t *testing.T) {
 	w := e.do(&proto.Request{Op: proto.OpSet, Name: "aws/key", Value: "AKIA-0123456789-WXYZ",
 		Tags: []string{"prod"}, URL: "https://x", Notes: "n", Expires: &exp, MinTier: &hw})
 	wantOK(t, w)
-	if a := e.lastAudit(); a.Decision != audit.DecisionAllowedOnce || a.Reason != "set" || strings.Join(a.Argv, " ") != "grantd set aws/key" {
+	if a := e.lastAudit(); a.Decision != audit.DecisionAllowedOnce || a.Reason != "set" || strings.Join(a.Argv, " ") != "grantpin set aws/key" {
 		t.Errorf("audit = %+v", a)
 	}
 	if b, _ := marshalAll(w); strings.Contains(b, "AKIA") {
@@ -158,7 +158,7 @@ func TestShow(t *testing.T) {
 		t.Errorf("value = %q", v)
 	}
 	r := e.ap.last()
-	if strings.Join(r.Argv, " ") != "grantd show API_KEY" || strings.Join(r.Secrets, ",") != "API_KEY" || r.PolicyPresent {
+	if strings.Join(r.Argv, " ") != "grantpin show API_KEY" || strings.Join(r.Secrets, ",") != "API_KEY" || r.PolicyPresent {
 		t.Errorf("approval request = %+v", r)
 	}
 	a := e.lastAudit()
@@ -602,7 +602,7 @@ func TestUpdateChangesMetadataNotTheValue(t *testing.T) {
 	// any subset: only tags
 	w := e.do(&proto.Request{Op: proto.OpUpdate, Name: "aws/key", Tags: []string{"b", "a", "b"}})
 	wantOK(t, w)
-	if a := e.lastAudit(); a.Decision != audit.DecisionAllowedOnce || a.Reason != "update" || strings.Join(a.Argv, " ") != "grantd update aws/key" || a.ID != w.final.AuditID {
+	if a := e.lastAudit(); a.Decision != audit.DecisionAllowedOnce || a.Reason != "update" || strings.Join(a.Argv, " ") != "grantpin update aws/key" || a.ID != w.final.AuditID {
 		t.Errorf("audit = %+v (audit_id %q)", a, w.final.AuditID)
 	}
 	got := listInfo(t, e, "aws/key")
@@ -721,14 +721,14 @@ func TestUpdateLoweringTheTierNeedsApproval(t *testing.T) {
 	e.ap.reqs = nil
 
 	// hardware -> dialog asks, with the secret and both levels in the request.
-	w := e.do(&proto.Request{Op: proto.OpUpdate, Caller: "grantd-app", Name: "k", MinTier: &dialog, Notes: "n"})
+	w := e.do(&proto.Request{Op: proto.OpUpdate, Caller: "grantpin-app", Name: "k", MinTier: &dialog, Notes: "n"})
 	wantOK(t, w)
 	if e.ap.calls() != 1 {
 		t.Fatalf("approver asked %d times", e.ap.calls())
 	}
 	r := e.ap.last()
 	if r.Kind != approve.KindLowerTier || r.FromTier != hw || r.ToTier != dialog ||
-		strings.Join(r.Secrets, ",") != "k" || r.Caller != "grantd-app" {
+		strings.Join(r.Secrets, ",") != "k" || r.Caller != "grantpin-app" {
 		t.Errorf("approval request = %+v", r)
 	}
 	if a := e.lastAudit(); a.Decision != audit.DecisionAllowedOnce || a.Reason != "update: lower min_tier" || a.ID != w.final.AuditID {
@@ -823,7 +823,7 @@ func TestUpdateLoweringNotFoundAndCancelled(t *testing.T) {
 	}
 }
 
-// url, notes and tags are shown on a terminal by `grantd list`: characters that
+// url, notes and tags are shown on a terminal by `grantpin list`: characters that
 // drive a terminal or reorder text are refused at the daemon.
 func TestSetAndUpdateRejectTerminalControlsInMetadata(t *testing.T) {
 	e := newEnv(t)
@@ -935,7 +935,7 @@ func TestGrantRevocationsAreAudited(t *testing.T) {
 	wantOK(t, w)
 	a := e.lastAudit()
 	if w.final.AuditID != a.ID || a.Decision != audit.DecisionAllowedOnce || a.Reason != "grants revoke" || a.GrantID != g1 ||
-		a.Caller != "agent" || strings.Join(a.Argv, " ") != "grantd grants revoke "+g1 {
+		a.Caller != "agent" || strings.Join(a.Argv, " ") != "grantpin grants revoke "+g1 {
 		t.Errorf("revoke audit = %+v (response %+v)", a, w.final)
 	}
 
@@ -963,7 +963,7 @@ func TestGrantRevocationsAreAudited(t *testing.T) {
 	if count() != before+1 {
 		t.Fatalf("empty revoke_all rows = %d", count()-before)
 	}
-	if a := e.lastAudit(); a.Reason != "grants revoke_all" || a.GrantID != "" || strings.Join(a.Argv, " ") != "grantd grants revoke --all" {
+	if a := e.lastAudit(); a.Reason != "grants revoke_all" || a.GrantID != "" || strings.Join(a.Argv, " ") != "grantpin grants revoke --all" {
 		t.Errorf("empty revoke_all audit = %+v", a)
 	}
 }

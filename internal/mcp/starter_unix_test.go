@@ -34,7 +34,7 @@ func TestSpawnDetachedReapsExitedChild(t *testing.T) {
 }
 
 func TestSpawnDetachedReportsStartFailure(t *testing.T) {
-	if _, err := spawnDetached("/nonexistent/grantd", nil); err == nil {
+	if _, err := spawnDetached("/nonexistent/grantpin", nil); err == nil {
 		t.Fatal("expected an error")
 	}
 }

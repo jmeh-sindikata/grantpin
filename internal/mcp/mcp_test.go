@@ -14,9 +14,9 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 // ---- fake daemon ----
@@ -405,7 +405,7 @@ func TestRunOutputTruncated(t *testing.T) {
 	cs := setup(t, f, func(c *Config) { c.MaxOutput = 16 })
 	var out runOutput
 	structured(t, call(t, cs, ToolRun, map[string]any{"argv": []string{"x"}, "secrets": []string{"A"}}), &out)
-	if !strings.HasPrefix(out.Stdout, "0123456789abcdef\n[grantd mcp: output truncated at 16 bytes]") {
+	if !strings.HasPrefix(out.Stdout, "0123456789abcdef\n[grantpin mcp: output truncated at 16 bytes]") {
 		t.Errorf("stdout = %q", out.Stdout)
 	}
 	if strings.Contains(out.Stdout, "ignored") || out.Stderr != "short" {
@@ -416,7 +416,7 @@ func TestRunOutputTruncated(t *testing.T) {
 func TestCappedRuneBoundary(t *testing.T) {
 	c := newCapped(4)
 	c.write("ab€") // € is 3 bytes: "ab" + 3 = 5 > 4, must not split it
-	if got := c.String(); !strings.HasPrefix(got, "ab\n[grantd mcp") {
+	if got := c.String(); !strings.HasPrefix(got, "ab\n[grantpin mcp") {
 		t.Errorf("got %q", got)
 	}
 	c = newCapped(5)
@@ -626,7 +626,7 @@ func TestServeRunsUntilClientCloses(t *testing.T) {
 
 func TestDaemonEnvAllowList(t *testing.T) {
 	env := map[string]string{
-		"HOME": "/h", "PATH": "/bin", "GRANTD_SOCKET": "/x", "AWS_SECRET_ACCESS_KEY": "s3cr3t", "API_KEY": "k",
+		"HOME": "/h", "PATH": "/bin", "GRANTPIN_SOCKET": "/x", "AWS_SECRET_ACCESS_KEY": "s3cr3t", "API_KEY": "k",
 	}
 	got := daemonEnv(func(k string) string { return env[k] })
 	if len(got) != 2 || got[0] != "HOME=/h" || got[1] != "PATH=/bin" {

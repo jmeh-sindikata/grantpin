@@ -17,7 +17,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 func routerWith(op string, f HandlerFunc) *Router {
@@ -791,7 +791,7 @@ func TestDefaultSocketPath(t *testing.T) {
 	}
 
 	t.Setenv(SocketEnv, "")
-	if p, err := DefaultSocketPath(); err != nil || p != "/run/user/1/grantd.sock" {
+	if p, err := DefaultSocketPath(); err != nil || p != "/run/user/1/grantpin.sock" {
 		t.Errorf("xdg runtime: %q %v", p, err)
 	}
 
@@ -802,9 +802,9 @@ func TestDefaultSocketPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "/home/u/.local/share/grantd/grantd.sock"
+	want := "/home/u/.local/share/grantpin/grantpin.sock"
 	if runtime.GOOS == "darwin" {
-		want = "/home/u/Library/Application Support/grantd/grantd.sock"
+		want = "/home/u/Library/Application Support/grantpin/grantpin.sock"
 	}
 	if p != want {
 		t.Errorf("fallback: %q, want %q", p, want)
@@ -812,7 +812,7 @@ func TestDefaultSocketPath(t *testing.T) {
 
 	if runtime.GOOS != "darwin" {
 		t.Setenv("XDG_DATA_HOME", "/data")
-		if p, _ := DefaultSocketPath(); p != "/data/grantd/grantd.sock" {
+		if p, _ := DefaultSocketPath(); p != "/data/grantpin/grantpin.sock" {
 			t.Errorf("xdg data: %q", p)
 		}
 	}

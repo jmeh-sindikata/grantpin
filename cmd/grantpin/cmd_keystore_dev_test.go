@@ -1,4 +1,4 @@
-//go:build grantd_dev
+//go:build grantpin_dev
 
 package main
 

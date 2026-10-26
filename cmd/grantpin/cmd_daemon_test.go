@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/client"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/client"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 func shortSocket(t *testing.T) string {
@@ -38,7 +38,7 @@ func TestStatusNotRunning(t *testing.T) {
 	if !errors.Is(err, client.ErrNotRunning) {
 		t.Fatalf("err = %v, want ErrNotRunning", err)
 	}
-	if !strings.Contains(err.Error(), sock) || !strings.Contains(err.Error(), "grantd daemon") {
+	if !strings.Contains(err.Error(), sock) || !strings.Contains(err.Error(), "grantpin daemon") {
 		t.Errorf("message lacks socket path or hint: %v", err)
 	}
 }
@@ -115,7 +115,7 @@ func TestResolveSocket(t *testing.T) {
 	if p, err := resolveSocket("/x/y.sock"); err != nil || p != "/x/y.sock" {
 		t.Errorf("flag: %q %v", p, err)
 	}
-	t.Setenv("GRANTD_SOCKET", "/env/z.sock")
+	t.Setenv("GRANTPIN_SOCKET", "/env/z.sock")
 	if p, err := resolveSocket(""); err != nil || p != "/env/z.sock" {
 		t.Errorf("env: %q %v", p, err)
 	}

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/client"
-	"github.com/jmeh-sindikata/grantd/internal/keystore"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/client"
+	"github.com/jmeh-sindikata/grantpin/internal/keystore"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 // errLocked stands in for the macOS errSecInteractionNotAllowed (-25308), which
@@ -135,7 +135,7 @@ func TestDaemonStaysUpWhileKeystoreLocked(t *testing.T) {
 			t.Errorf("message = %q", resp.Message)
 		}
 	}
-	// grantd run reports it the same way.
+	// grantpin run reports it the same way.
 	run := &proto.Request{V: proto.Version, Op: proto.OpRun, Caller: "t", Cwd: t.TempDir(), Argv: []string{"true"}, Secrets: []string{"x"}}
 	if resp, _ := client.Call(context.Background(), sock, run, nil); resp == nil || resp.Reason != proto.ReasonVaultLocked {
 		t.Errorf("run = %+v, want vault_locked", resp)

@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/client"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/client"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 // testKS is an identity keystore (test-only, no protection).
@@ -61,7 +61,7 @@ func (a *testApprover) asked() int { a.mu.Lock(); defer a.mu.Unlock(); return a.
 // for the duration of the test.
 func useFakeBackends(t *testing.T) *testApprover {
 	t.Helper()
-	t.Setenv("GRANTD_HOME", filepath.Join(t.TempDir(), "g"))
+	t.Setenv("GRANTPIN_HOME", filepath.Join(t.TempDir(), "g"))
 	ap := &testApprover{allow: true}
 	old := openBackends
 	openBackends = func() (backends, error) { return backends{ks: testKS{}, ap: ap}, nil }
@@ -85,7 +85,7 @@ func startTestDaemon(t *testing.T, initVault bool) *testDaemon {
 		initTestVault(t)
 	}
 	sock := shortSocket(t)
-	t.Setenv("GRANTD_SOCKET", sock)
+	t.Setenv("GRANTPIN_SOCKET", sock)
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &testDaemon{t: t, sock: sock, ap: ap, cancel: cancel, done: make(chan error, 1)}
 	go func() { d.done <- runDaemon(ctx, sock, nil) }()
@@ -125,7 +125,7 @@ func initTestVault(t *testing.T) {
 	}
 }
 
-// cli runs the grantd command tree in-process.
+// cli runs the grantpin command tree in-process.
 func cli(t *testing.T, stdin string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	var out, errb bytes.Buffer
@@ -142,7 +142,7 @@ func mustCLI(t *testing.T, stdin string, args ...string) string {
 	t.Helper()
 	out, errs, err := cli(t, stdin, args...)
 	if err != nil {
-		t.Fatalf("grantd %v: %v\nstdout: %s\nstderr: %s", args, err, out, errs)
+		t.Fatalf("grantpin %v: %v\nstdout: %s\nstderr: %s", args, err, out, errs)
 	}
 	return out
 }

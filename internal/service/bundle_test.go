@@ -47,7 +47,7 @@ func makeBundle(t *testing.T, root, name, binName, execName string) (app, inner 
 func TestResolveExeBundle(t *testing.T) {
 	root := t.TempDir()
 
-	app, inner := makeBundle(t, root, "grantd.app", "grantd", "grantd")
+	app, inner := makeBundle(t, root, "grantpin.app", "grantpin", "grantpin")
 	if got, err := resolveExe(app); err != nil || got != inner {
 		t.Errorf("resolveExe(app) = %q, %v; want %q", got, err, inner)
 	}
@@ -56,8 +56,8 @@ func TestResolveExeBundle(t *testing.T) {
 		t.Errorf("resolveExe(inner) = %q, %v; want %q", got, err, inner)
 	}
 
-	// no Info.plist: default name "grantd"
-	app2, inner2 := makeBundle(t, root, "bare.app", "grantd", "")
+	// no Info.plist: default name "grantpin"
+	app2, inner2 := makeBundle(t, root, "bare.app", "grantpin", "")
 	if got, err := resolveExe(app2); err != nil || got != inner2 {
 		t.Errorf("no Info.plist: %q, %v; want %q", got, err, inner2)
 	}
@@ -68,7 +68,7 @@ func TestResolveExeBundle(t *testing.T) {
 		t.Errorf("custom CFBundleExecutable: %q, %v; want %q", got, err, inner3)
 	}
 
-	// a symlink to the bundle (e.g. /Applications/grantd.app -> dist/...) resolves
+	// a symlink to the bundle (e.g. /Applications/grantpin.app -> dist/...) resolves
 	link := filepath.Join(root, "link.app")
 	if err := os.Symlink(app, link); err != nil {
 		t.Fatal(err)
@@ -91,8 +91,8 @@ func TestResolveExeBundleErrors(t *testing.T) {
 	}
 
 	// CFBundleExecutable must be a plain file name
-	for _, bad := range []string{"../../../bin/sh", "sub/grantd", ".."} {
-		app, _ := makeBundle(t, root, "bad"+strings.NewReplacer("/", "_", ".", "_").Replace(bad)+".app", "grantd", bad)
+	for _, bad := range []string{"../../../bin/sh", "sub/grantpin", ".."} {
+		app, _ := makeBundle(t, root, "bad"+strings.NewReplacer("/", "_", ".", "_").Replace(bad)+".app", "grantpin", bad)
 		if _, err := resolveExe(app); err == nil || !strings.Contains(err.Error(), "invalid CFBundleExecutable") {
 			t.Errorf("CFBundleExecutable %q: %v", bad, err)
 		}
@@ -103,7 +103,7 @@ func TestResolveExeBundleErrors(t *testing.T) {
 	if err := os.WriteFile(outside, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	app, inner := makeBundle(t, root, "escape.app", "grantd", "grantd")
+	app, inner := makeBundle(t, root, "escape.app", "grantpin", "grantpin")
 	os.Remove(inner)
 	if err := os.Symlink(outside, inner); err != nil {
 		t.Fatal(err)
@@ -127,7 +127,7 @@ func TestInstallFromBundleGoldenPlist(t *testing.T) {
 	for _, viaApp := range []bool{true, false} {
 		f := &fakeRunner{results: map[string][]Result{"print": {{ExitCode: 113}}}}
 		l, _ := newTest(t, f)
-		app, inner := makeBundle(t, l.home, "grantd.app", "grantd", "grantd")
+		app, inner := makeBundle(t, l.home, "grantpin.app", "grantpin", "grantpin")
 		arg := inner
 		if viaApp {
 			arg = app
@@ -141,11 +141,11 @@ func TestInstallFromBundleGoldenPlist(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := strings.NewReplacer("/opt/g &amp; co/grantd", inner, "/logs/", logs+"/").Replace(wantPlist)
+		want := strings.NewReplacer("/opt/g &amp; co/grantpin", inner, "/logs/", logs+"/").Replace(wantPlist)
 		if string(got) != want {
 			t.Errorf("viaApp=%v: plist mismatch\n got: %s\nwant: %s", viaApp, got, want)
 		}
-		if exe, _ := plistExe(got); exe != inner || !strings.HasSuffix(exe, ".app/Contents/MacOS/grantd") {
+		if exe, _ := plistExe(got); exe != inner || !strings.HasSuffix(exe, ".app/Contents/MacOS/grantpin") {
 			t.Errorf("viaApp=%v: ProgramArguments[0] = %q", viaApp, exe)
 		}
 	}
@@ -154,7 +154,7 @@ func TestInstallFromBundleGoldenPlist(t *testing.T) {
 func TestInstallBundleRefusesTempDir(t *testing.T) {
 	f := &fakeRunner{}
 	l, _ := newTest(t, f)
-	app, _ := makeBundle(t, l.home, "grantd.app", "grantd", "grantd")
+	app, _ := makeBundle(t, l.home, "grantpin.app", "grantpin", "grantpin")
 	realHome, _ := filepath.EvalSymlinks(l.home)
 	l.tempRoots = []string{realHome}
 	err := l.Install(context.Background(), Options{Exe: app})
@@ -168,23 +168,23 @@ func TestInstallBundleRefusesTempDir(t *testing.T) {
 
 // makeAppWithHelper builds the menu-bar app layout under root:
 //
-//	<name>.app/Contents/MacOS/grantd-app                       the UI
-//	<name>.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd
+//	<name>.app/Contents/MacOS/grantpin-app                       the UI
+//	<name>.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin
 //
 // and returns the outer .app, the helper .app and the helper's binary, all
 // symlink-free.
 func makeAppWithHelper(t *testing.T, root, name string) (app, helper, daemon string) {
 	t.Helper()
-	app, _ = makeBundle(t, root, name, "grantd-app", "grantd-app")
-	helperDir := filepath.Join(app, "Contents", "Helpers", "grantd-daemon.app")
+	app, _ = makeBundle(t, root, name, "grantpin-app", "grantpin-app")
+	helperDir := filepath.Join(app, "Contents", "Helpers", "grantpin-daemon.app")
 	if err := os.MkdirAll(filepath.Join(helperDir, "Contents", "MacOS"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	daemon = filepath.Join(helperDir, "Contents", "MacOS", "grantd")
+	daemon = filepath.Join(helperDir, "Contents", "MacOS", "grantpin")
 	if err := os.WriteFile(daemon, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	plist := strings.Replace(bundleInfoPlist, "%s", "grantd", 1)
+	plist := strings.Replace(bundleInfoPlist, "%s", "grantpin", 1)
 	if err := os.WriteFile(filepath.Join(helperDir, "Contents", "Info.plist"), []byte(plist), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func makeAppWithHelper(t *testing.T, root, name string) (app, helper, daemon str
 
 func TestResolveExeAppWithHelper(t *testing.T) {
 	root := t.TempDir()
-	app, helper, daemon := makeAppWithHelper(t, root, "grantd.app")
+	app, helper, daemon := makeAppWithHelper(t, root, "grantpin.app")
 
 	// the outer .app resolves to the helper's Go binary, not the UI
 	if got, err := resolveExe(app); err != nil || got != daemon {
@@ -215,8 +215,8 @@ func TestResolveExeAppWithHelper(t *testing.T) {
 	if got, err := resolveExe(link); err != nil || got != daemon {
 		t.Errorf("symlinked outer app: %q, %v; want %q", got, err, daemon)
 	}
-	// the legacy single-bundle layout still resolves to Contents/MacOS/grantd
-	legacy, legacyInner := makeBundle(t, root, "legacy.app", "grantd", "grantd")
+	// the legacy single-bundle layout still resolves to Contents/MacOS/grantpin
+	legacy, legacyInner := makeBundle(t, root, "legacy.app", "grantpin", "grantpin")
 	if got, err := resolveExe(legacy); err != nil || got != legacyInner {
 		t.Errorf("legacy bundle: %q, %v; want %q", got, err, legacyInner)
 	}
@@ -224,24 +224,24 @@ func TestResolveExeAppWithHelper(t *testing.T) {
 
 func TestResolveExeAppNeverUI(t *testing.T) {
 	root := t.TempDir()
-	app, _, daemon := makeAppWithHelper(t, root, "grantd.app")
-	ui := filepath.Join(app, "Contents", "MacOS", "grantd-app")
+	app, _, daemon := makeAppWithHelper(t, root, "grantpin.app")
+	ui := filepath.Join(app, "Contents", "MacOS", "grantpin-app")
 
 	// the UI executable itself is refused, with a pointer to the right path
 	if _, err := resolveExe(ui); err == nil || !strings.Contains(err.Error(), "menu-bar app") || !strings.Contains(err.Error(), daemon) {
 		t.Errorf("UI executable path: %v", err)
 	}
 	// an outer app whose helper is missing is refused, not run as the daemon
-	bare, _ := makeBundle(t, root, "bare.app", "grantd-app", "grantd-app")
+	bare, _ := makeBundle(t, root, "bare.app", "grantpin-app", "grantpin-app")
 	if _, err := resolveExe(bare); err == nil || !strings.Contains(err.Error(), "refusing to run the UI") {
 		t.Errorf("outer app without helper: %v", err)
 	}
 	// a helper whose Info.plist names the UI executable is refused
 	app2, helper2, _ := makeAppWithHelper(t, root, "other.app")
-	if err := os.WriteFile(filepath.Join(helper2, "Contents", "MacOS", "grantd-app"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(helper2, "Contents", "MacOS", "grantpin-app"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(helper2, "Contents", "Info.plist"), []byte(strings.Replace(bundleInfoPlist, "%s", "grantd-app", 1)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(helper2, "Contents", "Info.plist"), []byte(strings.Replace(bundleInfoPlist, "%s", "grantpin-app", 1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolveExe(app2); err == nil || !strings.Contains(err.Error(), "UI executable") {
@@ -253,7 +253,7 @@ func TestResolveExeAppHelperErrors(t *testing.T) {
 	root := t.TempDir()
 
 	// a helper whose CFBundleExecutable escapes the bundle
-	for _, bad := range []string{"../../../../../bin/sh", "sub/grantd", ".."} {
+	for _, bad := range []string{"../../../../../bin/sh", "sub/grantpin", ".."} {
 		app, helper, _ := makeAppWithHelper(t, root, "bad"+strings.NewReplacer("/", "_", ".", "_").Replace(bad)+".app")
 		if err := os.WriteFile(filepath.Join(helper, "Contents", "Info.plist"), []byte(strings.Replace(bundleInfoPlist, "%s", bad, 1)), 0o644); err != nil {
 			t.Fatal(err)
@@ -269,7 +269,7 @@ func TestResolveExeAppHelperErrors(t *testing.T) {
 	if err := os.RemoveAll(helper); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(outsideApp, "Contents", "Helpers", "grantd-daemon.app"), helper); err != nil {
+	if err := os.Symlink(filepath.Join(outsideApp, "Contents", "Helpers", "grantpin-daemon.app"), helper); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := resolveExe(app); err == nil || !strings.Contains(err.Error(), "outside the app bundle") {
@@ -293,7 +293,7 @@ func TestInstallFromAppWithHelperGoldenPlist(t *testing.T) {
 	for _, via := range []string{"outer", "helper", "inner"} {
 		f := &fakeRunner{results: map[string][]Result{"print": {{ExitCode: 113}}}}
 		l, _ := newTest(t, f)
-		app, helper, daemon := makeAppWithHelper(t, l.home, "grantd.app")
+		app, helper, daemon := makeAppWithHelper(t, l.home, "grantpin.app")
 		arg := map[string]string{"outer": app, "helper": helper, "inner": daemon}[via]
 		logs := filepath.Join(l.home, "logs")
 		if err := l.Install(context.Background(), Options{Exe: arg, Socket: "/run/g.sock", LogDir: logs, Path: "/opt/homebrew/bin:/usr/bin:/bin"}); err != nil {
@@ -303,11 +303,11 @@ func TestInstallFromAppWithHelperGoldenPlist(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := strings.NewReplacer("/opt/g &amp; co/grantd", daemon, "/logs/", logs+"/").Replace(wantPlist)
+		want := strings.NewReplacer("/opt/g &amp; co/grantpin", daemon, "/logs/", logs+"/").Replace(wantPlist)
 		if string(got) != want {
 			t.Errorf("%s: plist mismatch\n got: %s\nwant: %s", via, got, want)
 		}
-		if exe, _ := plistExe(got); exe != daemon || !strings.HasSuffix(exe, "/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd") {
+		if exe, _ := plistExe(got); exe != daemon || !strings.HasSuffix(exe, "/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin") {
 			t.Errorf("%s: ProgramArguments[0] = %q", via, exe)
 		}
 	}
@@ -316,7 +316,7 @@ func TestInstallFromAppWithHelperGoldenPlist(t *testing.T) {
 func TestInstallAppWithHelperRefusesTempDir(t *testing.T) {
 	f := &fakeRunner{}
 	l, _ := newTest(t, f)
-	app, _, _ := makeAppWithHelper(t, l.home, "grantd.app")
+	app, _, _ := makeAppWithHelper(t, l.home, "grantpin.app")
 	realHome, _ := filepath.EvalSymlinks(l.home)
 	l.tempRoots = []string{realHome}
 	err := l.Install(context.Background(), Options{Exe: app})
@@ -332,8 +332,8 @@ func TestInstallAppWithHelperRefusesTempDir(t *testing.T) {
 func TestInstallRefusesUIExecutable(t *testing.T) {
 	f := &fakeRunner{}
 	l, _ := newTest(t, f)
-	app, _, _ := makeAppWithHelper(t, l.home, "grantd.app")
-	err := l.Install(context.Background(), Options{Exe: filepath.Join(app, "Contents", "MacOS", "grantd-app")})
+	app, _, _ := makeAppWithHelper(t, l.home, "grantpin.app")
+	err := l.Install(context.Background(), Options{Exe: filepath.Join(app, "Contents", "MacOS", "grantpin-app")})
 	if err == nil || !strings.Contains(err.Error(), "menu-bar app") {
 		t.Fatalf("UI executable: %v", err)
 	}

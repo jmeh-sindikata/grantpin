@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
-	"github.com/jmeh-sindikata/grantd/internal/service"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/service"
 )
 
 type fakeMgr struct {
@@ -59,11 +59,11 @@ func runService(t *testing.T, m *fakeMgr, mkErr error, args ...string) (string, 
 
 func TestServiceInstallFlags(t *testing.T) {
 	m := &fakeMgr{st: service.Status{Label: "l", Installed: true, Loaded: true, Running: true, PID: 7, PlistPath: "/p", ExePath: "/e"}}
-	out, _, err := runService(t, m, nil, "install", "--exe", "/x/grantd", "--socket", "/s.sock", "--path", "/opt/homebrew/bin:/usr/bin", "--log-dir", "/logs")
+	out, _, err := runService(t, m, nil, "install", "--exe", "/x/grantpin", "--socket", "/s.sock", "--path", "/opt/homebrew/bin:/usr/bin", "--log-dir", "/logs")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.opts.Exe != "/x/grantd" || m.opts.Socket != "/s.sock" || m.opts.LogDir != "/logs" || m.opts.Path != "/opt/homebrew/bin:/usr/bin" {
+	if m.opts.Exe != "/x/grantpin" || m.opts.Socket != "/s.sock" || m.opts.LogDir != "/logs" || m.opts.Path != "/opt/homebrew/bin:/usr/bin" {
 		t.Errorf("opts = %+v", m.opts)
 	}
 	if !strings.Contains(out, "pid 7") || !strings.Contains(out, "installed") {
@@ -128,16 +128,16 @@ func TestServiceInstallRecordsNonDefaultSocket(t *testing.T) {
 	}
 
 	// Default socket: the plist stays minimal.
-	t.Setenv("GRANTD_SOCKET", "")
+	t.Setenv("GRANTPIN_SOCKET", "")
 	t.Setenv("XDG_RUNTIME_DIR", "")
 	m := &fakeMgr{st: service.Status{Label: "l", Installed: true}}
 	out, _, err := runService(t, m, nil, "install")
-	if err != nil || m.opts.Socket != "" || strings.Contains(out, "GRANTD_SOCKET") {
+	if err != nil || m.opts.Socket != "" || strings.Contains(out, "GRANTPIN_SOCKET") {
 		t.Errorf("default: socket=%q out=%q err=%v", m.opts.Socket, out, err)
 	}
 
-	// $GRANTD_SOCKET differing from the default is recorded and printed.
-	t.Setenv("GRANTD_SOCKET", "/tmp/gd.sock")
+	// $GRANTPIN_SOCKET differing from the default is recorded and printed.
+	t.Setenv("GRANTPIN_SOCKET", "/tmp/gd.sock")
 	m = &fakeMgr{st: service.Status{Label: "l", Installed: true}}
 	out, _, err = runService(t, m, nil, "install")
 	if err != nil || m.opts.Socket != "/tmp/gd.sock" || !strings.Contains(out, "/tmp/gd.sock") || !strings.Contains(out, platform) {
@@ -145,23 +145,23 @@ func TestServiceInstallRecordsNonDefaultSocket(t *testing.T) {
 	}
 
 	// $XDG_RUNTIME_DIR likewise.
-	t.Setenv("GRANTD_SOCKET", "")
+	t.Setenv("GRANTPIN_SOCKET", "")
 	t.Setenv("XDG_RUNTIME_DIR", "/run/user/1")
 	m = &fakeMgr{st: service.Status{Label: "l", Installed: true}}
-	if _, _, err = runService(t, m, nil, "install"); err != nil || m.opts.Socket != "/run/user/1/grantd.sock" {
+	if _, _, err = runService(t, m, nil, "install"); err != nil || m.opts.Socket != "/run/user/1/grantpin.sock" {
 		t.Errorf("xdg: socket=%q err=%v", m.opts.Socket, err)
 	}
 
 	// An env socket equal to the default is not recorded.
 	t.Setenv("XDG_RUNTIME_DIR", "")
-	t.Setenv("GRANTD_SOCKET", platform)
+	t.Setenv("GRANTPIN_SOCKET", platform)
 	m = &fakeMgr{st: service.Status{Label: "l", Installed: true}}
 	if _, _, err = runService(t, m, nil, "install"); err != nil || m.opts.Socket != "" {
 		t.Errorf("equal: socket=%q err=%v", m.opts.Socket, err)
 	}
 
 	// An explicit --socket wins and is not second-guessed.
-	t.Setenv("GRANTD_SOCKET", "/tmp/other.sock")
+	t.Setenv("GRANTPIN_SOCKET", "/tmp/other.sock")
 	m = &fakeMgr{st: service.Status{Label: "l", Installed: true}}
 	if _, _, err = runService(t, m, nil, "install", "--socket", "/s.sock"); err != nil || m.opts.Socket != "/s.sock" {
 		t.Errorf("flag: socket=%q err=%v", m.opts.Socket, err)

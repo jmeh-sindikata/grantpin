@@ -1,4 +1,4 @@
-//go:build grantd_dev
+//go:build grantpin_dev
 
 package dev
 
@@ -7,8 +7,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/jmeh-sindikata/grantd/internal/keystore"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/keystore"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 func TestSatisfiesKeyStore(t *testing.T) {
@@ -40,7 +40,7 @@ func TestSatisfiesKeyStore(t *testing.T) {
 
 func TestOpenAndEnabled(t *testing.T) {
 	if !Enabled {
-		t.Fatal("Enabled must be true under grantd_dev")
+		t.Fatal("Enabled must be true under grantpin_dev")
 	}
 	if ks, err := Open(); err != nil || ks == nil {
 		t.Fatalf("Open = %v, %v", ks, err)

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantpin/internal/keystore"
 )
 
 func TestSecErrorTransient(t *testing.T) {

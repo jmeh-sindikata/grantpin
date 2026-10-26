@@ -6,8 +6,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 func req() approve.ApprovalRequest {
@@ -311,7 +311,7 @@ func TestBuildReasonUnchangedForShowAndRelease(t *testing.T) {
 // depend on the untrusted caller string.
 func TestStandingTextClosingSentence(t *testing.T) {
 	const want = "\n\nOnly continue if you just asked for this yourself."
-	for _, caller := range []string{"claude-code", "grantd-app", "cli", ""} {
+	for _, caller := range []string{"claude-code", "grantpin-app", "cli", ""} {
 		r := standingReq()
 		r.Caller = caller
 		got := StandingText(r)
@@ -327,7 +327,7 @@ func TestStandingTextClosingSentence(t *testing.T) {
 func lowerReq() approve.ApprovalRequest {
 	return approve.ApprovalRequest{
 		Kind: approve.KindLowerTier, Caller: "claude-code",
-		Argv:    []string{"grantd", "update", "stripe/api_key"},
+		Argv:    []string{"grantpin", "update", "stripe/api_key"},
 		Secrets: []string{"stripe/api_key"}, Expanded: []string{"stripe/api_key"},
 		FromTier: presence.TierHardware, ToTier: presence.TierDialog,
 	}

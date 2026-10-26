@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantpin/internal/keystore"
 )
 
 // fakeDeleter records what it was asked to delete. No test in this package may
@@ -120,7 +120,7 @@ func TestKeystoreDeleteRefusesWhileTheDaemonRuns(t *testing.T) {
 	if !strings.Contains(errs, "daemon is running") || !strings.Contains(errs, "--force") {
 		t.Errorf("stderr = %q", errs)
 	}
-	// The default socket is found through GRANTD_SOCKET as well.
+	// The default socket is found through GRANTPIN_SOCKET as well.
 	if _, _, err := cli(t, "", "keystore", "delete", "--fallback", "--yes"); exitCodeOf(err) != 2 || f.fallback != 0 {
 		t.Errorf("default socket: code=%d deletions=%d", exitCodeOf(err), f.fallback)
 	}

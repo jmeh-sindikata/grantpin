@@ -1,4 +1,4 @@
-//go:build !grantd_dev && !(darwin && cgo)
+//go:build !grantpin_dev && !(darwin && cgo)
 
 package main
 
@@ -9,7 +9,7 @@ import (
 )
 
 func TestInitWithoutKeystoreBackend(t *testing.T) {
-	t.Setenv("GRANTD_HOME", t.TempDir())
+	t.Setenv("GRANTPIN_HOME", t.TempDir())
 	root := newRootCmd()
 	root.SetOut(&bytes.Buffer{})
 	root.SetErr(&bytes.Buffer{})

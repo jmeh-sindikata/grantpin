@@ -38,7 +38,7 @@ func (f *fakeRunner) Run(_ context.Context, args ...string) (Result, error) {
 func newTest(t *testing.T, r Runner) (*launchd, string) {
 	t.Helper()
 	home := t.TempDir()
-	exe := filepath.Join(home, "bin", "grantd")
+	exe := filepath.Join(home, "bin", "grantpin")
 	if err := os.MkdirAll(filepath.Dir(exe), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -54,10 +54,10 @@ const wantPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>dev.grantd.daemon</string>
+	<string>dev.grantpin.daemon</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/opt/g &amp; co/grantd</string>
+		<string>/opt/g &amp; co/grantpin</string>
 		<string>daemon</string>
 	</array>
 	<key>RunAtLoad</key>
@@ -75,15 +75,15 @@ const wantPlist = `<?xml version="1.0" encoding="UTF-8"?>
 	<string>/logs/daemon.out.log</string>
 	<key>StandardErrorPath</key>
 	<string>/logs/daemon.err.log</string>
-	<!-- PATH is recorded from the shell that ran "grantd service install" (or
+	<!-- PATH is recorded from the shell that ran "grantpin service install" (or
 	     taken from its path flag): launchd's own default lacks Homebrew and
-	     friends, and the commands "grantd run" starts inherit the daemon's
+	     friends, and the commands "grantpin run" starts inherit the daemon's
 	     environment by design. Nothing else from that shell is copied. -->
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>PATH</key>
 		<string>/opt/homebrew/bin:/usr/bin:/bin</string>
-		<key>GRANTD_SOCKET</key>
+		<key>GRANTPIN_SOCKET</key>
 		<string>/run/g.sock</string>
 	</dict>
 </dict>
@@ -91,7 +91,7 @@ const wantPlist = `<?xml version="1.0" encoding="UTF-8"?>
 `
 
 func TestPlistGolden(t *testing.T) {
-	got, err := renderPlist(plistSpec{Label: Label, Exe: "/opt/g & co/grantd", Socket: "/run/g.sock", Path: "/opt/homebrew/bin:/usr/bin:/bin", OutLog: "/logs/daemon.out.log", ErrLog: "/logs/daemon.err.log"})
+	got, err := renderPlist(plistSpec{Label: Label, Exe: "/opt/g & co/grantpin", Socket: "/run/g.sock", Path: "/opt/homebrew/bin:/usr/bin:/bin", OutLog: "/logs/daemon.out.log", ErrLog: "/logs/daemon.err.log"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,8 +107,8 @@ func TestPlistEnvironmentCombinations(t *testing.T) {
 	}{
 		{"", "", nil},
 		{"", "/usr/bin:/bin", map[string]any{"PATH": "/usr/bin:/bin"}},
-		{"/s.sock", "", map[string]any{"GRANTD_SOCKET": "/s.sock"}},
-		{"/s.sock", "/usr/bin", map[string]any{"PATH": "/usr/bin", "GRANTD_SOCKET": "/s.sock"}},
+		{"/s.sock", "", map[string]any{"GRANTPIN_SOCKET": "/s.sock"}},
+		{"/s.sock", "/usr/bin", map[string]any{"PATH": "/usr/bin", "GRANTPIN_SOCKET": "/s.sock"}},
 	} {
 		data, err := renderPlist(plistSpec{Label: Label, Exe: "/g", Socket: c.sock, Path: c.path, OutLog: "/o", ErrLog: "/e"})
 		if err != nil {
@@ -171,7 +171,7 @@ func TestInstallRecordsPathOnlyFromOptionOrShell(t *testing.T) {
 
 func TestPlistRoundTrip(t *testing.T) {
 	for _, sock := range []string{"", "/run/g.sock"} {
-		data, _ := renderPlist(plistSpec{Label: Label, Exe: "/opt/g & co/grantd", Socket: sock, OutLog: "/o", ErrLog: "/e"})
+		data, _ := renderPlist(plistSpec{Label: Label, Exe: "/opt/g & co/grantpin", Socket: sock, OutLog: "/o", ErrLog: "/e"})
 		m, err := parsePlist(data)
 		if err != nil {
 			t.Fatal(err)
@@ -179,7 +179,7 @@ func TestPlistRoundTrip(t *testing.T) {
 		if m["Label"] != Label || m["RunAtLoad"] != true || m["ProcessType"] != "Background" || m["LimitLoadToSessionType"] != "Aqua" {
 			t.Errorf("bad scalars: %v", m)
 		}
-		if !reflect.DeepEqual(m["ProgramArguments"], []any{"/opt/g & co/grantd", "daemon"}) {
+		if !reflect.DeepEqual(m["ProgramArguments"], []any{"/opt/g & co/grantpin", "daemon"}) {
 			t.Errorf("args: %v", m["ProgramArguments"])
 		}
 		if !reflect.DeepEqual(m["KeepAlive"], map[string]any{"SuccessfulExit": false}) {
@@ -189,10 +189,10 @@ func TestPlistRoundTrip(t *testing.T) {
 		if sock == "" && has {
 			t.Errorf("env present without socket: %v", env)
 		}
-		if sock != "" && !reflect.DeepEqual(env, map[string]any{"GRANTD_SOCKET": sock}) {
+		if sock != "" && !reflect.DeepEqual(env, map[string]any{"GRANTPIN_SOCKET": sock}) {
 			t.Errorf("env: %v", env)
 		}
-		if exe, err := plistExe(data); err != nil || exe != "/opt/g & co/grantd" {
+		if exe, err := plistExe(data); err != nil || exe != "/opt/g & co/grantpin" {
 			t.Errorf("plistExe = %q, %v", exe, err)
 		}
 	}
@@ -227,7 +227,7 @@ func TestInstallSequenceFresh(t *testing.T) {
 	if err := l.Install(context.Background(), Options{Exe: exe, Socket: "/run/g.sock", LogDir: logs}); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"print gui/501/dev.grantd.daemon", "bootstrap gui/501 " + l.plistPath()}
+	want := []string{"print gui/501/dev.grantpin.daemon", "bootstrap gui/501 " + l.plistPath()}
 	if !reflect.DeepEqual(f.calls, want) {
 		t.Fatalf("calls = %q, want %q", f.calls, want)
 	}
@@ -261,7 +261,7 @@ func TestInstallIdempotentWhenLoaded(t *testing.T) {
 		t.Fatal(err)
 	}
 	bp := "bootstrap gui/501 " + l.plistPath()
-	want := []string{"print gui/501/dev.grantd.daemon", "bootout gui/501/dev.grantd.daemon", bp, bp}
+	want := []string{"print gui/501/dev.grantpin.daemon", "bootout gui/501/dev.grantpin.daemon", bp, bp}
 	if !reflect.DeepEqual(f.calls, want) {
 		t.Fatalf("calls = %q, want %q", f.calls, want)
 	}
@@ -278,7 +278,7 @@ func TestInstallErrors(t *testing.T) {
 	if err := l.Install(ctx, Options{Exe: exe}); err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("bootstrap failure: %v", err)
 	}
-	if err := l.Install(ctx, Options{Exe: "relative/grantd"}); err == nil {
+	if err := l.Install(ctx, Options{Exe: "relative/grantpin"}); err == nil {
 		t.Error("relative exe accepted")
 	}
 	if err := l.Install(ctx, Options{Exe: filepath.Join(l.home, "nope")}); err == nil {
@@ -358,7 +358,7 @@ func TestUninstall(t *testing.T) {
 	if err := l.Uninstall(ctx); err != nil {
 		t.Fatalf("absent uninstall: %v", err)
 	}
-	if !reflect.DeepEqual(f.calls, []string{"print gui/501/dev.grantd.daemon"}) {
+	if !reflect.DeepEqual(f.calls, []string{"print gui/501/dev.grantpin.daemon"}) {
 		t.Errorf("calls: %q", f.calls)
 	}
 	// present and loaded
@@ -369,7 +369,7 @@ func TestUninstall(t *testing.T) {
 	if err := l2.Uninstall(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(g.calls, []string{"print gui/501/dev.grantd.daemon", "bootout gui/501/dev.grantd.daemon"}) {
+	if !reflect.DeepEqual(g.calls, []string{"print gui/501/dev.grantpin.daemon", "bootout gui/501/dev.grantpin.daemon"}) {
 		t.Errorf("calls: %q", g.calls)
 	}
 	if _, err := os.Stat(l2.plistPath()); !os.IsNotExist(err) {
@@ -431,7 +431,7 @@ const printRunning = `gui/501/com.apple.Finder = {
 }
 `
 
-const printIdle = `gui/501/dev.grantd.daemon = {
+const printIdle = `gui/501/dev.grantpin.daemon = {
 	active count = 0
 	state = not running
 	runs = 3
@@ -503,7 +503,7 @@ func TestPathsAndNew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasSuffix(l.plistPath(), "/Library/LaunchAgents/dev.grantd.daemon.plist") || !strings.HasSuffix(l.defaultLogDir(), "/Library/Logs/grantd") {
+	if !strings.HasSuffix(l.plistPath(), "/Library/LaunchAgents/dev.grantpin.daemon.plist") || !strings.HasSuffix(l.defaultLogDir(), "/Library/Logs/grantpin") {
 		t.Errorf("paths: %s %s", l.plistPath(), l.defaultLogDir())
 	}
 	m, err := New()

@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
 )
 
 type fakeExec struct {
@@ -42,7 +42,7 @@ func TestDialogArgsShape(t *testing.T) {
 	if label != "Allow for 1h" || args[4] != "Deny" || args[5] != "Allow once" {
 		t.Errorf("labels %q", args[4:])
 	}
-	if strings.HasPrefix(text, "-") || !strings.HasPrefix(text, "An agent is asking grantd") {
+	if strings.HasPrefix(text, "-") || !strings.HasPrefix(text, "An agent is asking grantpin") {
 		t.Errorf("text must start with trusted words: %q", text)
 	}
 	if !strings.Contains(text, "do shell script") {

@@ -1,4 +1,4 @@
-//go:build grantd_dev
+//go:build grantpin_dev
 
 package main
 
@@ -12,7 +12,7 @@ import (
 
 func TestInitCreatesVault(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("GRANTD_HOME", filepath.Join(home, "g"))
+	t.Setenv("GRANTPIN_HOME", filepath.Join(home, "g"))
 	run := func() (string, error) {
 		var out bytes.Buffer
 		root := newRootCmd()
