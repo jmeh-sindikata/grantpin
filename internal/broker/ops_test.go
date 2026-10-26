@@ -844,13 +844,15 @@ func TestSetAndUpdateRejectTerminalControlsInMetadata(t *testing.T) {
 				return &proto.Request{Op: op, Name: "aws/key", Value: "v-0123456789-ABCD", Tags: []string{s}}
 			},
 		} {
+			if field == "notes" && (s == "a\nb" || s == "a\tb") {
+				continue // notes may hold line feeds and tabs (see the test below)
+			}
 			set := mk(proto.OpSet)
 			set.Overwrite = true
 			wantFail(t, e.do(set), proto.ErrBadRequest, proto.ReasonBadRequest)
 			upd := mk(proto.OpUpdate)
 			upd.Value = ""
 			wantFail(t, e.do(upd), proto.ErrBadRequest, proto.ReasonBadRequest)
-			_ = field
 		}
 	}
 	// Nothing changed and nothing was audited.
@@ -869,5 +871,37 @@ func TestSetAndUpdateRejectTerminalControlsInMetadata(t *testing.T) {
 	// Ordinary text, including non-ASCII and characters next to the banned ranges, is fine.
 	for _, s := range []string{"https://例え.jp/path?q=1&r=%1B", "naïve — café ✓ 😀", "a\u202fb\u2065c\u206ad"} {
 		wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "aws/key", URL: s, Notes: s}))
+	}
+}
+
+// notes is a multi-line field in the app: line feeds and tabs are allowed there
+// (and only there); every other control character is still refused.
+func TestNotesMayHoldLineBreaks(t *testing.T) {
+	e := newEnv(t)
+	multi := "first line\n\tindented second line\n\nlast line \u00e9\u20ac"
+	wantOK(t, e.do(&proto.Request{Op: proto.OpSet, Name: "aws/key", Value: "AKIA-0123456789-WXYZ", Notes: multi}))
+	if got := listInfo(t, e, "aws/key").Notes; got != multi {
+		t.Errorf("notes = %q", got)
+	}
+	multi2 := "a\nb\tc"
+	wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "aws/key", Notes: multi2}))
+	if got := listInfo(t, e, "aws/key").Notes; got != multi2 {
+		t.Errorf("notes after update = %q", got)
+	}
+	// The strict rule still holds for url and tags, and for other controls and CR in notes.
+	for _, r := range []*proto.Request{
+		{Op: proto.OpUpdate, Name: "aws/key", URL: "https://x\n/y"},
+		{Op: proto.OpUpdate, Name: "aws/key", URL: "https://x\t/y"},
+		{Op: proto.OpUpdate, Name: "aws/key", Tags: []string{"a\nb"}},
+		{Op: proto.OpUpdate, Name: "aws/key", Notes: "a\r\nb"},
+		{Op: proto.OpUpdate, Name: "aws/key", Notes: "a\x1b[2Jb"},
+		{Op: proto.OpUpdate, Name: "aws/key", Notes: "a\u009bb"},
+		{Op: proto.OpUpdate, Name: "aws/key", Notes: "a\x7fb"},
+		{Op: proto.OpUpdate, Name: "aws/key", Notes: "line\n\u202eb"},
+	} {
+		wantFail(t, e.do(r), proto.ErrBadRequest, proto.ReasonBadRequest)
+	}
+	if got := listInfo(t, e, "aws/key").Notes; got != multi2 {
+		t.Errorf("notes changed by a refused update: %q", got)
 	}
 }

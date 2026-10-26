@@ -36,9 +36,16 @@ func nameFail(w daemon.ResponseWriter, name string) bool {
 // disguise text when it is printed: a C0 control (including tab and newline),
 // DEL, a C1 control (CSI is 0x9B on some terminals), or a Unicode bidirectional
 // override or isolate (U+202A to U+202E, U+2066 to U+2069).
-func unsafeText(s string) bool {
+func unsafeText(s string) bool { return unsafeRunes(s, false) }
+
+// unsafeNotes is unsafeText for notes, which may be several lines: a line feed
+// and a tab are allowed (a carriage return is not).
+func unsafeNotes(s string) bool { return unsafeRunes(s, true) }
+
+func unsafeRunes(s string, allowLayout bool) bool {
 	for _, r := range s {
 		switch {
+		case allowLayout && (r == '\n' || r == '\t'):
 		case r < 0x20, r == 0x7f, r >= 0x80 && r < 0xa0:
 			return true
 		case r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
@@ -49,7 +56,8 @@ func unsafeText(s string) bool {
 }
 
 // metaTextFail rejects a set or update whose url, notes or tags contain
-// characters that unsafeText names. They are free-form metadata stored in
+// characters that unsafeText names (notes: unsafeNotes, which lets line feeds
+// and tabs through). They are free-form metadata stored in
 // the clear and shown by `grantd list`, the app and MCP clients, so an agent
 // that can send them must not be able to put escape sequences in front of the
 // human. It reports whether it answered.
@@ -58,7 +66,7 @@ func metaTextFail(w daemon.ResponseWriter, req *proto.Request) bool {
 	switch {
 	case unsafeText(req.URL):
 		field = "url"
-	case unsafeText(req.Notes):
+	case unsafeNotes(req.Notes):
 		field = "notes"
 	case slices.ContainsFunc(req.Tags, unsafeText):
 		field = "tags"
