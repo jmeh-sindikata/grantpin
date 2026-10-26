@@ -236,6 +236,7 @@ dmg: ## Build, sign, notarize and staple dist/grantd-$(VERSION).dmg from the sta
 	mkdir -p $(DMG_STAGE)
 	ditto $(APP) $(DMG_STAGE)/grantd.app
 	ln -s /Applications $(DMG_STAGE)/Applications
+	cp build/release/dmg/DS_Store $(DMG_STAGE)/.DS_Store
 	hdiutil create -volname grantd -srcfolder $(DMG_STAGE) -fs HFS+ -format UDZO -ov $(DMG)
 	rm -rf $(DMG_STAGE)
 	codesign --force --sign "$(RELEASE_IDENTITY)" --timestamp $(DMG)
