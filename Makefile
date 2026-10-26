@@ -41,7 +41,20 @@ CODESIGN_TIMESTAMP ?= --timestamp
 # machine's macOS as its minimum (minos) and will not start on older releases.
 HELPER_ENV     := CGO_ENABLED=1 CGO_CFLAGS=-mmacosx-version-min=$(MIN_MACOS) CGO_LDFLAGS=-mmacosx-version-min=$(MIN_MACOS)
 
-.PHONY: build helper app icons bundle sign-bundle app-test ci-app app-dev-daemon dist-src sign test vet lint cover dev-test tools-check ci clean
+# Release (Developer ID, notarized DMG; docs/RELEASE.md). RELEASE_IDENTITY must
+# be a Developer ID Application certificate in the keychain; PROFILE (the
+# Developer ID provisioning profile) has no default on purpose, pass it.
+# NOTARY_PROFILE is the keychain profile made once with
+# `xcrun notarytool store-credentials`. A release is never built from a dirty
+# tree (ALLOW_DIRTY=1 overrides, for a dry run only).
+RELEASE_IDENTITY ?= Developer ID Application: S.A.P. SH.P.K. (MT2QHQX6PS)
+RELEASE_TEAM_ID  ?= MT2QHQX6PS
+NOTARY_PROFILE   ?= grantd-notary
+NOTARIZE_ZIP     := dist/grantd-notarize.zip
+DMG              := dist/grantd-$(VERSION).dmg
+DMG_STAGE        := dist/dmg-stage
+
+.PHONY: build helper app icons bundle sign-bundle sign-release notarize dmg release release-check verify-release app-test ci-app app-dev-daemon dist-src sign test vet lint cover dev-test tools-check ci clean
 
 build: ## Build bin/grantd (production tags: no dev backends)
 	@echo "version: $(VERSION) ($(VERSION_SRC))"
@@ -89,6 +102,10 @@ bundle: app ## Assemble and check dist/grantd.app (unsigned; macOS; see docs/MAN
 	  v=$$(plutil -extract LSMinimumSystemVersion raw -o - $$p); \
 	  [ "$$v" = "$(MIN_MACOS)" ] || { echo "make bundle: $$p LSMinimumSystemVersion is '$$v', want $(MIN_MACOS)" >&2; exit 1; }; \
 	done
+	@for p in $(APP)/Contents/Info.plist $(HELPER_APP)/Contents/Info.plist; do \
+	  v=$$(plutil -extract CFBundleShortVersionString raw -o - $$p); b=$$(plutil -extract CFBundleVersion raw -o - $$p); \
+	  [ "$$v" = "$(VERSION)" ] && [ "$$b" = "$(BUILD_NUMBER)" ] || { echo "make bundle: $$p has version '$$v' build '$$b', want '$(VERSION)' '$(BUILD_NUMBER)'" >&2; exit 1; }; \
+	done
 	@minos=$$(otool -l $(HELPER_APP)/Contents/MacOS/grantd | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $$2; exit}'); \
 	[ "$$minos" = "$(MIN_MACOS)" ] || { echo "make bundle: helper binary minos is '$$minos', want $(MIN_MACOS)" >&2; exit 1; }
 	@echo "built $(APP) (unsigned; run make sign-bundle to sign it, see docs/MANUAL-TEST-MACOS.md 2c)"
@@ -122,6 +139,23 @@ sign-bundle: ## Sign dist/grantd.app inside-out: make sign-bundle IDENTITY="Deve
 	    build/bundle/grantd-app.entitlements > dist/grantd-app.entitlements
 	plutil -lint dist/grantd-app.entitlements
 	@# Inside out, no --deep: the helper first, then the outer app, whose seal records the signed helper.
+	@# Signing a .app also signs its main executable (the Go binary, grantd-app), so these two
+	@# calls cover all four Mach-O steps; build/release/verify-signing.sh fails if the tree ever
+	@# holds a third Mach-O.
+	@# Hardened runtime (--options runtime) is on for both with NO exception entitlements. Both
+	@# bundles share one entitlements file, and it holds only the two profile-backed keys:
+	@#  - com.apple.application-identifier, keychain-access-groups: the Secure Enclave key depends on
+	@#    them (docs/MANUAL-TEST-MACOS.md 2c). Not hardened-runtime exceptions.
+	@#  - allow-jit, allow-unsigned-executable-memory: not needed. Go emits no code at run time
+	@#    (static binary text, no MAP_JIT or PROT_EXEC mappings in cmd/ or internal/); SwiftUI/AppKit
+	@#    do not either.
+	@#  - disable-library-validation: not needed. otool -L shows only /System and /usr/lib libraries
+	@#    for both binaries, and neither dlopens anything (no dlopen in cmd/, internal/, app/).
+	@#  - allow-dyld-environment-variables: not needed. Nothing here relies on DYLD_*.
+	@#  - automation.apple-events: not needed. The daemon's approval dialog runs /usr/bin/osascript
+	@#    as a child (display dialog, no events sent to another app); the child is Apple's, and it
+	@#    does not inherit this process's hardened-runtime status.
+	@# Add one only when a verification shows the signed bundle failing without it, with a comment here.
 	codesign --force --options runtime $(CODESIGN_TIMESTAMP) --sign "$(IDENTITY)" --entitlements dist/grantd-app.entitlements $(HELPER_APP)
 	codesign --force --options runtime $(CODESIGN_TIMESTAMP) --sign "$(IDENTITY)" --entitlements dist/grantd-app.entitlements $(APP)
 	codesign --verify --deep --strict --verbose=2 $(APP)
@@ -131,6 +165,70 @@ sign-bundle: ## Sign dist/grantd.app inside-out: make sign-bundle IDENTITY="Deve
 	@echo "signed and verified: $(APP)"
 	@echo "check that the entitlements above show $(TEAM_ID).$(BUNDLE_ID) and $(TEAM_ID).$(KEYCHAIN_GROUP), then:"
 	@echo "  GRANTD_HOME=\$$(mktemp -d) $(HELPER_APP)/Contents/MacOS/grantd init     # must print: keystore tier: hardware"
+
+sign-release: ## Developer ID, hardened-runtime signing of dist/grantd.app: make sign-release PROFILE=/path/Developer_ID.provisionprofile
+	@[ -n "$(PROFILE)" ] || { echo "make sign-release: PROFILE is required" >&2; echo "usage: make sign-release PROFILE=/path/to/Developer_ID.provisionprofile   (after make bundle; see docs/RELEASE.md)" >&2; exit 2; }
+	@[ "$(CODESIGN_TIMESTAMP)" = "--timestamp" ] || { echo "make sign-release: CODESIGN_TIMESTAMP is '$(CODESIGN_TIMESTAMP)'; a release needs a secure timestamp (--timestamp)" >&2; exit 2; }
+	@security find-identity -v -p codesigning | grep -qF '"$(RELEASE_IDENTITY)"' || { echo "make sign-release: identity '$(RELEASE_IDENTITY)' not found in the keychain (security find-identity -v -p codesigning)" >&2; exit 2; }
+	build/release/check-profile.sh "$(PROFILE)" $(RELEASE_TEAM_ID) $(BUNDLE_ID) $(KEYCHAIN_GROUP)
+	$(MAKE) sign-bundle IDENTITY="$(RELEASE_IDENTITY)" TEAM_ID=$(RELEASE_TEAM_ID) PROFILE="$(PROFILE)"
+	build/release/verify-signing.sh $(APP) $(HELPER_APP) $(RELEASE_TEAM_ID)
+
+notarize: ## Notarize dist/grantd.app and staple the ticket (after sign-release): make notarize [NOTARY_PROFILE=grantd-notary]
+	@command -v xcrun >/dev/null || { echo "make notarize: xcrun not found (install Xcode)" >&2; exit 2; }
+	@codesign --verify --deep --strict $(APP) 2>/dev/null && codesign -dv $(APP) 2>&1 | grep -q 'runtime' || { echo "make notarize: $(APP) is missing or not signed with the hardened runtime; run make sign-release first" >&2; exit 2; }
+	rm -f $(NOTARIZE_ZIP)
+	ditto -c -k --keepParent $(APP) $(NOTARIZE_ZIP)
+	build/release/notarize.sh $(NOTARIZE_ZIP) $(NOTARY_PROFILE)
+	xcrun stapler staple $(APP)
+	xcrun stapler validate $(APP)
+	@# stapling adds the ticket outside the code seal; confirm the signature still verifies
+	codesign --verify --deep --strict --verbose=2 $(APP)
+	rm -f $(NOTARIZE_ZIP)
+
+dmg: ## Build, sign, notarize and staple dist/grantd-$(VERSION).dmg from the stapled app (after notarize)
+	@case "$(VERSION)" in *[!A-Za-z0-9._-]*) echo "make dmg: VERSION '$(VERSION)' has characters that do not belong in a file name" >&2; exit 2;; esac
+	@case "$(VERSION)" in *-dirty) [ "$(ALLOW_DIRTY)" = 1 ] || { echo "make dmg: VERSION '$(VERSION)' is a dirty tree; commit first (ALLOW_DIRTY=1 for a dry run)" >&2; exit 2; };; esac
+	@xcrun stapler validate $(APP) >/dev/null 2>&1 || { echo "make dmg: $(APP) is not notarized and stapled; run make notarize first" >&2; exit 2; }
+	rm -rf $(DMG_STAGE) $(DMG)
+	mkdir -p $(DMG_STAGE)
+	ditto $(APP) $(DMG_STAGE)/grantd.app
+	ln -s /Applications $(DMG_STAGE)/Applications
+	hdiutil create -volname grantd -srcfolder $(DMG_STAGE) -fs HFS+ -format UDZO -ov $(DMG)
+	rm -rf $(DMG_STAGE)
+	codesign --force --sign "$(RELEASE_IDENTITY)" --timestamp $(DMG)
+	codesign --verify --verbose=2 $(DMG)
+	@# The DMG is notarized too (after the app, so it contains the stapled app) so that it can be
+	@# stapled and opens without a network round trip.
+	build/release/notarize.sh $(DMG) $(NOTARY_PROFILE)
+	xcrun stapler staple $(DMG)
+	xcrun stapler validate $(DMG)
+	@echo "built $(DMG)"
+
+release-check: ## Preflight for make release: PROFILE, identity, version, notary credentials (no submission)
+	@[ -n "$(PROFILE)" ] || { echo "make release: PROFILE is required" >&2; echo "usage: make release PROFILE=/path/to/Developer_ID.provisionprofile [NOTARY_PROFILE=grantd-notary]   (see docs/RELEASE.md)" >&2; exit 2; }
+	@[ -f "$(PROFILE)" ] || { echo "make release: PROFILE '$(PROFILE)' is not a file" >&2; exit 2; }
+	@security find-identity -v -p codesigning | grep -qF '"$(RELEASE_IDENTITY)"' || { echo "make release: identity '$(RELEASE_IDENTITY)' not found in the keychain" >&2; exit 2; }
+	@case "$(VERSION)" in *-dirty) [ "$(ALLOW_DIRTY)" = 1 ] || { echo "make release: VERSION '$(VERSION)' is a dirty tree; commit first (ALLOW_DIRTY=1 for a dry run)" >&2; exit 2; };; esac
+	build/release/check-profile.sh "$(PROFILE)" $(RELEASE_TEAM_ID) $(BUNDLE_ID) $(KEYCHAIN_GROUP)
+	@# a read-only call that fails fast when the stored credentials are missing or wrong
+	@xcrun notarytool history --keychain-profile $(NOTARY_PROFILE) >/dev/null || { echo "make release: no working notarytool credentials in keychain profile '$(NOTARY_PROFILE)'; see docs/RELEASE.md (one-time notary setup)" >&2; exit 2; }
+
+verify-release: ## Gatekeeper assessment of dist/grantd.app and the DMG, the final check of make release
+	xcrun stapler validate $(APP)
+	xcrun stapler validate $(DMG)
+	spctl -a -vv -t install $(APP)
+	spctl -a -vv -t exec $(APP)
+	spctl -a -vv -t open --context context:primary-signature $(DMG)
+	@echo "release verified: $(DMG)"
+
+release: ## Notarized, stapled DMG: make release PROFILE=/path/Developer_ID.provisionprofile (bundle, sign-release, notarize, dmg, verify)
+	$(MAKE) release-check
+	$(MAKE) bundle
+	$(MAKE) sign-release
+	$(MAKE) notarize
+	$(MAKE) dmg
+	$(MAKE) verify-release
 
 app-test: ## Swift unit tests for app/GrantdKit against the Go dev daemon (INSECURE test backends; no signing needed)
 	$(GO) build -tags $(DEV_TAG) -o build/grantd-dev ./cmd/grantd
