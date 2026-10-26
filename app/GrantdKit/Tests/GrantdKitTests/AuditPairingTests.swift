@@ -135,6 +135,28 @@ final class AuditPairingTests: XCTestCase {
         XCTAssertEqual(ev[0].summary, "Error: curl x (vault is locked)")
     }
 
+    func testRefusedLowerTierUpdateIsNotAChange() {
+        // A lower min_tier update the human refused or that failed carries the
+        // "update: lower min_tier" reason but nothing changed.
+        let denied = AuditEntry(id: "1", ts: at(0), argv: ["grantd", "update", "API_KEY"], secrets: ["API_KEY"],
+                                decision: "denied_user", reason: "update: lower min_tier")
+        let err = AuditEntry(id: "2", ts: at(1), argv: ["grantd", "update", "API_KEY"], secrets: ["API_KEY"],
+                             decision: "error", reason: "update: lower min_tier: authentication failed")
+        let allowed = AuditEntry(id: "3", ts: at(2), argv: ["grantd", "update", "API_KEY"], secrets: ["API_KEY"],
+                                 decision: "allowed_once", reason: "update: lower min_tier")
+        let ev = pair([denied, err, allowed])
+        XCTAssertEqual(ev[2].kind, .refused)
+        XCTAssertEqual(ev[2].title, "You said no")
+        XCTAssertEqual(ev[2].reason, "update: lower min_tier")
+        XCTAssertEqual(ev[1].kind, .refused)
+        XCTAssertEqual(ev[1].title, "Error")
+        XCTAssertEqual(ev[1].summary, "Error: grantd update API_KEY (update: lower min_tier: authentication failed)")
+        // The allowed one is still a change.
+        XCTAssertEqual(ev[0].kind, .change)
+        XCTAssertEqual(ev[0].title, "Secret details changed")
+        XCTAssertEqual(ev[0].command, "API_KEY")
+    }
+
     func testStandingGrantCreated() {
         let row = AuditEntry(id: "1", ts: at(0), argv: ["php"], secrets: ["K"], decision: "allowed_new_grant", reason: "standing")
         XCTAssertEqual(pair([row])[0].kind, .standingGrant)

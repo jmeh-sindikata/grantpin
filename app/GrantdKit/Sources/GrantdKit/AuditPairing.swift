@@ -150,7 +150,9 @@ public enum AuditPairing {
     }
 
     private static func isLifecycle(_ e: AuditEntry) -> Bool {
-        (e.decision == "allowed_once" && ["set", "delete", "show"].contains(e.reason)) || e.reason.hasPrefix("update")
+        // Only a row the daemon allowed is a change. A denied or failed lower-protection
+        // update has reason "update: lower min_tier..." too, and stays a refusal (with its reason).
+        e.decision == "allowed_once" && (["set", "delete", "show"].contains(e.reason) || e.reason.hasPrefix("update"))
     }
 
     /// A row that stands alone (or a released row that is still open).
