@@ -7,8 +7,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"os"
 	"testing"
+
+	"grantd/internal/keystore"
 )
 
 // Everything here touches the real Secure Enclave / Keychain. It is skipped
@@ -112,6 +115,36 @@ func TestManualFallbackRoundTrip(t *testing.T) {
 	bad[len(bad)-1] ^= 1
 	if _, err := s.Unwrap(ctx, bad); err == nil {
 		t.Fatal("tampered blob accepted")
+	}
+}
+
+// The Deleter methods remove a throwaway key and report ErrNoKeyMaterial the
+// second time. (Unique names: the real vault key is never touched.)
+func TestManualDeleteKeyMaterial(t *testing.T) {
+	manual(t)
+	ctx := context.Background()
+	s := openTemp(t, true)
+	if err := s.DeleteFallbackKEK(ctx); !errors.Is(err, keystore.ErrNoKeyMaterial) {
+		t.Fatalf("delete with no fallback item: %v", err)
+	}
+	if _, err := s.kcWrapForTest(bytes.Repeat([]byte{1}, 32)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteFallbackKEK(ctx); err != nil {
+		t.Fatalf("delete fallback: %v", err)
+	}
+	if err := s.DeleteFallbackKEK(ctx); !errors.Is(err, keystore.ErrNoKeyMaterial) {
+		t.Fatalf("second delete fallback: %v", err)
+	}
+
+	if _, err := s.Wrap(ctx, bytes.Repeat([]byte{2}, 32)); err != nil {
+		t.Skipf("no usable Secure Enclave here: %v", err)
+	}
+	if err := s.DeleteSecureEnclaveKey(ctx); err != nil {
+		t.Fatalf("delete Secure Enclave key: %v", err)
+	}
+	if err := s.DeleteSecureEnclaveKey(ctx); !errors.Is(err, keystore.ErrNoKeyMaterial) {
+		t.Fatalf("second delete Secure Enclave key: %v", err)
 	}
 }
 

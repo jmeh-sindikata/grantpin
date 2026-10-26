@@ -42,3 +42,21 @@ func IsTransient(err error) bool {
 	var t Transient
 	return errors.As(err, &t) && t.Transient()
 }
+
+// ErrNoKeyMaterial is returned by Deleter methods when the key material they
+// were asked to delete does not exist.
+var ErrNoKeyMaterial = errors.New("keystore: no such key material")
+
+// Deleter is implemented by key stores that can destroy the key material that
+// protects a vault. After either call succeeds the vault that used that
+// material can never be opened again: this exists for uninstalling, behind an
+// explicit confirmation (`grantd keystore delete`). Each method returns
+// ErrNoKeyMaterial, and changes nothing, when there was nothing to delete.
+type Deleter interface {
+	// DeleteFallbackKEK removes the Keychain item that holds the key-encryption
+	// key of a vault protected without the Secure Enclave.
+	DeleteFallbackKEK(ctx context.Context) error
+	// DeleteSecureEnclaveKey removes the hardware-bound key (its reference item;
+	// the private key itself never left the chip).
+	DeleteSecureEnclaveKey(ctx context.Context) error
+}

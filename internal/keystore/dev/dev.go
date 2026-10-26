@@ -45,6 +45,17 @@ func New() *Store {
 	return &Store{aead: aead}
 }
 
+var _ keystore.Deleter = (*Store)(nil)
+
+// DeleteFallbackKEK and DeleteSecureEnclaveKey: the dev keystore keeps its key
+// in the source, so there is never any key material to delete and both report
+// keystore.ErrNoKeyMaterial. They let the `grantd keystore delete` plumbing be
+// tested without touching a Keychain.
+func (s *Store) DeleteFallbackKEK(context.Context) error { return keystore.ErrNoKeyMaterial }
+
+// DeleteSecureEnclaveKey: see DeleteFallbackKEK.
+func (s *Store) DeleteSecureEnclaveKey(context.Context) error { return keystore.ErrNoKeyMaterial }
+
 // Open is the build-agnostic constructor for backend selection code; under
 // grantd_dev it returns the dev store.
 func Open() (keystore.KeyStore, error) { return New(), nil }

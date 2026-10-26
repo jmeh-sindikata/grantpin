@@ -12,6 +12,7 @@ import "C"
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -371,6 +372,89 @@ func (s *Store) unwrapKeychain(payload, hdr []byte) ([]byte, error) {
 	return openKEK(kek, payload, hdr)
 }
 
+// ---- deletion ---------------------------------------------------------------
+
+var _ keystore.Deleter = (*Store)(nil)
+
+// DeleteFallbackKEK removes the fallback KEK item from the data-protection
+// keychain and from the login keychain (an unsigned build kept it there). It
+// returns keystore.ErrNoKeyMaterial if neither held one. A binary without the
+// keychain entitlement cannot reach the data-protection keychain; that is
+// treated as "not there", as everywhere else in this file.
+func (s *Store) DeleteFallbackKEK(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.deleteFallbackLocked()
+}
+
+func (s *Store) deleteFallbackLocked() error {
+	cs, ca := C.CString(s.svc), C.CString(s.acc)
+	defer C.free(unsafe.Pointer(cs))
+	defer C.free(unsafe.Pointer(ca))
+	deleted := false
+	var first error
+	for _, dp := range []C.int{1, 0} {
+		var e C.gd_err
+		switch C.gd_kc_delete(cs, ca, dp, &e) {
+		case 0:
+			deleted = true
+		case -1:
+			if int(e.code) != statusMissingEntitlement && first == nil {
+				first = cerr("delete fallback KEK", &e)
+			}
+		}
+	}
+	switch {
+	case first != nil:
+		return first
+	case !deleted:
+		return keystore.ErrNoKeyMaterial
+	}
+	if s.mode == ModeKeychain {
+		s.mode = 0
+	}
+	return nil
+}
+
+// DeleteSecureEnclaveKey removes the Secure Enclave key's reference item and
+// drops the cached key. It returns keystore.ErrNoKeyMaterial if there was none
+// (including when this process cannot use the Secure Enclave at all, so it
+// cannot have created one).
+func (s *Store) DeleteSecureEnclaveKey(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.deleteSELocked()
+}
+
+func (s *Store) deleteSELocked() error {
+	ctag := C.CString(s.tag)
+	defer C.free(unsafe.Pointer(ctag))
+	var e C.gd_err
+	switch C.gd_se_delete(ctag, &e) {
+	case 0:
+		if s.key != nil {
+			C.gd_release(s.key)
+			s.key = nil
+		}
+		if s.mode == ModeSecureEnclave {
+			s.mode = 0
+		}
+		return nil
+	case 1:
+		return keystore.ErrNoKeyMaterial
+	}
+	if seUnavailable(int(e.code)) {
+		return keystore.ErrNoKeyMaterial
+	}
+	return cerr("delete Secure Enclave key", &e)
+}
+
 // ---- test support ----------------------------------------------------------
 
 // deleteKeys removes the SE key and fallback item named by this store. It
@@ -384,21 +468,12 @@ func (s *Store) deleteKeys() error {
 		s.key = nil
 	}
 	s.mode = 0
-	ctag := C.CString(s.tag)
-	defer C.free(unsafe.Pointer(ctag))
-	cs, ca := C.CString(s.svc), C.CString(s.acc)
-	defer C.free(unsafe.Pointer(cs))
-	defer C.free(unsafe.Pointer(ca))
-	var first error
-	var e C.gd_err
-	if C.gd_se_delete(ctag, &e) == -1 && !seUnavailable(int(e.code)) {
-		first = cerr("delete Secure Enclave key", &e)
+	first := s.deleteSELocked()
+	if err := s.deleteFallbackLocked(); first == nil || errors.Is(first, keystore.ErrNoKeyMaterial) {
+		first = err
 	}
-	for _, dp := range []C.int{1, 0} {
-		var e2 C.gd_err
-		if C.gd_kc_delete(cs, ca, dp, &e2) == -1 && int(e2.code) != statusMissingEntitlement && first == nil {
-			first = cerr("delete fallback KEK", &e2)
-		}
+	if errors.Is(first, keystore.ErrNoKeyMaterial) {
+		return nil
 	}
 	return first
 }

@@ -717,6 +717,25 @@ Flags:
       --socket string   socket path (default: $GRANTD_SOCKET or the platform default)
 ```
 
+### `grantd keystore delete`
+
+Deletes the key material that protects the vault, for uninstalling. **Afterwards the vault can never be opened again and its secrets cannot be recovered.** `--fallback` removes the Keychain item that holds the key-encryption key of a vault created with `grantd init --keychain-fallback`; `--hardware` removes the Secure Enclave key. Give exactly one, and `--yes` (there is no prompt; without it the command refuses). It refuses as well while a daemon still answers on the socket, unless `--force`; stop the service first (`grantd service uninstall`). The macOS app's Uninstall calls exactly `grantd keystore delete --fallback --yes` or `--hardware --yes`, because `security delete-generic-password` cannot reach the data-protection keychain where the fallback item lives. Exit status: 0 deleted, 3 there was no such key material, 2 refused, 1 any other failure. On stdout it prints nothing; stderr carries the warning. On platforms without a key store of this kind it prints `unsupported` and exits 1.
+
+```
+Delete the vault's key material (the vault becomes permanently unreadable)
+
+Usage:
+  grantd keystore delete (--fallback | --hardware) --yes [flags]
+
+Flags:
+      --fallback        delete the Keychain fallback key-encryption key
+      --force           delete even if the daemon is running
+      --hardware        delete the Secure Enclave key
+  -h, --help            help for delete
+      --socket string   socket path (default: $GRANTD_SOCKET or the platform default)
+      --yes             confirm that the vault may become permanently unreadable (required)
+```
+
 ### Exit codes
 
 | Code | Meaning |
@@ -731,7 +750,7 @@ Flags:
 | 126, 127 | From `run`: the command could not be executed / was not found. |
 | other | `grantd run` exits with the command's own exit status. A command that itself exits 69, 77 or 78 is indistinguishable from the codes above; check stderr if it matters. |
 
-`grantd service status` exits 3 when the service is not installed.
+`grantd service status` exits 3 when the service is not installed. `grantd keystore delete` exits 3 when there was no such key material and 2 when it refused (no `--yes`, or the daemon is running).
 
 ## MCP server
 
