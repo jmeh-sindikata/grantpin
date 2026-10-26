@@ -197,7 +197,7 @@ Cancelling a request means closing the connection; the daemon cancels the approv
 
 **PATH for the daemon.** The daemon, and every command it runs for an agent, gets only the PATH recorded in the plist (README "Environment of the child process"). A Finder app's PATH is `/usr/bin:/bin:/usr/sbin:/sbin`, so `php`, `node` or `aws` from Homebrew would be "command not found" (exit 127) for a user who never opens a terminal. The app computes the PATH to record:
 
-1. Run `$SHELL -ilc 'printf "__GD_BEGIN__%s__GD_END__" "$PATH"'` and take the text between the markers (rc files may print other output) (5 s timeout, stdin `/dev/null`, `$SHELL` validated to be an absolute path to an existing executable listed in `/etc/shells`, else `/bin/zsh`), once per install action.
+1. Run `$SHELL -ilc 'printf "__GD_BEGIN__%s__GD_END__" "$PATH"'` and take the text between the markers (rc files may print other output) (5 s timeout, then SIGTERM and, 2 s later, SIGKILL, so a shell that hangs delays the install by at most about 7 s and the fallback PATH is used; stdin `/dev/null`, `$SHELL` validated to be an absolute path to an existing executable listed in `/etc/shells`, else `/bin/zsh`), once per install action.
 2. If that fails or is empty: `/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`.
 3. Pass it as `--path`. The service layer keeps only absolute entries and drops duplicates (`sanitizePath`).
 
@@ -211,7 +211,7 @@ The app spawns the helper only for `init`, `import`, `service install|uninstall|
 
 - Executable path: `Bundle.main.bundleURL/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd`, resolved once, symlinks rejected, verified to be inside the bundle.
 - Environment: `HOME`, `USER`, `LOGNAME`, `TMPDIR`, `LANG`, `PATH=/usr/bin:/bin` and, in development mode only, `GRANTD_SOCKET`. Nothing else (no inherited environment).
-- `standardInput`: `/dev/null`, except `import` (below). stdout/stderr captured, each capped at 64 KiB. Timeouts: `init` 30 s, `import` 120 s, `service install` 20 s, `service uninstall`/`status`/`--version` 10 s, `keystore delete` 20 s; then SIGTERM.
+- `standardInput`: `/dev/null`, except `import` (below). stdout/stderr captured, each capped at 64 KiB. Timeouts: `init` 30 s, `import` 120 s, `service install` 20 s, `service uninstall`/`status`/`--version` 10 s, `keystore delete` 20 s; then SIGTERM, and SIGKILL 2 s later if the process is still running (an interactive login shell ignores SIGTERM, and Start, Install and Repair must not hang on it). The timeout timer starts before the process does, and cancelling the task takes the same SIGTERM-then-SIGKILL path.
 - Never put a secret value in `arguments` or `environment`. (`import` gets the `.env` bytes through an open file descriptor, section 3.2.)
 - Exit codes the app interprets: `service status` 3 = not installed. `init` and `import` use 1 for every failure; the app shows stderr, it does not branch on it, with one exception: if `init` fails and stderr contains "Secure Enclave" (case-insensitive) the app offers the weaker-protection retry (3.6). Brittle by nature; a stable error code is backlog (G7).
 

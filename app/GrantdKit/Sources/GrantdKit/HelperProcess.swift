@@ -8,16 +8,22 @@ import Foundation
 /// a secret value in `arguments` or `environment`; a value that has to reach
 /// the helper travels as an open file descriptor on standard input.
 enum HelperProcess {
+    /// How long a terminated process may linger before SIGKILL.
+    static let killGrace: TimeInterval = 2
+
     /// Starts `executable`, waits for it and returns what it printed. A
     /// non-zero exit is a normal result, not a thrown error. Cancelling the
-    /// task, or running past `timeout`, terminates the process.
+    /// task, or running past `timeout`, sends SIGTERM and, if the process is
+    /// still there `killGrace` seconds later, SIGKILL: an interactive shell
+    /// ignores SIGTERM, and the caller must not wait on it forever.
     ///
     /// - Parameter standardInput: the descriptor to use as stdin; nil is
     ///   `/dev/null`. The caller keeps ownership and closes it.
     /// - Throws: `GrantdError.io` if the process cannot be started.
     static func run(executable: URL, arguments: [String], environment: [String: String],
                     standardInput: FileHandle?, timeout: TimeInterval,
-                    outputCap: Int = ImportRunner.outputCap) async throws -> HelperOutput {
+                    outputCap: Int = ImportRunner.outputCap,
+                    killGrace: TimeInterval = HelperProcess.killGrace) async throws -> HelperOutput {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
@@ -31,7 +37,7 @@ enum HelperProcess {
         let outReader = PipeReader(out.fileHandleForReading, into: outBuf)
         let errReader = PipeReader(err.fileHandleForReading, into: errBuf)
 
-        let state = RunState()
+        let state = RunState(killGrace: killGrace)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<HelperOutput, Error>) in
                 process.terminationHandler = { p in
@@ -48,21 +54,25 @@ enum HelperProcess {
                         stderr: String(decoding: errBuf.data, as: UTF8.self),
                         timedOut: state.timedOut))
                 }
+                // The timer starts before the process does, so nothing that
+                // happens while launching can leave it unwatched.
+                let timer = DispatchSource.makeTimerSource(queue: .global())
+                timer.schedule(deadline: .now() + timeout)
+                timer.setEventHandler { state.timeOut() }
+                state.timer = timer
+                state.setProcess(process)
+                timer.resume()
                 do {
                     try process.run()
                 } catch {
+                    timer.cancel()
                     // The write ends are still ours; closing them ends the readers.
                     try? out.fileHandleForWriting.close()
                     try? err.fileHandleForWriting.close()
                     cont.resume(throwing: GrantdError.io("cannot start the helper"))
                     return
                 }
-                state.setProcess(process)
-                let timer = DispatchSource.makeTimerSource(queue: .global())
-                timer.schedule(deadline: .now() + timeout)
-                timer.setEventHandler { state.timeOut() }
-                state.timer = timer
-                timer.resume()
+                state.launched()
             }
         } onCancel: {
             state.cancel()
@@ -110,31 +120,54 @@ enum HelperProcess {
 
     final class RunState: @unchecked Sendable {
         private let lock = NSLock()
+        private let killGrace: TimeInterval
         private var process: Process?
-        private var cancelled = false
+        private var started = false
+        private var stopRequested = false
         private(set) var timedOut = false
         var timer: DispatchSourceTimer?
 
+        init(killGrace: TimeInterval) { self.killGrace = killGrace }
+
+        /// Remembers the process before it is run, so the timer can reach it.
         func setProcess(_ p: Process) {
             lock.lock()
             process = p
-            let stop = cancelled
             lock.unlock()
-            if stop, p.isRunning { p.terminate() }
+        }
+        /// The process is running now. A stop that was asked for while it was
+        /// launching (cancellation, a zero timeout) is carried out here.
+        func launched() {
+            lock.lock()
+            started = true
+            let stop = stopRequested
+            lock.unlock()
+            if stop { stopProcess() }
         }
         func cancel() {
             lock.lock()
-            cancelled = true
-            let p = process
+            stopRequested = true
             lock.unlock()
-            if let p, p.isRunning { p.terminate() }
+            stopProcess()
         }
         func timeOut() {
             lock.lock()
             timedOut = true
-            let p = process
+            stopRequested = true
             lock.unlock()
-            if let p, p.isRunning { p.terminate() }
+            stopProcess()
+        }
+
+        /// SIGTERM now; SIGKILL after the grace period if it is still running.
+        private func stopProcess() {
+            lock.lock()
+            let p = started ? process : nil
+            lock.unlock()
+            guard let p, p.isRunning else { return }
+            p.terminate()
+            DispatchQueue.global().asyncAfter(deadline: .now() + killGrace) {
+                if p.isRunning { kill(p.processIdentifier, SIGKILL) }
+            }
         }
     }
 }
