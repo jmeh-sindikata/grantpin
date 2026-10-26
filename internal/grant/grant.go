@@ -10,9 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bmatcuk/doublestar/v4"
-
 	"grantd/internal/approve"
+	"grantd/internal/vault"
 )
 
 const (
@@ -95,10 +94,6 @@ func newID() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-// isGlob reports whether s contains doublestar metacharacters. Secret names
-// ([A-Za-z0-9_/.-]+) never do.
-func isGlob(s string) bool { return strings.ContainsAny(s, `*?[]{}\`) }
-
 // expiredAt: a grant is expired at exactly its ExpiresAt instant.
 func (g Grant) expiredAt(now time.Time) bool { return !now.Before(g.ExpiresAt) }
 
@@ -121,28 +116,11 @@ func secretsCovered(entries, requested []string) bool {
 		return false
 	}
 	for _, s := range requested {
-		if s == "" || !secretCovered(entries, s) {
+		if !vault.Covered(entries, s) {
 			return false
 		}
 	}
 	return true
-}
-
-func secretCovered(entries []string, s string) bool {
-	if slices.Contains(entries, s) {
-		return true
-	}
-	if isGlob(s) {
-		return false // globs need a textual match
-	}
-	for _, e := range entries {
-		if isGlob(e) {
-			if ok, err := doublestar.Match(e, s); err == nil && ok {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func argvCovered(prefix, argv []string) bool {

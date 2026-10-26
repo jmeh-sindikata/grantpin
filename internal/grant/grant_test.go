@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -939,9 +938,6 @@ func TestNewIDFormat(t *testing.T) {
 	id, err := newID()
 	if err != nil || len(id) != 32 || strings.Trim(id, "0123456789abcdef") != "" {
 		t.Fatalf("%q %v", id, err)
-	}
-	if fmt.Sprint(isGlob("a/b"), isGlob("a/*")) != "false true" {
-		t.Fatal("isGlob")
 	}
 }
 

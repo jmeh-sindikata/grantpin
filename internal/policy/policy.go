@@ -15,6 +15,8 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 	"gopkg.in/yaml.v3"
+
+	"grantd/internal/vault"
 )
 
 // FileName is the per-repo policy file name.
@@ -305,10 +307,6 @@ func (p *Policy) Commands() [][]string {
 	return cloneCommands(p.commands)
 }
 
-// isGlob reports whether s contains doublestar metacharacters. Secret names
-// ([A-Za-z0-9_/.-]+) never do.
-func isGlob(s string) bool { return strings.ContainsAny(s, `*?[]{}\`) }
-
 // Check returns nil if every requested secret and argv are permitted.
 //
 // A requested literal name must match some policy glob (or equal a literal
@@ -335,22 +333,4 @@ func (p *Policy) Check(secrets []string, argv []string) error {
 	return &CommandNotAllowedError{Argv: slices.Clone(argv)}
 }
 
-func (p *Policy) secretAllowed(s string) bool {
-	if s == "" {
-		return false
-	}
-	if isGlob(s) {
-		return slices.Contains(p.secrets, s)
-	}
-	for _, g := range p.secrets {
-		if g == s {
-			return true
-		}
-		if isGlob(g) {
-			if ok, err := doublestar.Match(g, s); err == nil && ok {
-				return true
-			}
-		}
-	}
-	return false
-}
+func (p *Policy) secretAllowed(s string) bool { return vault.Covered(p.secrets, s) }

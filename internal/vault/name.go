@@ -2,6 +2,7 @@ package vault
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -64,6 +65,32 @@ func validateShape(s string) error {
 // IsPattern reports whether s contains glob metacharacters. Valid secret names
 // never do, so the split is unambiguous.
 func IsPattern(s string) bool { return strings.ContainsAny(s, `*?[]{}\`) }
+
+// Covered reports whether name is covered by entries, a list of secret names
+// and glob patterns (a grant's secrets, a policy's secrets): an entry equal to
+// name covers it, and so does a glob entry that matches it. A name that is
+// itself a glob is covered only by an identical entry (globs need a textual
+// match, so "aws/*" is never covered by "aws/**" or "*"). The empty name is
+// never covered.
+func Covered(entries []string, name string) bool {
+	if name == "" {
+		return false
+	}
+	if slices.Contains(entries, name) {
+		return true
+	}
+	if IsPattern(name) {
+		return false
+	}
+	for _, e := range entries {
+		if IsPattern(e) {
+			if ok, err := doublestar.Match(e, name); err == nil && ok {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // validatePattern checks a name or doublestar glob such as "aws/*".
 func validatePattern(p string) error {
