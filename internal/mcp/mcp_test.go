@@ -556,7 +556,7 @@ func TestAutoStartFailureModes(t *testing.T) {
 		"nil starter": {func(*atomic.Int32) Starter { return nil }, 0},
 		"starter error": {func(n *atomic.Int32) Starter {
 			return func(context.Context) error { n.Add(1); return errors.New("spawn failed") }
-		}, 1},
+		}, 2}, // a synchronous failure spawned nothing: the second call retries at once
 		"never comes up": {func(n *atomic.Int32) Starter {
 			return func(context.Context) error { n.Add(1); return nil }
 		}, 1}, // second call is within the cooldown: no second attempt
@@ -630,5 +630,32 @@ func TestDaemonEnvAllowList(t *testing.T) {
 	got := daemonEnv(func(k string) string { return env[k] })
 	if len(got) != 2 || got[0] != "HOME=/h" || got[1] != "PATH=/bin" {
 		t.Errorf("env = %v", got)
+	}
+}
+
+func TestStarterErrorDoesNotStartCooldown(t *testing.T) {
+	f := newFake(t) // never listens until the second attempt succeeds
+	var n atomic.Int32
+	s, err := New(Config{SocketPath: f.path, StartWait: 2 * time.Second, Starter: func(context.Context) error {
+		if n.Add(1) == 1 {
+			return errors.New("spawn failed")
+		}
+		f.listen()
+		return nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ensureDaemon(context.Background()); err == nil {
+		t.Fatal("first attempt should fail")
+	}
+	if !s.lastStartAt.IsZero() {
+		t.Error("a failed Starter recorded lastStartAt")
+	}
+	if err := s.ensureDaemon(context.Background()); err != nil {
+		t.Fatalf("immediate retry: %v", err)
+	}
+	if n.Load() != 2 {
+		t.Errorf("starter invoked %d times, want 2", n.Load())
 	}
 }

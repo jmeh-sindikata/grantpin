@@ -350,7 +350,8 @@ func (s *Server) do(ctx context.Context, req *sdk.CallToolRequest, pr *proto.Req
 
 // ensureDaemon tries to start the daemon via cfg.Starter and waits for the
 // socket. Concurrent callers share one attempt, and a failed attempt is not
-// repeated for startCooldown.
+// repeated for startCooldown. A Starter that fails synchronously starts no
+// cooldown.
 func (s *Server) ensureDaemon(ctx context.Context) error {
 	if s.cfg.Starter == nil {
 		return client.ErrNotRunning
@@ -364,11 +365,14 @@ func (s *Server) ensureDaemon(ctx context.Context) error {
 	if !s.lastStartAt.IsZero() && time.Since(s.lastStartAt) < startCooldown {
 		return client.ErrNotRunning
 	}
-	s.lastStartAt = time.Now()
 	s.log.Info("starting daemon")
 	if err := s.cfg.Starter(ctx); err != nil {
+		// Nothing was spawned, so the next call may try again at once.
 		return fmt.Errorf("start daemon: %w", err)
 	}
+	// Only a spawned daemon starts the cooldown; it keeps us from spawning
+	// another one while the first is still coming up or has failed to.
+	s.lastStartAt = time.Now()
 	deadline := time.Now().Add(s.cfg.StartWait)
 	for {
 		if s.reachable(ctx) {
