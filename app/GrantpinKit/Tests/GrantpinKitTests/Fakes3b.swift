@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 /// An in-memory daemon for the Grants window and the standing-grant form.
 final class FakeGrants: GrantsService, @unchecked Sendable {
@@ -28,7 +28,7 @@ final class FakeGrants: GrantsService, @unchecked Sendable {
         if let e = lock.withLock({ revokeFailure }) { throw e }
         try lock.withLock {
             guard grants.contains(where: { $0.id == id }) else {
-                throw GrantdError.daemon(category: .notFound, reason: .grantNotFound, message: "")
+                throw GrantpinError.daemon(category: .notFound, reason: .grantNotFound, message: "")
             }
             grants.removeAll { $0.id == id }
         }
@@ -103,7 +103,7 @@ final class FakeActivity: ActivityService, @unchecked Sendable {
 final class FakeServiceControl: ServiceControl, @unchecked Sendable {
     private let lock = NSLock()
     var status: Result<ServiceStatus, ServiceStatus.ParseError> = .success(ServiceStatus(installed: true, loaded: true, running: true, pid: 100))
-    var installResult = ActionResult(outcome: .succeeded, summary: "grantd is running in the background.")
+    var installResult = ActionResult(outcome: .succeeded, summary: "grantpin is running in the background.")
     var uninstallResult = ActionResult(outcome: .succeeded, summary: "The background service was stopped and removed.")
     var initResults = [ActionResult(outcome: .succeeded, summary: "Vault created. Its key is in the Secure Enclave.")]
     var version: String? = "v1"
@@ -159,7 +159,7 @@ struct FakeKeychain: KeychainItemRemoval {
     func deleteKey(_ kind: VaultKeyKind) async -> KeyDeletion { calls.add(kind); return result }
 }
 
-func daemonError(_ category: ErrorCategory, _ reason: ErrorReason, _ message: String = "") -> GrantdError {
+func daemonError(_ category: ErrorCategory, _ reason: ErrorReason, _ message: String = "") -> GrantpinError {
     .daemon(category: category, reason: reason, message: message)
 }
 

@@ -1,9 +1,9 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 /// The screens' logic against the real Go dev daemon (INSECURE test backends,
-/// `GRANTD_DEV_APPROVE=allow`): the validators agree with the daemon, the
+/// `GRANTPIN_DEV_APPROVE=allow`): the validators agree with the daemon, the
 /// expiry parser agrees with the CLI, the Secrets view model drives the whole
 /// add / list / update / replace / delete path, the import view model drives a
 /// real `.env` import through the dev binary, and the popover's last events
@@ -22,7 +22,7 @@ final class DevDaemonScreenTests: DevDaemonCase {
         try await startDaemon()
         for n in Self.nameCorpus {
             var accepted = false
-            do { _ = try await client.exists(n); accepted = true } catch let e as GrantdError {
+            do { _ = try await client.exists(n); accepted = true } catch let e as GrantpinError {
                 XCTAssertTrue(e.isBadRequest, "\(n.prefix(12).debugDescription): \(e)")
             }
             XCTAssertEqual(Validators.nameIssue(n) == nil, accepted, "name \(n.prefix(12).debugDescription)")
@@ -39,7 +39,7 @@ final class DevDaemonScreenTests: DevDaemonCase {
         for t in Self.tagCorpus {
             var v = Data("tag-test-value-0123".utf8)
             var accepted = false
-            do { try await client.set(name: "tagtest", value: &v, tags: [t], overwrite: true); accepted = true } catch let e as GrantdError {
+            do { try await client.set(name: "tagtest", value: &v, tags: [t], overwrite: true); accepted = true } catch let e as GrantpinError {
                 XCTAssertTrue(e.isBadRequest, "\(e)")
             }
             XCTAssertEqual(Validators.tagIssue(t) == nil, accepted, "tag \(t.prefix(12).debugDescription)")
@@ -84,7 +84,7 @@ final class DevDaemonScreenTests: DevDaemonCase {
 
     // MARK: expiry parser vs the CLI
 
-    /// Runs `grantd-dev set NAME --expires X` with the value on stdin; true if it was accepted.
+    /// Runs `grantpin-dev set NAME --expires X` with the value on stdin; true if it was accepted.
     /// (An empty `--expires ""` is "no expiry" to the CLI, so it is not in the corpus; the
     /// app's own empty custom field is simply not an expiry.)
     private func cliAccepts(_ expires: String, name: String) throws -> Bool {
@@ -364,7 +364,7 @@ final class DevDaemonScreenTests: DevDaemonCase {
         try await startDaemon()
         try await put("one", "one-value-0123456789")
         let line = StatusLine.from(ConnectionState.from(try await client.status()))
-        XCTAssertEqual(line.headline, "grantd is running")
+        XCTAssertEqual(line.headline, "grantpin is running")
         XCTAssertEqual(line.countsText, "1 secret · 0 active grants")
         XCTAssertEqual(line.level, .ok)
     }

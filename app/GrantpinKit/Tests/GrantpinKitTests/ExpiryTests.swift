@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 final class ExpiryParserTests: XCTestCase {
     func testDaysAndWeeks() throws {

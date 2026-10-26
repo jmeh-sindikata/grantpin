@@ -1,17 +1,17 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 @MainActor
 final class UninstallModelTests: XCTestCase {
     var temp: TempDir!
-    var vault: URL { temp.url.appendingPathComponent("Application Support/grantd") }
-    var logs: URL { temp.url.appendingPathComponent("Logs/grantd") }
+    var vault: URL { temp.url.appendingPathComponent("Application Support/grantpin") }
+    var logs: URL { temp.url.appendingPathComponent("Logs/grantpin") }
 
     override func setUpWithError() throws {
         temp = try TempDir()
-        for f in ["vault.db", "vault.db-wal", "vault.db-shm", "grantd.sock"] { _ = try temp.file("Application Support/grantd/\(f)") }
-        for f in ["daemon.err.log", "daemon.out.log"] { _ = try temp.file("Logs/grantd/\(f)") }
+        for f in ["vault.db", "vault.db-wal", "vault.db-shm", "grantpin.sock"] { _ = try temp.file("Application Support/grantpin/\(f)") }
+        for f in ["daemon.err.log", "daemon.out.log"] { _ = try temp.file("Logs/grantpin/\(f)") }
     }
 
     func model(control: ServiceControl? = FakeServiceControl(), tier: Tier? = .hardware, dev: Bool = false,
@@ -37,14 +37,14 @@ final class UninstallModelTests: XCTestCase {
         XCTAssertEqual(m.deleteVaultLabel, "Delete my vault: 3 secrets, 1 grant and the audit log")
         XCTAssertEqual(UninstallModel.logsLabel, "Delete logs")
         XCTAssertEqual(UninstallModel.keychainLabel, "Delete the Keychain item used by weaker protection")
-        XCTAssertEqual(UninstallModel.deleteWarning, "Deleting the vault permanently removes all secrets, grants and the audit log. grantd does not keep a copy and this can't be undone.")
+        XCTAssertEqual(UninstallModel.deleteWarning, "Deleting the vault permanently removes all secrets, grants and the audit log. grantpin does not keep a copy and this can't be undone.")
         XCTAssertEqual(UninstallModel.confirmationPrompt, "Type \"delete\" to confirm.")
         XCTAssertEqual(UninstallModel.hardwareKeyLabel, "Delete the hardware key")
         XCTAssertEqual(UninstallModel.keyWarning, "Deleting the key makes the vault permanently unreadable, even if you keep the vault file.")
         XCTAssertEqual(UninstallModel.removeLabel, "Remove")
         XCTAssertEqual(UninstallModel.hardwareKeyNote, "The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. To remove it, tick \"Delete the hardware key\" when you uninstall.")
-        XCTAssertEqual(UninstallModel.disconnectCommand, "claude mcp remove grantd")
-        XCTAssertEqual(UninstallModel.trashText, "To finish, drag grantd to the Trash.")
+        XCTAssertEqual(UninstallModel.disconnectCommand, "claude mcp remove grantpin")
+        XCTAssertEqual(UninstallModel.trashText, "To finish, drag grantpin to the Trash.")
     }
 
     func testWithoutCountsTheVaultLabelDoesNotClaimZero() {
@@ -149,15 +149,15 @@ final class UninstallModelTests: XCTestCase {
     }
 
     func testOnlyKnownFilesAreRemoved() async throws {
-        _ = try temp.file("Application Support/grantd/other-tool.txt")
+        _ = try temp.file("Application Support/grantpin/other-tool.txt")
         try FileManager.default.createDirectory(at: vault.appendingPathComponent("sub"), withIntermediateDirectories: true)
         let m = model()
         m.deleteVault = true
         m.confirmationText = "delete"
         await m.remove()
         XCTAssertFalse(exists(vault.appendingPathComponent("vault.db")))
-        XCTAssertFalse(exists(vault.appendingPathComponent("grantd.sock")))
-        XCTAssertTrue(exists(vault.appendingPathComponent("other-tool.txt")), "files that are not grantd's stay")
+        XCTAssertFalse(exists(vault.appendingPathComponent("grantpin.sock")))
+        XCTAssertTrue(exists(vault.appendingPathComponent("other-tool.txt")), "files that are not grantpin's stay")
         XCTAssertTrue(exists(vault), "a folder that is not empty stays")
     }
 
@@ -194,7 +194,7 @@ final class UninstallModelTests: XCTestCase {
         m.confirmationText = "delete"
         await m.remove()
         guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
-        XCTAssertEqual(r.problem, "grantd is still running, so the vault was not deleted.")
+        XCTAssertEqual(r.problem, "grantpin is still running, so the vault was not deleted.")
         XCTAssertFalse(r.vaultDeleted)
         XCTAssertTrue(exists(vault.appendingPathComponent("vault.db")))
     }
@@ -325,7 +325,7 @@ final class UninstallModelTests: XCTestCase {
         m.confirmationText = "delete"
         await m.remove()
         guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
-        XCTAssertEqual(r.problem, "grantd is still running, so the hardware key was not deleted.")
+        XCTAssertEqual(r.problem, "grantpin is still running, so the hardware key was not deleted.")
     }
 
     func testAKeyIsNeverDeletedWhileTheDaemonAnswers() async {
@@ -336,7 +336,7 @@ final class UninstallModelTests: XCTestCase {
         await m.remove()
         XCTAssertEqual(k.calls.n, 0)
         guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
-        XCTAssertEqual(r.problem, "grantd is still running, so the Keychain item was not deleted.")
+        XCTAssertEqual(r.problem, "grantpin is still running, so the Keychain item was not deleted.")
     }
 
     func testTheHelperCommandForEachKey() {
@@ -360,7 +360,7 @@ final class UninstallModelTests: XCTestCase {
 
     /// The real runner against a scripted helper: no Keychain is touched.
     func testTheRealRunnerAgainstAScriptedHelper() async throws {
-        let script = try temp.file("fake-grantd.sh", "#!/bin/sh\necho \"$@\" > \"$0.args\"\nif [ \"$3\" = --hardware ]; then echo 'no such key' >&2; exit 3; fi\nexit 0\n")
+        let script = try temp.file("fake-grantpin.sh", "#!/bin/sh\necho \"$@\" > \"$0.args\"\nif [ \"$3\" = --hardware ]; then echo 'no such key' >&2; exit 3; fi\nexit 0\n")
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
         let keystore = HelperKeystore(helper: script, environment: ["PATH": "/usr/bin:/bin"])
         let a = await keystore.deleteKey(.fallback)
@@ -368,7 +368,7 @@ final class UninstallModelTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: URL(fileURLWithPath: script.path + ".args"), encoding: .utf8), "keystore delete --fallback --yes\n")
         let b = await keystore.deleteKey(.hardware)
         XCTAssertEqual(b, .notFound)
-        let missing = HelperKeystore(helper: URL(fileURLWithPath: "/nonexistent/grantd"))
+        let missing = HelperKeystore(helper: URL(fileURLWithPath: "/nonexistent/grantpin"))
         let c = await missing.deleteKey(.fallback)
         XCTAssertEqual(c, .failed(detail: nil))
     }
@@ -376,11 +376,11 @@ final class UninstallModelTests: XCTestCase {
     // MARK: a status call that fails is not "stopped"
 
     func testOnlyNotRunningMeansStopped() {
-        XCTAssertEqual(DaemonState.classify(GrantdError.notRunning), .stopped)
-        XCTAssertEqual(DaemonState.classify(GrantdError.timeout), .unknown("grantd took too long to answer."))
-        if case .unknown = DaemonState.classify(GrantdError.noResponse) {} else { XCTFail("a closed connection is not a stop") }
-        if case .unknown = DaemonState.classify(GrantdError.io("Permission denied")) {} else { XCTFail("an I/O error is not a stop") }
-        if case .unknown = DaemonState.classify(GrantdError.malformedResponse("x")) {} else { XCTFail() }
+        XCTAssertEqual(DaemonState.classify(GrantpinError.notRunning), .stopped)
+        XCTAssertEqual(DaemonState.classify(GrantpinError.timeout), .unknown("grantpin took too long to answer."))
+        if case .unknown = DaemonState.classify(GrantpinError.noResponse) {} else { XCTFail("a closed connection is not a stop") }
+        if case .unknown = DaemonState.classify(GrantpinError.io("Permission denied")) {} else { XCTFail("an I/O error is not a stop") }
+        if case .unknown = DaemonState.classify(GrantpinError.malformedResponse("x")) {} else { XCTFail() }
         if case .unknown = DaemonState.classify(CancellationError()) {} else { XCTFail() }
         XCTAssertEqual(DaemonState.classify(daemonError(.failed, .vaultLocked)), .answering, "an error response is an answer")
     }
@@ -395,13 +395,13 @@ final class UninstallModelTests: XCTestCase {
     }
 
     func testAStatusTimeoutKeepsTheVaultAndSaysSo() async {
-        let m = state(state: { .unknown("grantd took too long to answer.") })
+        let m = state(state: { .unknown("grantpin took too long to answer.") })
         m.deleteVault = true
         m.deleteLogs = true
         m.confirmationText = "delete"
         await m.remove()
         guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
-        XCTAssertEqual(r.problem, "Could not tell whether grantd has stopped (grantd took too long to answer.), so nothing was deleted.")
+        XCTAssertEqual(r.problem, "Could not tell whether grantpin has stopped (grantpin took too long to answer.), so nothing was deleted.")
         XCTAssertFalse(r.vaultDeleted)
         XCTAssertTrue(exists(vault.appendingPathComponent("vault.db")))
         XCTAssertTrue(exists(logs), "later steps do not run after a problem")

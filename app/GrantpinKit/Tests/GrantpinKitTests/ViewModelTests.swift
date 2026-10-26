@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 /// An in-memory daemon: enough of `set`, `update`, `delete`, `list`, `masked`
 /// and `grants list` to drive the view models. Like the real client it zeroes
@@ -51,7 +51,7 @@ final class FakeService: SecretsService, AuditService, @unchecked Sendable {
         if let e = failure("set") { throw e }
         try lock.withLock {
             if secrets.contains(where: { $0.name == name }) && !overwrite {
-                throw GrantdError.daemon(category: .badRequest, reason: .secretExists, message: "secret already exists (overwrite to replace)")
+                throw GrantpinError.daemon(category: .badRequest, reason: .secretExists, message: "secret already exists (overwrite to replace)")
             }
             secrets.removeAll { $0.name == name }
             secrets.append(SecretInfo(name: name, tags: tags.sorted(), url: url ?? "", notes: notes ?? "", expiresAt: expires, minTier: minTier ?? .hardware))
@@ -64,7 +64,7 @@ final class FakeService: SecretsService, AuditService, @unchecked Sendable {
         if let e = failure("update") { throw e }
         try lock.withLock {
             guard let i = secrets.firstIndex(where: { $0.name == name }) else {
-                throw GrantdError.daemon(category: .notFound, reason: .secretNotFound, message: "")
+                throw GrantpinError.daemon(category: .notFound, reason: .secretNotFound, message: "")
             }
             if let tags { secrets[i].tags = tags.sorted() }
             if let url { secrets[i].url = url }
@@ -83,7 +83,7 @@ final class FakeService: SecretsService, AuditService, @unchecked Sendable {
         if let e = failure("delete:\(name)") ?? failure("delete") { throw e }
         try lock.withLock {
             guard secrets.contains(where: { $0.name == name }) else {
-                throw GrantdError.daemon(category: .notFound, reason: .secretNotFound, message: "")
+                throw GrantpinError.daemon(category: .notFound, reason: .secretNotFound, message: "")
             }
             secrets.removeAll { $0.name == name }
         }
@@ -230,12 +230,12 @@ final class SecretFormModelTests: XCTestCase {
 
     func testFailureKeepsTheSheetAndMapsTheError() async {
         let svc = FakeService()
-        svc.failNext["set"] = GrantdError.daemon(category: .badRequest, reason: .badRequest, message: "value too large")
+        svc.failNext["set"] = GrantpinError.daemon(category: .badRequest, reason: .badRequest, message: "value too large")
         let f = form(svc)
         f.name = "k"; f.value = "v"
         let ok = await f.save()
         XCTAssertFalse(ok)
-        XCTAssertEqual(f.error?.headline, "grantd rejected the request:")
+        XCTAssertEqual(f.error?.headline, "grantpin rejected the request:")
         XCTAssertEqual(f.error?.detail, "value too large")
         XCTAssertNil(f.savedName)
         XCTAssertEqual(f.value, "v")
@@ -347,7 +347,7 @@ final class SecretFormModelTests: XCTestCase {
 
     func testClipboardIsNotClearedWhenSavingFails() async {
         let pb = FakePasteboard(); pb.text = "p"
-        let svc = FakeService(); svc.failNext["set"] = GrantdError.timeout
+        let svc = FakeService(); svc.failNext["set"] = GrantpinError.timeout
         let f = form(svc, pasteboard: pb)
         f.name = "k"; f.paste()
         _ = await f.save()
@@ -457,7 +457,7 @@ final class SecretFormModelTests: XCTestCase {
 
     func testEditCancelledLowering() async {
         let svc = FakeService(secrets: [original(tier: .hardware)])
-        svc.failNext["update"] = GrantdError.daemon(category: .denied, reason: .userDenied, message: "")
+        svc.failNext["update"] = GrantpinError.daemon(category: .denied, reason: .userDenied, message: "")
         let f = form(svc, original: original(tier: .hardware))
         f.tier = .dialog
         let ok = await f.save()
@@ -588,9 +588,9 @@ final class SecretsViewModelTests: XCTestCase {
     func testDisabledWhenTheDaemonIsNotUsable() {
         let m = SecretsViewModel(service: FakeService())
         XCTAssertFalse(m.isEnabled)
-        XCTAssertEqual(m.disabledReason, "Checking grantd…")
+        XCTAssertEqual(m.disabledReason, "Checking grantpin…")
         m.connectionChanged(.notRunning)
-        XCTAssertEqual(m.disabledReason, "grantd is not running. Start it from the menu bar item.")
+        XCTAssertEqual(m.disabledReason, "grantpin is not running. Start it from the menu bar item.")
         m.connectionChanged(.locked(lastError: nil))
         XCTAssertEqual(m.disabledReason, "Unlock your Mac to use secrets.")
         m.connectionChanged(.notInitialized)
@@ -610,13 +610,13 @@ final class SecretsViewModelTests: XCTestCase {
 
     func testListFailureWhileDownIsNotABanner() async {
         let svc = FakeService()
-        svc.listFailure = GrantdError.notRunning
+        svc.listFailure = GrantpinError.notRunning
         let m = vm(svc)
         await m.refresh()
         XCTAssertNil(m.banner)
-        svc.listFailure = GrantdError.daemon(category: .failed, reason: .internalError, message: "")
+        svc.listFailure = GrantpinError.daemon(category: .failed, reason: .internalError, message: "")
         await m.refresh()
-        XCTAssertEqual(m.banner?.headline, "grantd had an internal error. Details are in the log.")
+        XCTAssertEqual(m.banner?.headline, "grantpin had an internal error. Details are in the log.")
         svc.listFailure = nil
         await m.refresh()
         XCTAssertNil(m.banner, "a good load clears the load-failure banner")
@@ -643,7 +643,7 @@ final class SecretsViewModelTests: XCTestCase {
         XCTAssertEqual(m.masked, .value("****abcd"))
         m.resetMasked()
         XCTAssertEqual(m.masked, .idle)
-        svc.failNext["masked"] = GrantdError.daemon(category: .notFound, reason: .secretNotFound, message: "")
+        svc.failNext["masked"] = GrantpinError.daemon(category: .notFound, reason: .secretNotFound, message: "")
         await m.checkLastCharacters(of: "a")
         XCTAssertEqual(m.masked, .failed(UserMessage("That secret no longer exists.", refreshAdvised: true)))
     }
@@ -700,7 +700,7 @@ final class SecretsViewModelTests: XCTestCase {
 
     func testMultiDeleteStopsAtTheFirstFailureAndSaysWhatWasDeleted() async {
         let svc = FakeService(secrets: [SecretInfo(name: "a"), SecretInfo(name: "b"), SecretInfo(name: "c")])
-        svc.failNext["delete:b"] = GrantdError.daemon(category: .failed, reason: .internalError, message: "")
+        svc.failNext["delete:b"] = GrantpinError.daemon(category: .failed, reason: .internalError, message: "")
         let m = vm(svc)
         await m.refresh()
         let ok = await m.delete(names: ["a", "b", "c"])

@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 /// Answers the helper from a script, one reply per run, and records how it was called.
 final class FakeImportService: ImportService, @unchecked Sendable {
@@ -105,7 +105,7 @@ final class ImportViewModelTests: XCTestCase {
     func testUnknownHelperErrorIsSanitisedAndShortened() async {
         let evil = "boom \u{1B}[31m\u{202E}" + String(repeating: "x", count: 2000)
         let f = ImportFailure.parse(stderr: evil, partial: false)
-        XCTAssertEqual(f.headline, "grantd could not import that file.")
+        XCTAssertEqual(f.headline, "grantpin could not import that file.")
         XCTAssertFalse(f.detail!.unicodeScalars.contains("\u{1B}"))
         XCTAssertFalse(f.detail!.unicodeScalars.contains("\u{202E}"))
         XCTAssertLessThanOrEqual(f.detail!.count, 500)
@@ -114,7 +114,7 @@ final class ImportViewModelTests: XCTestCase {
     func testAFailedRealRunSaysSomeSecretsMayHaveBeenImported() async {
         let svc = FakeImportService([
             FakeImportService.ok("(dry run) would be added: 2 (A, B)\n"),
-            FakeImportService.fail("importing B: grantd: internal\n"),
+            FakeImportService.fail("importing B: grantpin: internal\n"),
         ])
         var finished = 0
         let m = model(svc) { finished += 1 }
@@ -130,7 +130,7 @@ final class ImportViewModelTests: XCTestCase {
         let m = model(FakeImportService([FakeImportService.ok("hello\n")]))
         await m.preview()
         guard case .failed(let f) = m.phase else { return XCTFail() }
-        XCTAssertEqual(f.headline, "grantd printed something unexpected.")
+        XCTAssertEqual(f.headline, "grantpin printed something unexpected.")
     }
 
     func testTimeoutAndLaunchFailure() async {
@@ -138,7 +138,7 @@ final class ImportViewModelTests: XCTestCase {
         await t.preview()
         guard case .failed(let f) = t.phase else { return XCTFail() }
         XCTAssertEqual(f.headline, "The import took too long.")
-        let l = model(FakeImportService([.failure(GrantdError.io("x"))]))
+        let l = model(FakeImportService([.failure(GrantpinError.io("x"))]))
         await l.preview()
         guard case .failed(let g) = l.phase else { return XCTFail() }
         XCTAssertEqual(g.headline, "The helper could not be started.")

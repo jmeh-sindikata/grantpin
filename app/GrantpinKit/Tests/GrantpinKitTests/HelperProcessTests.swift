@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 final class HelperProcessTests: XCTestCase {
     private let bash = URL(fileURLWithPath: "/bin/bash")
@@ -66,7 +66,7 @@ final class HelperProcessTests: XCTestCase {
                                             standardInput: nil, timeout: 0.1)
             XCTFail("expected a throw")
         } catch {
-            XCTAssertEqual(error as? GrantdError, .io("cannot start the helper"))
+            XCTAssertEqual(error as? GrantpinError, .io("cannot start the helper"))
         }
     }
 

@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 /// A Unix-socket server for canned conversations: accepts connections, reads
 /// the request line, then runs `handler` with the connection's fd. Short path
@@ -90,31 +90,31 @@ final class ManagedFlag: @unchecked Sendable {
     var value: Bool { lock.lock(); defer { lock.unlock() }; return v }
 }
 
-/// Asserts that `body` throws a `GrantdError` and returns it.
-func expectGrantdError<T>(_ body: @autoclosure () async throws -> T, file: StaticString = #filePath, line: UInt = #line) async -> GrantdError? {
+/// Asserts that `body` throws a `GrantpinError` and returns it.
+func expectGrantpinError<T>(_ body: @autoclosure () async throws -> T, file: StaticString = #filePath, line: UInt = #line) async -> GrantpinError? {
     do {
         _ = try await body()
         XCTFail("expected an error", file: file, line: line)
-    } catch let e as GrantdError {
+    } catch let e as GrantpinError {
         return e
     } catch {
-        XCTFail("expected a GrantdError, got \(error)", file: file, line: line)
+        XCTFail("expected a GrantpinError, got \(error)", file: file, line: line)
     }
     return nil
 }
 
 // MARK: - The Go dev daemon
 
-/// Base class for tests against the real Go daemon built with `-tags grantd_dev`
+/// Base class for tests against the real Go daemon built with `-tags grantpin_dev`
 /// (INSECURE, test-only backends: constant public key, tier none). `make
-/// app-test` builds build/grantd-dev and sets GRANTD_DEV_BIN; without it the
+/// app-test` builds build/grantpin-dev and sets GRANTPIN_DEV_BIN; without it the
 /// tests skip (they never skip under make). Each test gets its own temporary
-/// GRANTD_HOME and a short socket path in /tmp, a clean environment, and the
-/// approver mode of `approveMode`. Nothing of the developer's real grantd (the
-/// installed app, the launchd job, ~/Library/Application Support/grantd) is
+/// GRANTPIN_HOME and a short socket path in /tmp, a clean environment, and the
+/// approver mode of `approveMode`. Nothing of the developer's real grantpin (the
+/// installed app, the launchd job, ~/Library/Application Support/grantpin) is
 /// involved.
 class DevDaemonCase: XCTestCase {
-    /// `GRANTD_DEV_APPROVE` for the daemon: "allow", "allow-no-standing", or
+    /// `GRANTPIN_DEV_APPROVE` for the daemon: "allow", "allow-no-standing", or
     /// nil for the default auto-deny.
     var approveMode: String? { "allow" }
 
@@ -123,10 +123,10 @@ class DevDaemonCase: XCTestCase {
     private(set) var daemon: Process?
     var client: Client { Client(socketPath: socket) }
 
-    var devBinary: String { ProcessInfo.processInfo.environment["GRANTD_DEV_BIN"] ?? "" }
+    var devBinary: String { ProcessInfo.processInfo.environment["GRANTPIN_DEV_BIN"] ?? "" }
 
     override func setUpWithError() throws {
-        guard !devBinary.isEmpty else { throw XCTSkip("GRANTD_DEV_BIN is not set (run make app-test)") }
+        guard !devBinary.isEmpty else { throw XCTSkip("GRANTPIN_DEV_BIN is not set (run make app-test)") }
         dir = "/tmp/gdt-\(UUID().uuidString.prefix(8))"
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         socket = dir + "/s.sock"
@@ -138,9 +138,9 @@ class DevDaemonCase: XCTestCase {
     }
 
     func environment() -> [String: String] {
-        // A clean environment: nothing of the developer's real grantd leaks in.
-        var env = ["GRANTD_HOME": dir, "HOME": dir, "PATH": "/usr/bin:/bin"]
-        if let m = approveMode { env["GRANTD_DEV_APPROVE"] = m }
+        // A clean environment: nothing of the developer's real grantpin leaks in.
+        var env = ["GRANTPIN_HOME": dir, "HOME": dir, "PATH": "/usr/bin:/bin"]
+        if let m = approveMode { env["GRANTPIN_DEV_APPROVE"] = m }
         return env
     }
 
@@ -161,7 +161,7 @@ class DevDaemonCase: XCTestCase {
         return (p.terminationStatus, String(decoding: data, as: UTF8.self))
     }
 
-    /// `grantd-dev init` in the fixture's home.
+    /// `grantpin-dev init` in the fixture's home.
     func initVault() throws {
         XCTAssertEqual(try runDev(["init"]).status, 0)
     }
@@ -235,7 +235,7 @@ func assertFalse(_ expression: @autoclosure () async throws -> Bool, file: Stati
 func unwrap<T>(_ expression: @autoclosure () async throws -> T?, file: StaticString = #filePath, line: UInt = #line) async throws -> T {
     guard let value = try await expression() else {
         XCTFail("unexpected nil", file: file, line: line)
-        throw GrantdError.malformedResponse("unexpected nil in a test")
+        throw GrantpinError.malformedResponse("unexpected nil in a test")
     }
     return value
 }

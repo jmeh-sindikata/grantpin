@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 @MainActor
 final class OnboardingModelTests: XCTestCase {
@@ -93,7 +93,7 @@ final class OnboardingModelTests: XCTestCase {
         let m = model(location: .elsewhere)
         m.connectionChanged(.notRunning)
         XCTAssertFalse(m.canContinue)
-        XCTAssertEqual(m.actionsDisabledReason, "Move grantd to your Applications folder first")
+        XCTAssertEqual(m.actionsDisabledReason, "Move grantpin to your Applications folder first")
         m.location = .ok
         XCTAssertTrue(m.canContinue)
     }
@@ -208,7 +208,7 @@ final class OnboardingModelTests: XCTestCase {
         l.registerFailure = Boom()
         let m = model(login: l)
         m.finish()
-        XCTAssertEqual(m.loginError, "grantd could not be added to the login items.")
+        XCTAssertEqual(m.loginError, "grantpin could not be added to the login items.")
         XCTAssertTrue(m.finished)
     }
 

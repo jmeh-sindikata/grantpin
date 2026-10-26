@@ -1,9 +1,9 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 /// The Grants and Activity screens' logic against the real Go dev daemon
-/// (INSECURE test backends, `GRANTD_DEV_APPROVE=allow`): the standing-grant
+/// (INSECURE test backends, `GRANTPIN_DEV_APPROVE=allow`): the standing-grant
 /// form's request is accepted, the list shows it with its badges, revoke and
 /// revoke all work, a forged grant row shows as tampered, the Activity model
 /// pairs a real run, verifies, exports and honours `truncated`.
@@ -137,7 +137,7 @@ final class DevDaemonGrantsAuditTests: DevDaemonCase {
         XCTAssertEqual(m.rows.count, 4)
         let bad = m.rows.prefix(3)
         XCTAssertTrue(bad.allSatisfy { $0.tampered && $0.badges == [.tampered] })
-        XCTAssertTrue(bad.allSatisfy { $0.tamperedNote == "Failed verification. grantd ignores it. Remove it." })
+        XCTAssertTrue(bad.allSatisfy { $0.tamperedNote == "Failed verification. grantpin ignores it. Remove it." })
         XCTAssertTrue(bad.allSatisfy { $0.caller.isEmpty && $0.folder.isEmpty && $0.command.isEmpty }, "forged fields are never shown")
         XCTAssertEqual(Set(bad.map(\.id)), ["forged0", "forged1", "forged2"])
         XCTAssertEqual(m.rows[3].badges, [.standing], "the genuine grant is next to them")
@@ -168,7 +168,7 @@ final class DevDaemonGrantsAuditTests: DevDaemonCase {
         try await put("DB_URL", "postgres://user:password@host/dbname")
         let proj = try project()
         try "version: 1\nsecrets:\n  - DB_URL\ncommands:\n  - [php, artisan]\nmax_standing_grant_ttl: 1h\n"
-            .write(toFile: proj + "/.grantd.yml", atomically: true, encoding: .utf8)
+            .write(toFile: proj + "/.grantpin.yml", atomically: true, encoding: .utf8)
         let m = try await grantsModel()
 
         // a command the policy does not list
@@ -177,7 +177,7 @@ final class DevDaemonGrantsAuditTests: DevDaemonCase {
         refused.commandText = "curl example.com"
         await refused.submit()
         XCTAssertEqual(refused.phase, .editing)
-        XCTAssertEqual(refused.error?.headline, "A .grantd.yml in that folder does not allow this:")
+        XCTAssertEqual(refused.error?.headline, "A .grantpin.yml in that folder does not allow this:")
         XCTAssertFalse(refused.error?.detail?.isEmpty ?? true)
 
         // a lifetime above the repo's ceiling: the daemon's message, never clamped
@@ -189,7 +189,7 @@ final class DevDaemonGrantsAuditTests: DevDaemonCase {
         let text = try XCTUnwrap(long.error?.headline)
         XCTAssertTrue(text.contains("exceeds the maximum standing grant lifetime of 1h"), text)
         XCTAssertTrue(text.contains("max_standing_grant_ttl in"), text)
-        XCTAssertTrue(text.contains(".grantd.yml"), text)
+        XCTAssertTrue(text.contains(".grantpin.yml"), text)
 
         // and within the ceiling it works
         long.ttl = .hour1
@@ -276,7 +276,7 @@ final class DevDaemonGrantsAuditTests: DevDaemonCase {
         // export: the daemon's CSV, untouched
         let out = await m.exportCSV()
         guard case .csv(let csv, let name) = out else { return XCTFail("\(out)") }
-        XCTAssertTrue(name.hasPrefix("grantd-audit-") && name.hasSuffix(".csv"))
+        XCTAssertTrue(name.hasPrefix("grantpin-audit-") && name.hasSuffix(".csv"))
         let rows = try CSV.parse(csv)
         XCTAssertEqual(rows[0], ["id", "ts", "caller", "cwd", "argv", "secrets", "expanded", "decision", "grant_id", "reason", "exit_code", "duration_ms"])
         XCTAssertEqual(rows.count - 1, 7)
@@ -343,7 +343,7 @@ final class DevDaemonDeniedScreenTests: DevDaemonCase {
         r.cwd = realPath(dir)
         r.argv = ["ls"]
         r.secrets = ["KEY"]
-        let e = await expectGrantdError(try await client.call(r, timeout: 20))
+        let e = await expectGrantpinError(try await client.call(r, timeout: 20))
         XCTAssertEqual(e?.reason, .userDenied)
 
         let activity = ActivityViewModel(service: client)

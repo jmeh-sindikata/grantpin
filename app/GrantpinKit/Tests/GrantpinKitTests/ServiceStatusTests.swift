@@ -1,46 +1,46 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 final class ServiceStatusParserTests: XCTestCase {
     func testRunning() throws {
         let out = """
-        label:     dev.grantd.daemon
+        label:     dev.grantpin.daemon
         installed: yes
-        plist:     /Users/me/Library/LaunchAgents/dev.grantd.daemon.plist
+        plist:     /Users/me/Library/LaunchAgents/dev.grantpin.daemon.plist
         loaded:    yes
         running:   yes (pid 4242)
-        exe:       /Applications/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd
+        exe:       /Applications/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin
 
         """
         let s = try ServiceStatus.parse(stdout: out, exitCode: 0)
-        XCTAssertEqual(s.label, "dev.grantd.daemon")
+        XCTAssertEqual(s.label, "dev.grantpin.daemon")
         XCTAssertTrue(s.installed); XCTAssertTrue(s.loaded); XCTAssertTrue(s.running)
         XCTAssertEqual(s.pid, 4242)
-        XCTAssertEqual(s.plistPath, "/Users/me/Library/LaunchAgents/dev.grantd.daemon.plist")
-        XCTAssertTrue(s.exePath!.hasSuffix("grantd-daemon.app/Contents/MacOS/grantd"))
+        XCTAssertEqual(s.plistPath, "/Users/me/Library/LaunchAgents/dev.grantpin.daemon.plist")
+        XCTAssertTrue(s.exePath!.hasSuffix("grantpin-daemon.app/Contents/MacOS/grantpin"))
         XCTAssertFalse(s.exeMissing)
         XCTAssertNil(s.warning)
         XCTAssertFalse(s.usesLegacyBundlePath)
     }
 
     func testInstalledButStopped() throws {
-        let out = "label:     dev.grantd.daemon\ninstalled: yes\nplist:     /p.plist\nloaded:    no\nrunning:   no\nexe:       /x/grantd\n"
+        let out = "label:     dev.grantpin.daemon\ninstalled: yes\nplist:     /p.plist\nloaded:    no\nrunning:   no\nexe:       /x/grantpin\n"
         let s = try ServiceStatus.parse(stdout: out, exitCode: 0)
         XCTAssertTrue(s.installed); XCTAssertFalse(s.loaded); XCTAssertFalse(s.running)
         XCTAssertNil(s.pid)
     }
 
     func testMissingExecutableWarning() throws {
-        let out = "label:     dev.grantd.daemon\ninstalled: yes\nplist:     /p\nloaded:    yes\nrunning:   no\nexe:       /Applications/grantd.app/Contents/MacOS/grantd\nwarning:   executable no longer exists; re-run `grantd service install`\n"
+        let out = "label:     dev.grantpin.daemon\ninstalled: yes\nplist:     /p\nloaded:    yes\nrunning:   no\nexe:       /Applications/grantpin.app/Contents/MacOS/grantpin\nwarning:   executable no longer exists; re-run `grantpin service install`\n"
         let s = try ServiceStatus.parse(stdout: out, exitCode: 0)
         XCTAssertTrue(s.exeMissing)
-        XCTAssertEqual(s.warning, "executable no longer exists; re-run `grantd service install`")
+        XCTAssertEqual(s.warning, "executable no longer exists; re-run `grantpin service install`")
         XCTAssertTrue(s.usesLegacyBundlePath)
     }
 
     func testNotInstalledIsExitCodeThree() throws {
-        let s = try ServiceStatus.parse(stdout: "label:     dev.grantd.daemon\ninstalled: no\n", exitCode: 3)
+        let s = try ServiceStatus.parse(stdout: "label:     dev.grantpin.daemon\ninstalled: no\n", exitCode: 3)
         XCTAssertFalse(s.installed)
         // exit 3 wins even when the text is missing
         XCTAssertFalse(try ServiceStatus.parse(stdout: "", exitCode: 3).installed)
@@ -57,7 +57,7 @@ final class ServiceStatusParserTests: XCTestCase {
     }
 
     func testUnknownKeysAndHostileValuesAreHarmless() throws {
-        let out = "label: dev.grantd.daemon\ninstalled: yes\nfuture: thing\nrunning: yes (pid notanumber)\nexe: \u{1B}[31m/x\n"
+        let out = "label: dev.grantpin.daemon\ninstalled: yes\nfuture: thing\nrunning: yes (pid notanumber)\nexe: \u{1B}[31m/x\n"
         let s = try ServiceStatus.parse(stdout: out, exitCode: 0)
         XCTAssertTrue(s.running)
         XCTAssertNil(s.pid)
@@ -78,16 +78,16 @@ final class ServiceDiagnosisTests: XCTestCase {
 
     func testPopoverLinesAndButtons() {
         func line(_ d: ServiceDiagnosis) -> StatusLine { StatusLine.from(.notRunning, service: d) }
-        XCTAssertEqual(line(.notInstalled).headline, "grantd is not set up to run in the background")
+        XCTAssertEqual(line(.notInstalled).headline, "grantpin is not set up to run in the background")
         XCTAssertEqual(line(.notInstalled).button, .startService)
         XCTAssertEqual(line(.exeMissing).headline, "The background service points to a file that no longer exists")
         XCTAssertEqual(line(.exeMissing).button, .repair)
-        XCTAssertEqual(line(.notRunning).headline, "grantd is not running")
+        XCTAssertEqual(line(.notRunning).headline, "grantpin is not running")
         XCTAssertEqual(line(.notRunning).button, .startService)
-        XCTAssertEqual(line(.notAnswering(pid: 5)).headline, "grantd is running but not answering")
+        XCTAssertEqual(line(.notAnswering(pid: 5)).headline, "grantpin is running but not answering")
         XCTAssertEqual(line(.notAnswering(pid: 5)).button, .restart)
         XCTAssertEqual(line(.notAnswering(pid: 5)).secondButton, .openLogs)
-        XCTAssertEqual(line(.keepsStopping).headline, "grantd keeps stopping")
+        XCTAssertEqual(line(.keepsStopping).headline, "grantpin keeps stopping")
         XCTAssertEqual(line(.keepsStopping).button, .openLogs)
         for d in [ServiceDiagnosis.notInstalled, .exeMissing, .notRunning, .notAnswering(pid: 1), .keepsStopping] {
             XCTAssertEqual(line(d).level, .error)
@@ -107,7 +107,7 @@ final class ServiceDiagnosisTests: XCTestCase {
         XCTAssertEqual(proto.detail, "This app and the background service are out of step.")
         let version = StatusLine.from(.ready(StatusResult(version: "v1")), helperVersion: "v2")
         XCTAssertEqual(version.button, .restart)
-        XCTAssertEqual(version.detail, "grantd was updated. Restart the background service to finish.")
+        XCTAssertEqual(version.detail, "grantpin was updated. Restart the background service to finish.")
         XCTAssertNil(StatusLine.from(.ready(StatusResult(version: "v1")), helperVersion: "v1").button)
         XCTAssertNil(StatusLine.from(.ready(StatusResult(version: "v1")), helperVersion: nil).button)
         let tampered = StatusLine.from(.ready(StatusResult(tamperedGrants: 2)))
@@ -190,23 +190,23 @@ final class ServiceWatcherTests: XCTestCase {
 
 final class HelperServiceActionsTests: XCTestCase {
     func actions(_ d: ScriptDir, _ helperBody: String) throws -> HelperActions {
-        let script = try d.script("grantd", helperBody)
-        return HelperActions(helper: script, appBundle: URL(fileURLWithPath: "/Applications/grantd.app"),
+        let script = try d.script("grantpin", helperBody)
+        return HelperActions(helper: script, appBundle: URL(fileURLWithPath: "/Applications/grantpin.app"),
                              pathDetector: PathDetector(environment: [:], shellsFile: "/nonexistent"),
                              environment: ["PATH": "/usr/bin:/bin"])
     }
 
     func testVersionIsParsed() {
-        XCTAssertEqual(HelperActions.parseVersion("grantd version 0.2.0\n"), "0.2.0")
-        XCTAssertEqual(HelperActions.parseVersion("grantd version 55c4e71-dirty"), "55c4e71-dirty")
+        XCTAssertEqual(HelperActions.parseVersion("grantpin version 0.2.0\n"), "0.2.0")
+        XCTAssertEqual(HelperActions.parseVersion("grantpin version 55c4e71-dirty"), "55c4e71-dirty")
         XCTAssertNil(HelperActions.parseVersion("something else"))
-        XCTAssertNil(HelperActions.parseVersion("grantd version "))
+        XCTAssertNil(HelperActions.parseVersion("grantpin version "))
         XCTAssertNil(HelperActions.parseVersion(""))
     }
 
     func testHelperVersionRunsTheHelper() async throws {
         let d = try ScriptDir()
-        let a = try actions(d, #"[ "$1" = "--version" ] && echo "grantd version 9.9" && exit 0; exit 2"#)
+        let a = try actions(d, #"[ "$1" = "--version" ] && echo "grantpin version 9.9" && exit 0; exit 2"#)
         let v = await a.helperVersion()
         XCTAssertEqual(v, "9.9")
         let broken = try actions(d, "exit 1")
@@ -216,7 +216,7 @@ final class HelperServiceActionsTests: XCTestCase {
 
     func testServiceStatusExitCodeThree() async throws {
         let d = try ScriptDir()
-        let a = try actions(d, #"echo "label:     dev.grantd.daemon"; echo "installed: no"; exit 3"#)
+        let a = try actions(d, #"echo "label:     dev.grantpin.daemon"; echo "installed: no"; exit 3"#)
         let s = try await a.serviceStatus()
         XCTAssertFalse(s.installed)
     }
@@ -245,7 +245,7 @@ final class HelperServiceActionsTests: XCTestCase {
         _ = await a.initVault(keychainFallback: false)
         let lines = try String(contentsOfFile: log, encoding: .utf8).split(separator: "\n").map(String.init)
         XCTAssertEqual(lines, [
-            "service install --exe /Applications/grantd.app --path /opt/homebrew/bin:/usr/bin",
+            "service install --exe /Applications/grantpin.app --path /opt/homebrew/bin:/usr/bin",
             "service uninstall",
             "init --keychain-fallback",
             "init",

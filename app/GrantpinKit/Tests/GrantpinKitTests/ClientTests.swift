@@ -1,10 +1,10 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 /// Framing, decoding and error mapping against canned daemon answers.
 final class ClientTests: XCTestCase {
-    static let statusJSON = #"{"ok":true,"result":{"version":"v0.1.0","proto_v":1,"pid":4242,"started_at":"2026-10-25T20:00:00.123456Z","vault_initialized":true,"keystore_tier":"hardware","approver_tier":"hardware","secrets":3,"active_grants":2,"socket":"/x/grantd.sock","future_field":[1,2]}}"#
+    static let statusJSON = #"{"ok":true,"result":{"version":"v0.1.0","proto_v":1,"pid":4242,"started_at":"2026-10-25T20:00:00.123456Z","vault_initialized":true,"keystore_tier":"hardware","approver_tier":"hardware","secrets":3,"active_grants":2,"socket":"/x/grantpin.sock","future_field":[1,2]}}"#
 
     // MARK: framing
 
@@ -21,7 +21,7 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(s.secrets, 3)
         XCTAssertEqual(s.activeGrants, 2)
         XCTAssertEqual(s.tamperedGrants, 0)  // absent decodes to 0
-        XCTAssertEqual(s.socket, "/x/grantd.sock")
+        XCTAssertEqual(s.socket, "/x/grantpin.sock")
         XCTAssertNotNil(s.startedAt)
         // the request is exactly one line, with the protocol version, op and caller
         XCTAssertEqual(server.requests.count, 1)
@@ -30,7 +30,7 @@ final class ClientTests: XCTestCase {
         let obj = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
         XCTAssertEqual(obj?["v"] as? Int, 1)
         XCTAssertEqual(obj?["op"] as? String, "status")
-        XCTAssertEqual(obj?["caller"] as? String, "grantd-app")
+        XCTAssertEqual(obj?["caller"] as? String, "grantpin-app")
         XCTAssertEqual(obj?.count, 3)
     }
 
@@ -62,7 +62,7 @@ final class ClientTests: XCTestCase {
     func testResponseLineOverFourMiBIsRefused() async throws {
         let big = String(repeating: "x", count: (4 << 20) + 10)
         let server = try FakeServer(answer: #"{"ok":true,"result":{"csv":"\#(big)"}}"#)
-        let e = await expectGrantdError(try await server.client.exportAudit())
+        let e = await expectGrantpinError(try await server.client.exportAudit())
         guard case .malformedResponse = e else { return XCTFail("\(String(describing: e))") }
     }
 
@@ -70,7 +70,7 @@ final class ClientTests: XCTestCase {
         // 700,000 control characters escape to 4.2 MB of \u00XX.
         var value = Data(repeating: 0x01, count: 700_000)
         let missing = "/tmp/gdt-never-\(UUID().uuidString.prefix(6)).sock"
-        let e = await expectGrantdError(try await Client(socketPath: missing).set(name: "k", value: &value))
+        let e = await expectGrantpinError(try await Client(socketPath: missing).set(name: "k", value: &value))
         XCTAssertEqual(e, .requestTooLarge)  // not .notRunning: nothing was sent
         XCTAssertTrue(value.allSatisfy { $0 == 0 }, "the value was not wiped on a local refusal")
     }
@@ -84,11 +84,11 @@ final class ClientTests: XCTestCase {
     // MARK: errors
 
     func testDaemonErrorCarriesCategoryReasonAndMessage() async throws {
-        let server = try FakeServer(answer: #"{"ok":false,"error":"failed","reason":"vault_not_initialized","message":"run grantd init"}"#)
-        let e = await expectGrantdError(try await server.client.call(.status))
-        XCTAssertEqual(e, .daemon(category: .failed, reason: .vaultNotInitialized, message: "run grantd init"))
+        let server = try FakeServer(answer: #"{"ok":false,"error":"failed","reason":"vault_not_initialized","message":"run grantpin init"}"#)
+        let e = await expectGrantpinError(try await server.client.call(.status))
+        XCTAssertEqual(e, .daemon(category: .failed, reason: .vaultNotInitialized, message: "run grantpin init"))
         XCTAssertEqual(e?.isVaultNotInitialized, true)
-        XCTAssertEqual(e?.message, "run grantd init")
+        XCTAssertEqual(e?.message, "run grantpin init")
     }
 
     func testEveryProtocolReasonMapsAndRoundTrips() {
@@ -115,9 +115,9 @@ final class ClientTests: XCTestCase {
     }
 
     func testTypedPredicates() async throws {
-        func err(_ category: String, _ reason: String) async throws -> GrantdError? {
+        func err(_ category: String, _ reason: String) async throws -> GrantpinError? {
             let server = try FakeServer(answer: #"{"ok":false,"error":"\#(category)","reason":"\#(reason)","message":"m"}"#)
-            return await expectGrantdError(try await server.client.call(.status))
+            return await expectGrantpinError(try await server.client.call(.status))
         }
         let locked = try await err("failed", "vault_locked")
         XCTAssertEqual(locked?.isVaultLocked, true)
@@ -132,13 +132,13 @@ final class ClientTests: XCTestCase {
         let unknown = try await err("refused", "from_the_future")
         XCTAssertEqual(unknown?.reason, .unknown("from_the_future"))
         XCTAssertEqual(unknown?.isRefused, true)
-        XCTAssertEqual(GrantdError.notRunning.isNotRunning, true)
-        XCTAssertNil(GrantdError.notRunning.category)
+        XCTAssertEqual(GrantpinError.notRunning.isNotRunning, true)
+        XCTAssertNil(GrantpinError.notRunning.category)
     }
 
     func testVaultLockedIsNotConfusedWithNotInitialized() {
         // vault_locked is not reproducible with the dev keystore; the mapping is unit-tested.
-        let e = GrantdError.daemon(category: .failed, reason: ErrorReason(wire: "vault_locked"),
+        let e = GrantpinError.daemon(category: .failed, reason: ErrorReason(wire: "vault_locked"),
                                    message: "vault keystore unavailable (screen locked?); retrying")
         XCTAssertTrue(e.isVaultLocked)
         XCTAssertFalse(e.isVaultNotInitialized)
@@ -147,7 +147,7 @@ final class ClientTests: XCTestCase {
     }
 
     func testDescriptionOfAHostileMessageIsSanitised() {
-        let e = GrantdError.daemon(category: .badRequest, reason: .badRequest, message: "bad \u{1B}[31m \u{202E}name")
+        let e = GrantpinError.daemon(category: .badRequest, reason: .badRequest, message: "bad \u{1B}[31m \u{202E}name")
         let text = e.localizedDescription
         XCTAssertFalse(text.unicodeScalars.contains("\u{1B}"))
         XCTAssertFalse(text.unicodeScalars.contains("\u{202E}"))
@@ -156,7 +156,7 @@ final class ClientTests: XCTestCase {
 
     func testNotRunningWhenTheSocketIsMissingOrRefuses() async throws {
         let missing = "/tmp/gdt-missing-\(UUID().uuidString.prefix(6)).sock"
-        var e = await expectGrantdError(try await Client(socketPath: missing).call(.status))
+        var e = await expectGrantpinError(try await Client(socketPath: missing).call(.status))
         XCTAssertEqual(e, .notRunning)
 
         // A socket file nobody listens on refuses the connection.
@@ -176,42 +176,42 @@ final class ClientTests: XCTestCase {
             p.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
         }
         close(fd)  // bound, never listened: the file stays, connect is refused
-        e = await expectGrantdError(try await Client(socketPath: path).call(.status))
+        e = await expectGrantpinError(try await Client(socketPath: path).call(.status))
         XCTAssertEqual(e, .notRunning)
     }
 
     func testClosedWithoutAResponse() async throws {
         let server = try FakeServer { _, _ in }
-        let e = await expectGrantdError(try await server.client.call(.status))
+        let e = await expectGrantpinError(try await server.client.call(.status))
         XCTAssertEqual(e, .noResponse)
     }
 
     func testTimeout() async throws {
         let server = try FakeServer { _, _ in Thread.sleep(forTimeInterval: 1.5) }
-        let e = await expectGrantdError(try await server.client.call(.status, timeout: 0.3))
+        let e = await expectGrantpinError(try await server.client.call(.status, timeout: 0.3))
         XCTAssertEqual(e, .timeout)
     }
 
     func testMalformedLines() async throws {
         for bad in ["not json\n", #"{"neither":true}"# + "\n", "[1,2]\n"] {
             let server = try FakeServer { fd, _ in FakeServer.send(fd, bad) }
-            let e = await expectGrantdError(try await server.client.call(.status))
+            let e = await expectGrantpinError(try await server.client.call(.status))
             guard case .malformedResponse = e else { return XCTFail("\(String(describing: e))") }
         }
     }
 
     func testResultThatDoesNotDecodeIsMalformed() async throws {
         let server = try FakeServer(answer: #"{"ok":true,"result":{"exists":"yes"}}"#)
-        let e = await expectGrantdError(try await server.client.exists("a"))
+        let e = await expectGrantpinError(try await server.client.exists("a"))
         guard case .malformedResponse = e else { return XCTFail("\(String(describing: e))") }
         let none = try FakeServer(answer: #"{"ok":true}"#)
-        let e2 = await expectGrantdError(try await none.client.exists("a"))
+        let e2 = await expectGrantpinError(try await none.client.exists("a"))
         guard case .malformedResponse = e2 else { return XCTFail("\(String(describing: e2))") }
     }
 
     func testSocketPathTooLong() async throws {
         let long = "/tmp/" + String(repeating: "a", count: 120)
-        let e = await expectGrantdError(try await Client(socketPath: long).call(.status))
+        let e = await expectGrantpinError(try await Client(socketPath: long).call(.status))
         XCTAssertEqual(e, .socketPathTooLong(long.utf8.count))
     }
 
@@ -347,7 +347,7 @@ final class ClientTests: XCTestCase {
 
     func testUpdateRefusesAnEmptyTagListLocally() async throws {
         let missing = "/tmp/gdt-never-\(UUID().uuidString.prefix(6)).sock"
-        let e = await expectGrantdError(try await Client(socketPath: missing).update(name: "a", tags: []))
+        let e = await expectGrantpinError(try await Client(socketPath: missing).update(name: "a", tags: []))
         guard case .invalidRequest = e else { return XCTFail("\(String(describing: e))") }
     }
 
@@ -372,7 +372,7 @@ final class ClientTests: XCTestCase {
         // and when the daemon refuses, the buffer is wiped as well
         let refusing = try FakeServer(answer: #"{"ok":false,"error":"bad_request","reason":"secret_exists","message":"secret already exists (overwrite to replace)"}"#)
         var again = Data("another-secret-value".utf8)
-        let e = await expectGrantdError(try await refusing.client.set(name: "tmp/x", value: &again))
+        let e = await expectGrantpinError(try await refusing.client.set(name: "tmp/x", value: &again))
         XCTAssertEqual(e?.reason, .secretExists)
         XCTAssertEqual(again, Data(repeating: 0, count: again.count))
     }

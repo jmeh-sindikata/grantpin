@@ -1,10 +1,10 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 final class UserMessageTests: XCTestCase {
     func d(_ c: ErrorCategory, _ r: ErrorReason, _ m: String = "") -> UserMessage {
-        UserMessage.from(GrantdError.daemon(category: c, reason: r, message: m))
+        UserMessage.from(GrantpinError.daemon(category: c, reason: r, message: m))
     }
 
     func testSpecTable() {
@@ -16,27 +16,27 @@ final class UserMessageTests: XCTestCase {
         XCTAssertEqual(d(.notFound, .grantNotFound).headline, "That grant is already gone.")
         XCTAssertEqual(d(.denied, .userDenied).headline, "You cancelled the confirmation.")
         XCTAssertEqual(d(.denied, .approverUnavailable).headline,
-                       "grantd could not show the confirmation dialog. Make sure you are logged in at this Mac and have a device password, then try again.")
-        XCTAssertEqual(d(.refused, .policyRefused, "no").headline, "A .grantd.yml file in that folder does not allow this.")
+                       "grantpin could not show the confirmation dialog. Make sure you are logged in at this Mac and have a device password, then try again.")
+        XCTAssertEqual(d(.refused, .policyRefused, "no").headline, "A .grantpin.yml file in that folder does not allow this.")
         XCTAssertEqual(d(.refused, .policyRefused, "no").detail, "no")
         XCTAssertEqual(d(.refused, .tierUnmet).headline, "This secret needs a stronger protection level than this vault provides.")
         XCTAssertEqual(d(.refused, .secretExpired).headline, "That secret has expired.")
-        XCTAssertEqual(d(.badRequest, .badRequest, "value too large").headline, "grantd rejected the request:")
+        XCTAssertEqual(d(.badRequest, .badRequest, "value too large").headline, "grantpin rejected the request:")
         XCTAssertEqual(d(.badRequest, .badRequest, "value too large").detail, "value too large")
         XCTAssertEqual(d(.badRequest, .unsupportedVersion).headline, "This app and the background service are out of step. Use Repair in Settings.")
         XCTAssertEqual(d(.failed, .canceled).headline, "The request was cancelled.")
-        XCTAssertEqual(d(.failed, .timeout).headline, "grantd took too long to answer.")
-        XCTAssertEqual(d(.failed, .internalError).headline, "grantd had an internal error. Details are in the log.")
+        XCTAssertEqual(d(.failed, .timeout).headline, "grantpin took too long to answer.")
+        XCTAssertEqual(d(.failed, .internalError).headline, "grantpin had an internal error. Details are in the log.")
         XCTAssertEqual(d(.failed, .internalError).action, .openLogs)
     }
 
     func testUnknownReasonFallsBackToTheCategory() {
-        XCTAssertEqual(d(.denied, .unknown("zzz")).headline, "grantd said no.")
-        XCTAssertEqual(d(.refused, .unknown("zzz")).headline, "grantd refused this.")
-        XCTAssertEqual(d(.badRequest, .unknown("zzz")).headline, "grantd rejected this request.")
+        XCTAssertEqual(d(.denied, .unknown("zzz")).headline, "grantpin said no.")
+        XCTAssertEqual(d(.refused, .unknown("zzz")).headline, "grantpin refused this.")
+        XCTAssertEqual(d(.badRequest, .unknown("zzz")).headline, "grantpin rejected this request.")
         XCTAssertEqual(d(.notFound, .unknown("zzz")).headline, "Not found.")
-        XCTAssertEqual(d(.failed, .unknown("zzz")).headline, "grantd could not finish this.")
-        XCTAssertEqual(d(.unknown("new"), .absent).headline, "grantd could not finish this.")
+        XCTAssertEqual(d(.failed, .unknown("zzz")).headline, "grantpin could not finish this.")
+        XCTAssertEqual(d(.unknown("new"), .absent).headline, "grantpin could not finish this.")
     }
 
     func testLockedVault() {
@@ -44,11 +44,11 @@ final class UserMessageTests: XCTestCase {
     }
 
     func testLocalErrors() {
-        XCTAssertEqual(UserMessage.from(GrantdError.timeout).headline, "grantd took too long to answer.")
-        XCTAssertEqual(UserMessage.from(GrantdError.notRunning).headline, "grantd is not running.")
-        XCTAssertEqual(UserMessage.from(GrantdError.requestTooLarge).headline, "That is too large to send.")
+        XCTAssertEqual(UserMessage.from(GrantpinError.timeout).headline, "grantpin took too long to answer.")
+        XCTAssertEqual(UserMessage.from(GrantpinError.notRunning).headline, "grantpin is not running.")
+        XCTAssertEqual(UserMessage.from(GrantpinError.requestTooLarge).headline, "That is too large to send.")
         XCTAssertEqual(UserMessage.from(CancellationError()).headline, "The request was cancelled.")
-        XCTAssertEqual(UserMessage.from(NSError(domain: "x", code: 1)).headline, "grantd could not finish this.")
+        XCTAssertEqual(UserMessage.from(NSError(domain: "x", code: 1)).headline, "grantpin could not finish this.")
     }
 
     func testDaemonTextIsSanitised() {

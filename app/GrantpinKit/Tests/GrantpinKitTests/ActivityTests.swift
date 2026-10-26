@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 @MainActor
 final class ActivityViewModelTests: XCTestCase {
@@ -31,7 +31,7 @@ final class ActivityViewModelTests: XCTestCase {
             entry(2, decision: "completed", argv: ["php", "artisan"], secrets: ["DB_URL"], exit: 0, ms: 1234),
             entry(3, decision: "denied_user", argv: ["rm"], secrets: ["KEY"]),
             entry(4, decision: "refused_policy", argv: ["curl"], secrets: ["KEY"]),
-            entry(5, decision: "allowed_once", reason: "set", argv: ["grantd", "set", "NEW"], secrets: ["NEW"], at: 5),
+            entry(5, decision: "allowed_once", reason: "set", argv: ["grantpin", "set", "NEW"], secrets: ["NEW"], at: 5),
         ])
         let m = model(f)
         await m.refresh()
@@ -46,7 +46,7 @@ final class ActivityViewModelTests: XCTestCase {
         let blocked = m.events.first { $0.decision == "refused_policy" }!
         XCTAssertEqual(blocked.tone, .blocked)
         XCTAssertEqual(blocked.resultText, "Blocked")
-        XCTAssertEqual(blocked.title, "Blocked by .grantd.yml")
+        XCTAssertEqual(blocked.title, "Blocked by .grantpin.yml")
     }
 
     func testAFailedRunAndAMissingResult() async {
@@ -73,7 +73,7 @@ final class ActivityViewModelTests: XCTestCase {
             entry(3, decision: "denied_user", argv: ["rm"]),
             entry(4, decision: "refused_tier", argv: ["x"]),
             entry(5, decision: "error", reason: "boom", argv: ["y"]),
-            entry(6, decision: "allowed_once", reason: "delete", argv: ["grantd", "delete", "OLD"], secrets: ["OLD"]),
+            entry(6, decision: "allowed_once", reason: "delete", argv: ["grantpin", "delete", "OLD"], secrets: ["OLD"]),
             entry(7, decision: "allowed_new_grant", reason: "standing", argv: ["php"]),
         ])
         let m = model(f)
@@ -264,11 +264,11 @@ final class ActivityViewModelTests: XCTestCase {
 
     func testVerifyFailureUsesTheNormalMapping() async {
         let f = FakeActivity()
-        f.verifyFailure = GrantdError.timeout
+        f.verifyFailure = GrantpinError.timeout
         let m = model(f)
         await m.verifyLog()
         guard case .failed(let msg) = m.verify else { return XCTFail("\(m.verify)") }
-        XCTAssertEqual(msg.headline, "grantd took too long to answer.")
+        XCTAssertEqual(msg.headline, "grantpin took too long to answer.")
     }
 
     // MARK: export
@@ -280,13 +280,13 @@ final class ActivityViewModelTests: XCTestCase {
         let out = await m.exportCSV()
         guard case .csv(let text, let name) = out else { return XCTFail("\(out)") }
         XCTAssertEqual(text, f.exportResult, "cells are not rewritten")
-        XCTAssertTrue(name.hasPrefix("grantd-audit-") && name.hasSuffix(".csv"), name)
+        XCTAssertTrue(name.hasPrefix("grantpin-audit-") && name.hasSuffix(".csv"), name)
     }
 
     func testExportFileName() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
-        XCTAssertEqual(ActivityViewModel.exportFileName(date: Date(timeIntervalSince1970: 1_792_000_000), calendar: cal), "grantd-audit-2026-10-14.csv")
+        XCTAssertEqual(ActivityViewModel.exportFileName(date: Date(timeIntervalSince1970: 1_792_000_000), calendar: cal), "grantpin-audit-2026-10-14.csv")
     }
 
     func testExportTooLarge() async {
@@ -300,15 +300,15 @@ final class ActivityViewModelTests: XCTestCase {
 
     func testExportOtherFailure() async {
         let f = FakeActivity()
-        f.exportFailure = GrantdError.notRunning
+        f.exportFailure = GrantpinError.notRunning
         let out = await model(f).exportCSV()
         guard case .failed(let msg) = out else { return XCTFail("\(out)") }
-        XCTAssertEqual(msg.headline, "grantd is not running.")
+        XCTAssertEqual(msg.headline, "grantpin is not running.")
     }
 
     func testDisabledReasons() {
         let m = ActivityViewModel(service: FakeActivity())
-        XCTAssertEqual(m.disabledReason, "Checking grantd…")
+        XCTAssertEqual(m.disabledReason, "Checking grantpin…")
         m.connectionChanged(.notRunning)
         XCTAssertNotNil(m.disabledReason)
         m.connectionChanged(.ready(readyStatus))

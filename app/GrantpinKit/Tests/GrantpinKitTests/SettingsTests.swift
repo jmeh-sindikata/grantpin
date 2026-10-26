@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 @MainActor
 final class SettingsModelTests: XCTestCase {
@@ -12,7 +12,7 @@ final class SettingsModelTests: XCTestCase {
 
     func testStatusRowsFollowServiceStatus() async {
         let c = FakeServiceControl()
-        c.status = .success(ServiceStatus(installed: true, loaded: true, running: true, pid: 5, exePath: "/x/grantd", plistPath: "/p.plist"))
+        c.status = .success(ServiceStatus(installed: true, loaded: true, running: true, pid: 5, exePath: "/x/grantpin", plistPath: "/p.plist"))
         let m = model(control: c)
         await m.refresh()
         XCTAssertTrue(m.backgroundServiceOn)
@@ -34,14 +34,14 @@ final class SettingsModelTests: XCTestCase {
         await m.install()
         XCTAssertEqual(c.installs.count, 1)
         XCTAssertNil(c.installs[0], "no explicit path: the shell's PATH is detected")
-        XCTAssertEqual(m.lastResult?.summary, "grantd is running in the background.")
+        XCTAssertEqual(m.lastResult?.summary, "grantpin is running in the background.")
         XCTAssertEqual(changed, 1, "status is polled right away")
         XCTAssertFalse(m.isBusy)
     }
 
     func testStopServiceUsesTheConfirmationText() async {
         XCTAssertEqual(SettingsModel.stopConfirmation.title, "Stop the background service?")
-        XCTAssertEqual(SettingsModel.stopConfirmation.message, "Agents will not be able to use grantd until you turn it back on. Your secrets and grants stay as they are.")
+        XCTAssertEqual(SettingsModel.stopConfirmation.message, "Agents will not be able to use grantpin until you turn it back on. Your secrets and grants stay as they are.")
         XCTAssertEqual(SettingsModel.stopConfirmation.confirmLabel, "Stop Service")
         let c = FakeServiceControl()
         let m = model(control: c)
@@ -70,7 +70,7 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertEqual(model(control: nil).controlsDisabledReason, "The helper inside this app could not be found.")
         let c = FakeServiceControl()
         let m = model(control: c, location: .elsewhere)
-        XCTAssertEqual(m.controlsDisabledReason, "Move grantd to your Applications folder first")
+        XCTAssertEqual(m.controlsDisabledReason, "Move grantpin to your Applications folder first")
         await m.install()
         XCTAssertEqual(c.installs.count, 0)
         m.location = .ok
@@ -86,8 +86,8 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertNotNil(SettingsModel.pathIssue("bin"))
         XCTAssertNotNil(SettingsModel.pathIssue("/usr/bin\n/bin"))
         XCTAssertNotNil(SettingsModel.pathIssue("/usr/bin:\u{1}/bin"))
-        XCTAssertEqual(SettingsModel.pathLabel, "Where grantd looks for commands")
-        XCTAssertEqual(SettingsModel.pathHelp, "Programs that agents run through grantd can only find commands in these folders.")
+        XCTAssertEqual(SettingsModel.pathLabel, "Where grantpin looks for commands")
+        XCTAssertEqual(SettingsModel.pathHelp, "Programs that agents run through grantpin can only find commands in these folders.")
     }
 
     func testApplyPathReinstallsWithIt() async {
@@ -150,7 +150,7 @@ final class SettingsModelTests: XCTestCase {
         let m = model(login: l)
         XCTAssertTrue(m.startAtLogin)
         XCTAssertTrue(m.loginNeedsApproval)
-        XCTAssertEqual(SettingsModel.approvalNeeded, "Allow grantd in System Settings > General > Login Items")
+        XCTAssertEqual(SettingsModel.approvalNeeded, "Allow grantpin in System Settings > General > Login Items")
         m.openLoginItemsSettings()
         XCTAssertEqual(l.settingsOpened, 1)
         struct Boom: Error {}
@@ -158,7 +158,7 @@ final class SettingsModelTests: XCTestCase {
         l2.registerFailure = Boom()
         let m2 = model(login: l2)
         m2.setStartAtLogin(true)
-        XCTAssertEqual(m2.loginError, "grantd could not be added to the login items.")
+        XCTAssertEqual(m2.loginError, "grantpin could not be added to the login items.")
     }
 
     func testVersionRowAndRepairRestart() async {
@@ -170,7 +170,7 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertNil(m.versionNote)
         XCTAssertNil(m.versionAction)
         m.connectionChanged(.ready(StatusResult(version: "v1", protoV: 1)))
-        XCTAssertEqual(m.versionNote, "grantd was updated. Restart the background service to finish.")
+        XCTAssertEqual(m.versionNote, "grantpin was updated. Restart the background service to finish.")
         XCTAssertEqual(m.versionAction, "Restart")
         m.connectionChanged(.ready(StatusResult(version: "v2", protoV: 2)))
         XCTAssertEqual(m.versionNote, "This app and the background service are out of step.")
@@ -208,7 +208,7 @@ final class SecurityFactsTests: XCTestCase {
 
     func testAppPaths() {
         let home = URL(fileURLWithPath: "/Users/me")
-        XCTAssertEqual(AppPaths.vaultFolder(home: home).path, "/Users/me/Library/Application Support/grantd")
-        XCTAssertEqual(AppPaths.logsFolder(home: home).path, "/Users/me/Library/Logs/grantd")
+        XCTAssertEqual(AppPaths.vaultFolder(home: home).path, "/Users/me/Library/Application Support/grantpin")
+        XCTAssertEqual(AppPaths.logsFolder(home: home).path, "/Users/me/Library/Logs/grantpin")
     }
 }

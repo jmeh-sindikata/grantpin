@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 final class ImportReportTests: XCTestCase {
     func testParsesTheDocumentedLines() throws {
@@ -27,7 +27,7 @@ final class ImportReportTests: XCTestCase {
         for bad in ["", "hello\n", "added: 2 (A)\n", "added: x (A)\n", "frobnicated: 1 (A)\n", "added: 1 ()\n", "added 1 (A)\n",
                     "added: 1 (A)\nand then something else\n", "added: 1 (A, )\n", "added: 1 (A\n"] {
             XCTAssertThrowsError(try ImportReport.parse(bad), bad.debugDescription) { e in
-                guard case GrantdError.malformedResponse = e else { return XCTFail("\(e)") }
+                guard case GrantpinError.malformedResponse = e else { return XCTFail("\(e)") }
             }
         }
     }
@@ -81,7 +81,7 @@ final class ImportRunnerProcessTests: XCTestCase {
         let names = Set(out.stdout.split(separator: "\n").compactMap { $0.split(separator: "=", maxSplits: 1).first.map(String.init) })
         XCTAssertTrue(names.isSubset(of: ["PATH", "HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "PWD", "SHLVL", "_", "__CF_USER_TEXT_ENCODING"]), "\(names)")
         XCTAssertTrue(out.stdout.contains("PATH=/usr/bin:/bin\n"))
-        XCTAssertFalse(names.contains("GRANTD_SOCKET") || names.contains("DYLD_INSERT_LIBRARIES"))
+        XCTAssertFalse(names.contains("GRANTPIN_SOCKET") || names.contains("DYLD_INSERT_LIBRARIES"))
     }
 
     func testOutputIsCapped() async throws {

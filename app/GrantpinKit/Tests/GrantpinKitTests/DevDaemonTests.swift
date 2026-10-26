@@ -1,9 +1,9 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
-/// Every op the app uses, against the real Go daemon (`-tags grantd_dev`,
-/// `GRANTD_DEV_APPROVE=allow`). `vault_locked` cannot be produced with the dev
+/// Every op the app uses, against the real Go daemon (`-tags grantpin_dev`,
+/// `GRANTPIN_DEV_APPROVE=allow`). `vault_locked` cannot be produced with the dev
 /// keystore; its mapping is unit-tested in ClientTests.
 final class DevDaemonOpsTests: DevDaemonCase {
     // MARK: status
@@ -18,12 +18,12 @@ final class DevDaemonOpsTests: DevDaemonCase {
         XCTAssertEqual(ConnectionState.from(s), .notInitialized)
         // every other op fails with vault_not_initialized
         for e in [
-            await expectGrantdError(try await client.list()),
-            await expectGrantdError(try await client.exists("a")),
-            await expectGrantdError(try await client.masked("a")),
-            await expectGrantdError(try await client.delete("a")),
-            await expectGrantdError(try await client.listGrants()),
-            await expectGrantdError(try await client.listAudit()),
+            await expectGrantpinError(try await client.list()),
+            await expectGrantpinError(try await client.exists("a")),
+            await expectGrantpinError(try await client.masked("a")),
+            await expectGrantpinError(try await client.delete("a")),
+            await expectGrantpinError(try await client.listGrants()),
+            await expectGrantpinError(try await client.listAudit()),
         ] {
             XCTAssertEqual(e?.isVaultNotInitialized, true, "\(String(describing: e))")
             XCTAssertEqual(e?.category, .failed)
@@ -77,7 +77,7 @@ final class DevDaemonOpsTests: DevDaemonCase {
         // masked: 12+ characters show the last four, shorter ones nothing
         await assertEqual(try await c.masked("aws/key"), "****WXYZ")
         await assertEqual(try await c.masked("b/second"), "********")
-        var e = await expectGrantdError(try await c.masked("nope"))
+        var e = await expectGrantpinError(try await c.masked("nope"))
         XCTAssertEqual(e?.category, .notFound)
         XCTAssertEqual(e?.reason, .secretNotFound)
 
@@ -110,30 +110,30 @@ final class DevDaemonOpsTests: DevDaemonCase {
         await assertEqual(try await c.masked("aws/key"), "****WXYZ")
 
         // update errors
-        e = await expectGrantdError(try await c.update(name: "nope", notes: "x"))
+        e = await expectGrantpinError(try await c.update(name: "nope", notes: "x"))
         XCTAssertEqual(e?.reason, .secretNotFound)
         XCTAssertEqual(e?.isNotFound, true)
-        e = await expectGrantdError(try await c.update(name: "aws/key"))  // nothing to change
+        e = await expectGrantpinError(try await c.update(name: "aws/key"))  // nothing to change
         XCTAssertEqual(e?.isBadRequest, true)
-        e = await expectGrantdError(try await c.update(name: "aws/key", expires: later, clear: [.expires]))
+        e = await expectGrantpinError(try await c.update(name: "aws/key", expires: later, clear: [.expires]))
         XCTAssertEqual(e?.isBadRequest, true)
-        e = await expectGrantdError(try await c.update(name: "aws/key", expires: Date().addingTimeInterval(-60)))
+        e = await expectGrantpinError(try await c.update(name: "aws/key", expires: Date().addingTimeInterval(-60)))
         XCTAssertEqual(e?.isBadRequest, true)
-        e = await expectGrantdError(try await c.update(name: "aws/key", minTier: Tier(rawValue: "bogus")))
+        e = await expectGrantpinError(try await c.update(name: "aws/key", minTier: Tier(rawValue: "bogus")))
         XCTAssertEqual(e?.isBadRequest, true)
-        e = await expectGrantdError(try await c.update(name: "aws/key", tags: ["no spaces"]))
+        e = await expectGrantpinError(try await c.update(name: "aws/key", tags: ["no spaces"]))
         XCTAssertEqual(e?.isBadRequest, true)
 
         // exists
         await assertTrue(try await c.exists("aws/key"))
         await assertFalse(try await c.exists("nope"))
-        e = await expectGrantdError(try await c.exists("a//b"))
+        e = await expectGrantpinError(try await c.exists("a//b"))
         XCTAssertEqual(e?.category, .badRequest)
 
         // delete, then again
         try await c.delete("aws/key")
         await assertFalse(try await c.exists("aws/key"))
-        e = await expectGrantdError(try await c.delete("aws/key"))
+        e = await expectGrantpinError(try await c.delete("aws/key"))
         XCTAssertEqual(e?.category, .notFound)
         XCTAssertEqual(e?.reason, .secretNotFound)
         await assertEqual(try await c.list().map(\.name), ["a/first", "b/second"])
@@ -146,7 +146,7 @@ final class DevDaemonOpsTests: DevDaemonCase {
 
         try await put("dup/key", "first-value-0123456789", tags: ["old"])
         var v = Data("second-value-0123456789".utf8)
-        var e = await expectGrantdError(try await c.set(name: "dup/key", value: &v))
+        var e = await expectGrantpinError(try await c.set(name: "dup/key", value: &v))
         XCTAssertEqual(e?.category, .badRequest)
         XCTAssertEqual(e?.reason, .secretExists)
         XCTAssertEqual(v, Data(repeating: 0, count: v.count), "wiped on failure too")
@@ -162,19 +162,19 @@ final class DevDaemonOpsTests: DevDaemonCase {
         await assertEqual(try await c.masked("dup/key"), "****6780")
 
         v = Data()
-        e = await expectGrantdError(try await c.set(name: "empty", value: &v))
+        e = await expectGrantpinError(try await c.set(name: "empty", value: &v))
         XCTAssertEqual(e?.isBadRequest, true)
         v = Data("a-value-0123456789".utf8)
-        e = await expectGrantdError(try await c.set(name: "past", value: &v, expires: Date().addingTimeInterval(-3600)))
+        e = await expectGrantpinError(try await c.set(name: "past", value: &v, expires: Date().addingTimeInterval(-3600)))
         XCTAssertEqual(e?.isBadRequest, true)
         v = Data("a-value-0123456789".utf8)
-        e = await expectGrantdError(try await c.set(name: "tier", value: &v, minTier: Tier(rawValue: "bogus")))
+        e = await expectGrantpinError(try await c.set(name: "tier", value: &v, minTier: Tier(rawValue: "bogus")))
         XCTAssertEqual(e?.isBadRequest, true)
         v = Data("a-value-0123456789".utf8)
-        e = await expectGrantdError(try await c.set(name: "bad//name", value: &v))
+        e = await expectGrantpinError(try await c.set(name: "bad//name", value: &v))
         XCTAssertEqual(e?.isBadRequest, true)
         v = Data("a-value-0123456789".utf8)
-        e = await expectGrantdError(try await c.set(name: "badtag", value: &v, tags: ["has space"]))
+        e = await expectGrantpinError(try await c.set(name: "badtag", value: &v, tags: ["has space"]))
         XCTAssertEqual(e?.isBadRequest, true)
 
         // 1 MiB is the daemon's limit
@@ -182,18 +182,18 @@ final class DevDaemonOpsTests: DevDaemonCase {
         try await c.set(name: "big/ok", value: &v)
         await assertEqual(try await c.masked("big/ok"), "****aaaa")
         v = Data(repeating: 0x61, count: (1 << 20) + 1)
-        e = await expectGrantdError(try await c.set(name: "big/over", value: &v))
+        e = await expectGrantpinError(try await c.set(name: "big/over", value: &v))
         XCTAssertEqual(e?.isBadRequest, true)
         await assertFalse(try await c.exists("big/over"))
 
         // a value of control characters escapes to over 4 MiB: refused here, never sent
         v = Data(repeating: 0x07, count: 1 << 20)
-        e = await expectGrantdError(try await c.set(name: "ctl", value: &v))
+        e = await expectGrantpinError(try await c.set(name: "ctl", value: &v))
         XCTAssertEqual(e, .requestTooLarge)
 
         // a value that is not UTF-8 is not sent
         v = Data([0xFF, 0xFE, 0x41])
-        e = await expectGrantdError(try await c.set(name: "bin", value: &v))
+        e = await expectGrantpinError(try await c.set(name: "bin", value: &v))
         guard case .invalidRequest? = e else { return XCTFail("\(String(describing: e))") }
 
         // awkward but valid values round-trip through the daemon unchanged
@@ -216,7 +216,7 @@ final class DevDaemonOpsTests: DevDaemonCase {
         var newest = try await unwrap(try await c.listAudit(limit: 1).entries.first)
         XCTAssertEqual(newest.decision, "allowed_once")
         XCTAssertEqual(newest.reason, "update: lower min_tier")
-        XCTAssertEqual(newest.argv, ["grantd", "update", "tier/key"])
+        XCTAssertEqual(newest.argv, ["grantpin", "update", "tier/key"])
 
         // dialog -> hardware raises it: a plain update
         try await c.update(name: "tier/key", minTier: .hardware)
@@ -263,7 +263,7 @@ final class DevDaemonOpsTests: DevDaemonCase {
 
         try await c.revokeGrant(id: g.id)
         await assertTrue(try await c.listGrants().isEmpty)
-        var e = await expectGrantdError(try await c.revokeGrant(id: g.id))
+        var e = await expectGrantpinError(try await c.revokeGrant(id: g.id))
         XCTAssertEqual(e?.category, .notFound)
         XCTAssertEqual(e?.reason, .grantNotFound)
 
@@ -276,24 +276,24 @@ final class DevDaemonOpsTests: DevDaemonCase {
         await assertTrue(try await c.listGrants().isEmpty)
 
         // the daemon validates; nothing is clamped here
-        e = await expectGrantdError(try await c.addStandingGrant(StandingGrantRequest(
+        e = await expectGrantpinError(try await c.addStandingGrant(StandingGrantRequest(
             forCaller: "claude-code", cwd: dir, secrets: ["DB_URL"], argv: ["php"], ttlSeconds: 91 * 86_400)))
         XCTAssertEqual(e?.category, .badRequest)
         XCTAssertTrue(e?.message.contains("90d") == true, e?.message ?? "")
-        e = await expectGrantdError(try await c.addStandingGrant(StandingGrantRequest(
+        e = await expectGrantpinError(try await c.addStandingGrant(StandingGrantRequest(
             forCaller: "claude-code", cwd: dir, secrets: ["NOPE"], argv: ["php"], ttlSeconds: 60)))
         XCTAssertEqual(e?.category, .notFound)
         XCTAssertEqual(e?.reason, .secretNotFound)
-        e = await expectGrantdError(try await c.addStandingGrant(StandingGrantRequest(
+        e = await expectGrantpinError(try await c.addStandingGrant(StandingGrantRequest(
             forCaller: "", cwd: dir, secrets: ["DB_URL"], argv: ["php"], ttlSeconds: 60)))
         XCTAssertEqual(e?.isBadRequest, true)
-        e = await expectGrantdError(try await c.addStandingGrant(StandingGrantRequest(
+        e = await expectGrantpinError(try await c.addStandingGrant(StandingGrantRequest(
             forCaller: "x", cwd: dir + "/missing", secrets: ["DB_URL"], argv: ["php"], ttlSeconds: 60)))
         XCTAssertEqual(e?.isBadRequest, true)
-        e = await expectGrantdError(try await c.addStandingGrant(StandingGrantRequest(
+        e = await expectGrantpinError(try await c.addStandingGrant(StandingGrantRequest(
             forCaller: "x", cwd: dir, secrets: ["DB_URL"], argv: [], ttlSeconds: 60)))
         XCTAssertEqual(e?.isBadRequest, true)
-        e = await expectGrantdError(try await c.addStandingGrant(StandingGrantRequest(
+        e = await expectGrantpinError(try await c.addStandingGrant(StandingGrantRequest(
             forCaller: "x", cwd: dir, secrets: ["DB_URL"], argv: ["php"], ttlSeconds: 0)))
         XCTAssertEqual(e?.isBadRequest, true)
         await assertTrue(try await c.listGrants().isEmpty)
@@ -318,13 +318,13 @@ final class DevDaemonOpsTests: DevDaemonCase {
         XCTAssertEqual(list.entries.map(\.reason), ["delete", "update", "set", "set"])
         for entry in list.entries {
             XCTAssertEqual(entry.decision, "allowed_once")
-            XCTAssertEqual(entry.caller, "grantd-app")
-            XCTAssertEqual(entry.argv.first, "grantd")
+            XCTAssertEqual(entry.caller, "grantpin-app")
+            XCTAssertEqual(entry.argv.first, "grantpin")
         }
-        XCTAssertEqual(list.entries[0].argv, ["grantd", "delete", "audit/two"])
+        XCTAssertEqual(list.entries[0].argv, ["grantpin", "delete", "audit/two"])
         XCTAssertEqual(list.entries[0].secrets, ["audit/two"])
-        XCTAssertEqual(list.entries[1].argv, ["grantd", "update", "audit/one"])
-        XCTAssertEqual(list.entries[3].argv, ["grantd", "set", "audit/one"])
+        XCTAssertEqual(list.entries[1].argv, ["grantpin", "update", "audit/one"])
+        XCTAssertEqual(list.entries[3].argv, ["grantpin", "set", "audit/one"])
         XCTAssertNil(list.entries[0].exitCode)
         // limit is honoured
         await assertEqual(try await c.listAudit(limit: 2).entries.map(\.id), Array(list.entries.prefix(2)).map(\.id))
@@ -345,8 +345,8 @@ final class DevDaemonOpsTests: DevDaemonCase {
         XCTAssertEqual(rows.count - 1, list.entries.count)
         XCTAssertEqual(rows.dropFirst().map { $0[0] }, list.entries.reversed().map(\.id))
         let argvCell = Data(rows[1][4].utf8)
-        XCTAssertEqual(try JSONSerialization.jsonObject(with: argvCell) as? [String], ["grantd", "set", "audit/one"])
-        XCTAssertEqual(rows[1][2], "grantd-app")
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: argvCell) as? [String], ["grantpin", "set", "audit/one"])
+        XCTAssertEqual(rows[1][2], "grantpin-app")
     }
 
     func testVerifyReportsATamperedLog() async throws {
@@ -438,8 +438,8 @@ final class DevDaemonOpsTests: DevDaemonCase {
         await assertEqual(try await client.list().count, 0)
 
         // a helper that cannot be started is an error, not a crash
-        let missing = ImportRunner(executable: URL(fileURLWithPath: "/nonexistent/grantd"), socketPath: socket)
-        let e = await expectGrantdError(try await missing.run(from: FileHandle.nullDevice, dryRun: true, onConflict: .skip))
+        let missing = ImportRunner(executable: URL(fileURLWithPath: "/nonexistent/grantpin"), socketPath: socket)
+        let e = await expectGrantpinError(try await missing.run(from: FileHandle.nullDevice, dryRun: true, onConflict: .skip))
         guard case .io? = e else { return XCTFail("\(String(describing: e))") }
     }
 }
@@ -451,7 +451,7 @@ final class DevDaemonDeniedTests: DevDaemonCase {
     func testStandingGrantIsDeniedWithoutApproval() async throws {
         try await startDaemon()
         try await put("DB_URL", "postgres://user:password@host/dbname")
-        let e = await expectGrantdError(try await client.addStandingGrant(StandingGrantRequest(
+        let e = await expectGrantpinError(try await client.addStandingGrant(StandingGrantRequest(
             forCaller: "claude-code", cwd: dir, secrets: ["DB_URL"], argv: ["php"], ttlSeconds: 60)))
         XCTAssertEqual(e?.category, .denied)
         XCTAssertEqual(e?.reason, .userDenied)
@@ -463,7 +463,7 @@ final class DevDaemonDeniedTests: DevDaemonCase {
         try await startDaemon()
         var v = Data("tier-test-value-0123456789".utf8)
         try await client.set(name: "tier/key", value: &v, notes: "old", minTier: .hardware)
-        let e = await expectGrantdError(try await client.update(name: "tier/key", notes: "new", minTier: .dialog))
+        let e = await expectGrantpinError(try await client.update(name: "tier/key", notes: "new", minTier: .dialog))
         XCTAssertEqual(e?.category, .denied)
         XCTAssertEqual(e?.reason, .userDenied)
         let after = try await unwrap(try await client.list().first)
@@ -484,7 +484,7 @@ final class DevDaemonNoStandingTests: DevDaemonCase {
     func testStandingGrantIsDeniedButOtherDialogsAreAllowed() async throws {
         try await startDaemon()
         try await put("DB_URL", "postgres://user:password@host/dbname")
-        let e = await expectGrantdError(try await client.addStandingGrant(StandingGrantRequest(
+        let e = await expectGrantpinError(try await client.addStandingGrant(StandingGrantRequest(
             forCaller: "claude-code", cwd: dir, secrets: ["DB_URL"], argv: ["php"], ttlSeconds: 60)))
         XCTAssertEqual(e?.reason, .userDenied)
         var v = Data("x-value-0123456789".utf8)
@@ -521,7 +521,7 @@ enum CSV {
             i += 1
         }
         if !field.isEmpty || !row.isEmpty { row.append(field); rows.append(row) }
-        guard !inQuotes else { throw GrantdError.malformedResponse("unterminated quote") }
+        guard !inQuotes else { throw GrantpinError.malformedResponse("unterminated quote") }
         return rows
     }
 }

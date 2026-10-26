@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 /// A scratch directory with small executable scripts standing in for the helper and the shell.
 final class ScriptDir {
@@ -22,7 +22,7 @@ final class ScriptDir {
 
 final class HelperLocatorTests: XCTestCase {
     func makeBundle(in dir: ScriptDir) throws -> URL {
-        let app = dir.url.appendingPathComponent("grantd.app")
+        let app = dir.url.appendingPathComponent("grantpin.app")
         let bin = app.appendingPathComponent(HelperLocator.relativePath)
         try FileManager.default.createDirectory(at: bin.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "#!/bin/sh\n".write(to: bin, atomically: true, encoding: .utf8)
@@ -34,15 +34,15 @@ final class HelperLocatorTests: XCTestCase {
         let d = try ScriptDir()
         let app = try makeBundle(in: d)
         let h = try HelperLocator.resolve(bundleURL: app)
-        XCTAssertTrue(h.path.hasSuffix("grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd"))
+        XCTAssertTrue(h.path.hasSuffix("grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin"))
     }
 
     func testMissingHelper() throws {
         let d = try ScriptDir()
-        let app = d.url.appendingPathComponent("grantd.app")
+        let app = d.url.appendingPathComponent("grantpin.app")
         try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
         XCTAssertThrowsError(try HelperLocator.resolve(bundleURL: app)) {
-            XCTAssertEqual($0 as? HelperLocator.Failure, .missing("grantd"))
+            XCTAssertEqual($0 as? HelperLocator.Failure, .missing("grantpin"))
         }
     }
 
@@ -89,7 +89,7 @@ final class HelperLocatorTests: XCTestCase {
 
     func testDevelopmentOverride() throws {
         let d = try ScriptDir()
-        let s = try d.script("fake-grantd", "exit 0")
+        let s = try d.script("fake-grantpin", "exit 0")
         XCTAssertEqual(try HelperLocator.resolve(bundleURL: URL(fileURLWithPath: "/nowhere.app"), developmentOverride: s.path).path, s.path)
         XCTAssertThrowsError(try HelperLocator.resolve(bundleURL: URL(fileURLWithPath: "/nowhere.app"), developmentOverride: "relative"))
         XCTAssertThrowsError(try HelperLocator.resolve(bundleURL: URL(fileURLWithPath: "/nowhere.app"), developmentOverride: "/nonexistent/x"))
@@ -189,7 +189,7 @@ final class PathDetectorTests: XCTestCase {
 final class HelperActionsTests: XCTestCase {
     func recorder(_ d: ScriptDir, exit code: Int = 0, stdout: String = "", stderr: String = "") throws -> (URL, URL) {
         let log = d.url.appendingPathComponent("args.log")
-        let h = try d.script("grantd", """
+        let h = try d.script("grantpin", """
         for a in "$@"; do printf '%s\\n' "$a" >> "\(log.path)"; done
         printf '%s' 'ENV:'"$(env | sort | tr '\\n' ' ')" > "\(log.path).env"
         printf '%s' '\(stdout)'
@@ -209,28 +209,28 @@ final class HelperActionsTests: XCTestCase {
     func testStartRunsServiceInstallWithTheOuterAppAndThePath() async throws {
         let d = try ScriptDir()
         let (helper, log) = try recorder(d, stdout: "service installed and started\n")
-        let app = URL(fileURLWithPath: "/Users/x/Applications/grantd.app")
+        let app = URL(fileURLWithPath: "/Users/x/Applications/grantpin.app")
         let actions = HelperActions(helper: helper, appBundle: app, pathDetector: try detector(d), environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"])
         let r = await actions.startService()
         XCTAssertEqual(r.outcome, .succeeded)
-        XCTAssertEqual(r.summary, "grantd is running in the background.")
+        XCTAssertEqual(r.summary, "grantpin is running in the background.")
         let args = try String(contentsOf: log, encoding: .utf8).split(separator: "\n").map(String.init)
-        XCTAssertEqual(args, ["service", "install", "--exe", "/Users/x/Applications/grantd.app", "--path", "/opt/homebrew/bin:/usr/bin"])
+        XCTAssertEqual(args, ["service", "install", "--exe", "/Users/x/Applications/grantpin.app", "--path", "/opt/homebrew/bin:/usr/bin"])
         XCTAssertEqual(HelperActions.installArguments(appBundle: app, path: "/p"), ["service", "install", "--exe", app.path, "--path", "/p"])
     }
 
     func testTheHelperGetsOnlyTheMinimalEnvironment() async throws {
         let d = try ScriptDir()
         let (helper, log) = try recorder(d)
-        setenv("GRANTD_TEST_LEAK", "1", 1)
-        defer { unsetenv("GRANTD_TEST_LEAK") }
+        setenv("GRANTPIN_TEST_LEAK", "1", 1)
+        defer { unsetenv("GRANTPIN_TEST_LEAK") }
         let actions = HelperActions(helper: helper, appBundle: URL(fileURLWithPath: "/a.app"), pathDetector: try detector(d),
-                                    environment: ImportRunner.standardEnvironment(from: ["HOME": "/h", "USER": "u", "GRANTD_TEST_LEAK": "1", "SECRET": "x"]))
+                                    environment: ImportRunner.standardEnvironment(from: ["HOME": "/h", "USER": "u", "GRANTPIN_TEST_LEAK": "1", "SECRET": "x"]))
         _ = await actions.createVault()
         let env = try String(contentsOfFile: log.path + ".env", encoding: .utf8)
         XCTAssertTrue(env.contains("HOME=/h"))
         XCTAssertTrue(env.contains("PATH=/usr/bin:/bin"))
-        XCTAssertFalse(env.contains("GRANTD_TEST_LEAK"))
+        XCTAssertFalse(env.contains("GRANTPIN_TEST_LEAK"))
         XCTAssertFalse(env.contains("SECRET"))
     }
 
@@ -251,13 +251,13 @@ final class HelperActionsTests: XCTestCase {
         XCTAssertEqual(HelperActions.interpretInstall(out(0, "service installed and started\n")).outcome, .succeeded)
         let warn = HelperActions.interpretInstall(out(0, "service installed and started\nWARNING:   service installed, but the daemon did not become ready\n"))
         XCTAssertEqual(warn.outcome, .startedNotAnswering)
-        XCTAssertEqual(warn.summary, "Started, but grantd has not answered yet.")
+        XCTAssertEqual(warn.summary, "Started, but grantpin has not answered yet.")
         XCTAssertTrue(warn.isSuccess)
         let fail = HelperActions.interpretInstall(out(1, "", "Error: service: refusing temporary directory\n"))
         XCTAssertEqual(fail.outcome, .failed)
-        XCTAssertEqual(fail.summary, "grantd could not be started.")
+        XCTAssertEqual(fail.summary, "grantpin could not be started.")
         XCTAssertEqual(fail.detail, "Error: service: refusing temporary directory")
-        XCTAssertEqual(HelperActions.interpretInstall(out(15, timedOut: true)).summary, "grantd took too long to start.")
+        XCTAssertEqual(HelperActions.interpretInstall(out(15, timedOut: true)).summary, "grantpin took too long to start.")
     }
 
     func testFailureDetailIsTheSanitisedTailOfStderr() {
@@ -281,10 +281,10 @@ final class HelperActionsTests: XCTestCase {
 
     func testAMissingHelperFailsCleanly() async throws {
         let d = try ScriptDir()
-        let actions = HelperActions(helper: URL(fileURLWithPath: "/nonexistent/grantd"), appBundle: URL(fileURLWithPath: "/a.app"), pathDetector: try detector(d))
+        let actions = HelperActions(helper: URL(fileURLWithPath: "/nonexistent/grantpin"), appBundle: URL(fileURLWithPath: "/a.app"), pathDetector: try detector(d))
         let r = await actions.startService()
         XCTAssertEqual(r.outcome, .failed)
-        XCTAssertEqual(r.summary, "grantd could not be started: the helper did not run.")
+        XCTAssertEqual(r.summary, "grantpin could not be started: the helper did not run.")
         let c = await actions.createVault()
         XCTAssertEqual(c.outcome, .failed)
     }

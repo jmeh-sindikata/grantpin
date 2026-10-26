@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 final class AuditPairingTests: XCTestCase {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000)
@@ -148,7 +148,7 @@ final class AuditPairingTests: XCTestCase {
             ("allowed_once", "grants revoke", "Grant revoked"),
             ("allowed_once", "grants revoke_all", "All grants revoked"),
             ("denied_user", "", "You said no"),
-            ("refused_policy", "", "Blocked by .grantd.yml"),
+            ("refused_policy", "", "Blocked by .grantpin.yml"),
             ("refused_tier", "", "Blocked: protection level"),
             ("error", "x", "Error"),
         ]
@@ -156,7 +156,7 @@ final class AuditPairingTests: XCTestCase {
     }
 
     func testLifecycleRowShowsTheSecretName() {
-        let row = AuditEntry(id: "9", ts: at(0), caller: "grantd-app", cwd: "", argv: ["grantd", "set", "aws/key"], secrets: ["aws/key"],
+        let row = AuditEntry(id: "9", ts: at(0), caller: "grantpin-app", cwd: "", argv: ["grantpin", "set", "aws/key"], secrets: ["aws/key"],
                              decision: "allowed_once", reason: "set")
         let ev = pair([row])
         XCTAssertEqual(ev[0].kind, .change)
@@ -166,11 +166,11 @@ final class AuditPairingTests: XCTestCase {
     }
 
     func testGrantRevocationRowsAreChangesNotRuns() {
-        let one = AuditEntry(id: "1", ts: at(0), caller: "grantd-app", cwd: "/x", argv: ["grantd", "grants", "revoke", "g_1"],
+        let one = AuditEntry(id: "1", ts: at(0), caller: "grantpin-app", cwd: "/x", argv: ["grantpin", "grants", "revoke", "g_1"],
                              decision: "allowed_once", grantID: "g_1", reason: "grants revoke")
-        let all = AuditEntry(id: "2", ts: at(1), caller: "grantd-app", cwd: "/x", argv: ["grantd", "grants", "revoke", "--all", "g_2"],
+        let all = AuditEntry(id: "2", ts: at(1), caller: "grantpin-app", cwd: "/x", argv: ["grantpin", "grants", "revoke", "--all", "g_2"],
                              decision: "allowed_once", grantID: "g_2", reason: "grants revoke_all")
-        let none = AuditEntry(id: "3", ts: at(2), caller: "grantd-app", cwd: "/x", argv: ["grantd", "grants", "revoke", "--all"],
+        let none = AuditEntry(id: "3", ts: at(2), caller: "grantpin-app", cwd: "/x", argv: ["grantpin", "grants", "revoke", "--all"],
                               decision: "allowed_once", reason: "grants revoke_all")
         let ev = pair([one, all, none])
         XCTAssertEqual(ev.count, 3)
@@ -178,7 +178,7 @@ final class AuditPairingTests: XCTestCase {
         XCTAssertEqual(ev[2].title, "Grant revoked")
         XCTAssertEqual(ev[2].command, "g_1")
         XCTAssertEqual(ev[2].summary, "Grant revoked: g_1")
-        XCTAssertEqual(ev[2].caller, "grantd-app")
+        XCTAssertEqual(ev[2].caller, "grantpin-app")
         XCTAssertEqual(ev[1].title, "All grants revoked")
         XCTAssertEqual(ev[1].summary, "All grants revoked: g_2")
         XCTAssertEqual(ev[0].title, "All grants revoked")
@@ -198,11 +198,11 @@ final class AuditPairingTests: XCTestCase {
     func testRefusedLowerTierUpdateIsNotAChange() {
         // A lower min_tier update the human refused or that failed carries the
         // "update: lower min_tier" reason but nothing changed.
-        let denied = AuditEntry(id: "1", ts: at(0), argv: ["grantd", "update", "API_KEY"], secrets: ["API_KEY"],
+        let denied = AuditEntry(id: "1", ts: at(0), argv: ["grantpin", "update", "API_KEY"], secrets: ["API_KEY"],
                                 decision: "denied_user", reason: "update: lower min_tier")
-        let err = AuditEntry(id: "2", ts: at(1), argv: ["grantd", "update", "API_KEY"], secrets: ["API_KEY"],
+        let err = AuditEntry(id: "2", ts: at(1), argv: ["grantpin", "update", "API_KEY"], secrets: ["API_KEY"],
                              decision: "error", reason: "update: lower min_tier: authentication failed")
-        let allowed = AuditEntry(id: "3", ts: at(2), argv: ["grantd", "update", "API_KEY"], secrets: ["API_KEY"],
+        let allowed = AuditEntry(id: "3", ts: at(2), argv: ["grantpin", "update", "API_KEY"], secrets: ["API_KEY"],
                                  decision: "allowed_once", reason: "update: lower min_tier")
         let ev = pair([denied, err, allowed])
         XCTAssertEqual(ev[2].kind, .refused)
@@ -210,7 +210,7 @@ final class AuditPairingTests: XCTestCase {
         XCTAssertEqual(ev[2].reason, "update: lower min_tier")
         XCTAssertEqual(ev[1].kind, .refused)
         XCTAssertEqual(ev[1].title, "Error")
-        XCTAssertEqual(ev[1].summary, "Error: grantd update API_KEY (update: lower min_tier: authentication failed)")
+        XCTAssertEqual(ev[1].summary, "Error: grantpin update API_KEY (update: lower min_tier: authentication failed)")
         // The allowed one is still a change.
         XCTAssertEqual(ev[0].kind, .change)
         XCTAssertEqual(ev[0].title, "Secret details changed")
@@ -236,16 +236,16 @@ final class AuditPairingTests: XCTestCase {
     func testRecentTakesTheNewestThree() {
         var rows = [AuditEntry]()
         for i in 0..<6 {
-            rows.append(AuditEntry(id: "\(i)", ts: at(Double(i)), argv: ["grantd", "set", "S\(i)"], secrets: ["S\(i)"], decision: "allowed_once", reason: "set"))
+            rows.append(AuditEntry(id: "\(i)", ts: at(Double(i)), argv: ["grantpin", "set", "S\(i)"], secrets: ["S\(i)"], decision: "allowed_once", reason: "set"))
         }
         let recent = AuditPairing.recent(rows.reversed(), windowIsComplete: true, count: 3, now: at(100))
         XCTAssertEqual(recent.map(\.command), ["S5", "S4", "S3"])
     }
 
     func testRunCountsAsOneOfTheThree() {
-        let rows = [AuditEntry(id: "1", ts: at(0), argv: ["grantd", "set", "A"], secrets: ["A"], decision: "allowed_once", reason: "set"),
+        let rows = [AuditEntry(id: "1", ts: at(0), argv: ["grantpin", "set", "A"], secrets: ["A"], decision: "allowed_once", reason: "set"),
                     released("2", 1), completed("3", 2),
-                    AuditEntry(id: "4", ts: at(3), argv: ["grantd", "delete", "A"], secrets: ["A"], decision: "allowed_once", reason: "delete")]
+                    AuditEntry(id: "4", ts: at(3), argv: ["grantpin", "delete", "A"], secrets: ["A"], decision: "allowed_once", reason: "delete")]
         let recent = AuditPairing.recent(rows.reversed(), windowIsComplete: true, now: at(100))
         XCTAssertEqual(recent.map(\.rowIDs), [["4"], ["2", "3"], ["1"]])
     }

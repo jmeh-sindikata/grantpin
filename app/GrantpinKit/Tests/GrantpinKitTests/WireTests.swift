@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 /// The request buffer: escaping, limits, wiping, redaction.
 final class RequestLineTests: XCTestCase {
@@ -41,7 +41,7 @@ final class RequestLineTests: XCTestCase {
         let bad: [[UInt8]] = [[0xFF], [0xC0, 0x80], [0xED, 0xA0, 0x80], [0xE2, 0x82], [0xF4, 0x90, 0x80, 0x80], [0x80], [0xC3]]
         for b in bad {
             XCTAssertThrowsError(try RequestLine(request: Request(op: "set"), value: Data(b)), "\(b)") { e in
-                guard case GrantdError.invalidRequest = e else { return XCTFail("\(e)") }
+                guard case GrantpinError.invalidRequest = e else { return XCTFail("\(e)") }
             }
         }
         // valid multi-byte forms pass
@@ -53,7 +53,7 @@ final class RequestLineTests: XCTestCase {
     func testLimitIsFourMiBOfLine() throws {
         // 1 MiB of control characters escapes to 6 MiB: refused before allocating.
         XCTAssertThrowsError(try RequestLine(request: Request(op: "set"), value: Data(repeating: 0x07, count: 1 << 20))) { e in
-            XCTAssertEqual(e as? GrantdError, .requestTooLarge)
+            XCTAssertEqual(e as? GrantpinError, .requestTooLarge)
         }
         // 1 MiB of ordinary bytes is fine (the daemon's own limit is 1 MiB).
         let ok = try RequestLine(request: Request(op: "set"), value: Data(repeating: 0x61, count: 1 << 20))
@@ -64,7 +64,7 @@ final class RequestLineTests: XCTestCase {
         let atLimit = try RequestLine(request: Request(op: "set"), value: Data(repeating: 0x61, count: room))
         XCTAssertEqual(atLimit.count, Wire.maxLineBytes)
         XCTAssertThrowsError(try RequestLine(request: Request(op: "set"), value: Data(repeating: 0x61, count: room + 1))) { e in
-            XCTAssertEqual(e as? GrantdError, .requestTooLarge)
+            XCTAssertEqual(e as? GrantpinError, .requestTooLarge)
         }
     }
 
@@ -193,24 +193,24 @@ final class SocketLocatorTests: XCTestCase {
     }
 
     func testRule1EnvironmentWinsOverThePlist() throws {
-        let p = try plist(["EnvironmentVariables": ["GRANTD_SOCKET": "/from/plist.sock"]])
-        let r = SocketLocator.resolve(environment: ["GRANTD_SOCKET": "/tmp/x.sock"], home: home, plist: p)
+        let p = try plist(["EnvironmentVariables": ["GRANTPIN_SOCKET": "/from/plist.sock"]])
+        let r = SocketLocator.resolve(environment: ["GRANTPIN_SOCKET": "/tmp/x.sock"], home: home, plist: p)
         XCTAssertEqual(r, SocketLocator.Resolution(path: "/tmp/x.sock", source: .environment))
         XCTAssertTrue(r.isDevelopment)
     }
 
     func testRule2PlistWhenTheEnvironmentHasNone() throws {
-        let p = try plist(["Label": "dev.grantd.daemon", "EnvironmentVariables": ["PATH": "/usr/bin", "GRANTD_SOCKET": "/custom/g.sock"]])
+        let p = try plist(["Label": "dev.grantpin.daemon", "EnvironmentVariables": ["PATH": "/usr/bin", "GRANTPIN_SOCKET": "/custom/g.sock"]])
         let r = SocketLocator.resolve(environment: [:], home: home, plist: p)
         XCTAssertEqual(r, SocketLocator.Resolution(path: "/custom/g.sock", source: .launchAgentPlist))
         XCTAssertFalse(r.isDevelopment)
         // an empty variable is not an override
-        XCTAssertEqual(SocketLocator.resolve(environment: ["GRANTD_SOCKET": ""], home: home, plist: p).source, .launchAgentPlist)
+        XCTAssertEqual(SocketLocator.resolve(environment: ["GRANTPIN_SOCKET": ""], home: home, plist: p).source, .launchAgentPlist)
     }
 
     func testRule3DefaultPath() throws {
         let r = SocketLocator.resolve(environment: [:], home: home, plist: URL(fileURLWithPath: "/tmp/gdt-no-such.plist"))
-        XCTAssertEqual(r.path, "/Users/a/Library/Application Support/grantd/grantd.sock")
+        XCTAssertEqual(r.path, "/Users/a/Library/Application Support/grantpin/grantpin.sock")
         XCTAssertEqual(r.source, .defaultPath)
         XCTAssertFalse(r.isDevelopment)
     }
@@ -220,9 +220,9 @@ final class SocketLocatorTests: XCTestCase {
             [:],
             ["EnvironmentVariables": [String: String]()],
             ["EnvironmentVariables": ["PATH": "/usr/bin"]],
-            ["EnvironmentVariables": ["GRANTD_SOCKET": ""]],
-            ["EnvironmentVariables": ["GRANTD_SOCKET": "relative.sock"]],
-            ["EnvironmentVariables": ["GRANTD_SOCKET": 5]],
+            ["EnvironmentVariables": ["GRANTPIN_SOCKET": ""]],
+            ["EnvironmentVariables": ["GRANTPIN_SOCKET": "relative.sock"]],
+            ["EnvironmentVariables": ["GRANTPIN_SOCKET": 5]],
             ["EnvironmentVariables": "not a dictionary"],
         ]
         for c in cases {
@@ -241,9 +241,9 @@ final class SocketLocatorTests: XCTestCase {
         let agents = h.appendingPathComponent("Library/LaunchAgents")
         try FileManager.default.createDirectory(at: agents, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: h) }
-        let data = try PropertyListSerialization.data(fromPropertyList: ["EnvironmentVariables": ["GRANTD_SOCKET": "/s/g.sock"]], format: .xml, options: 0)
-        try data.write(to: agents.appendingPathComponent("dev.grantd.daemon.plist"))
-        XCTAssertEqual(SocketLocator.launchAgentPlistURL(home: h).lastPathComponent, "dev.grantd.daemon.plist")
+        let data = try PropertyListSerialization.data(fromPropertyList: ["EnvironmentVariables": ["GRANTPIN_SOCKET": "/s/g.sock"]], format: .xml, options: 0)
+        try data.write(to: agents.appendingPathComponent("dev.grantpin.daemon.plist"))
+        XCTAssertEqual(SocketLocator.launchAgentPlistURL(home: h).lastPathComponent, "dev.grantpin.daemon.plist")
         let r = SocketLocator.resolve(environment: [:], home: h)
         XCTAssertEqual(r, SocketLocator.Resolution(path: "/s/g.sock", source: .launchAgentPlist))
     }

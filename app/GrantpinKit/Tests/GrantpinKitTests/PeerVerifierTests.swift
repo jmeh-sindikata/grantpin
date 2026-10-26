@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 final class PeerVerifierTests: XCTestCase {
     // MARK: the requirement string
@@ -26,9 +26,9 @@ final class PeerVerifierTests: XCTestCase {
     }
 
     func testTheMessageIsTheOneFromTheSpec() {
-        XCTAssertEqual(PeerVerifier.mismatchMessage, "The process answering grantd's socket is not grantd. Nothing was sent.")
-        XCTAssertEqual(UserMessage.from(GrantdError.peerNotGrantd).headline, PeerVerifier.mismatchMessage)
-        XCTAssertEqual(GrantdError.peerNotGrantd.errorDescription, PeerVerifier.mismatchMessage)
+        XCTAssertEqual(PeerVerifier.mismatchMessage, "The process answering grantpin's socket is not grantpin. Nothing was sent.")
+        XCTAssertEqual(UserMessage.from(GrantpinError.peerNotGrantpin).headline, PeerVerifier.mismatchMessage)
+        XCTAssertEqual(GrantpinError.peerNotGrantpin.errorDescription, PeerVerifier.mismatchMessage)
     }
 
     // MARK: skipping
@@ -95,8 +95,8 @@ final class PeerVerifierTests: XCTestCase {
         let server = try FakeServer(answer: #"{"ok":true,"audit_id":"a1"}"#)
         var value = Data("hunter2".utf8)
         let client = Client(socketPath: server.path, peerCheck: .team("ABCDE12345"))
-        let e = await expectGrantdError(try await client.set(name: "k", value: &value))
-        XCTAssertEqual(e, .peerNotGrantd)
+        let e = await expectGrantpinError(try await client.set(name: "k", value: &value))
+        XCTAssertEqual(e, .peerNotGrantpin)
         XCTAssertTrue(value.allSatisfy { $0 == 0 }, "the value is wiped on this path too")
         try await Task.sleep(nanoseconds: 200_000_000)
         XCTAssertEqual(server.requests, [], "not a byte of the request reached the socket")
@@ -123,12 +123,12 @@ final class PeerVerifierTests: XCTestCase {
 
     func testThePreflightForImportsChecksAndSendsNothing() async throws {
         let server = try FakeServer(answer: ClientTests.statusJSON)
-        let e = await expectGrantdError(try await Client(socketPath: server.path, peerCheck: .team("ABCDE12345")).verifyPeer())
-        XCTAssertEqual(e, .peerNotGrantd)
+        let e = await expectGrantpinError(try await Client(socketPath: server.path, peerCheck: .team("ABCDE12345")).verifyPeer())
+        XCTAssertEqual(e, .peerNotGrantpin)
         try await Client(socketPath: server.path, peerCheck: .off).verifyPeer()
         try await Task.sleep(nanoseconds: 200_000_000)
         XCTAssertEqual(server.requests, [])
-        let gone = await expectGrantdError(try await Client(socketPath: server.path + ".none", peerCheck: .off).verifyPeer())
+        let gone = await expectGrantpinError(try await Client(socketPath: server.path + ".none", peerCheck: .off).verifyPeer())
         XCTAssertEqual(gone, .notRunning)
     }
 
@@ -143,8 +143,8 @@ final class PeerVerifierTests: XCTestCase {
                                   environment: ["PATH": "/usr/bin:/bin"], peerCheck: .team("ABCDE12345"))
         let file = FileHandle(forReadingAtPath: "/dev/null")!
         defer { try? file.close() }
-        let e = await expectGrantdError(try await runner.run(from: file, dryRun: false, onConflict: .skip))
-        XCTAssertEqual(e, .peerNotGrantd)
+        let e = await expectGrantpinError(try await runner.run(from: file, dryRun: false, onConflict: .skip))
+        XCTAssertEqual(e, .peerNotGrantpin)
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker), "the helper did not run")
         // a dry run sends no values, so it is not checked
         let dry = try await runner.run(from: file, dryRun: true, onConflict: .skip)

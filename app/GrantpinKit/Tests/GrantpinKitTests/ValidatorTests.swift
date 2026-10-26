@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 final class ValidatorTests: XCTestCase {
     // The same table the Go tests use, plus the shapes the spec names.

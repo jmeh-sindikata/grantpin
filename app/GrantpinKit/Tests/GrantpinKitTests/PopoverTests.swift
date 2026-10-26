@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 final class StatusLineTests: XCTestCase {
     func testChecking() {
@@ -19,7 +19,7 @@ final class StatusLineTests: XCTestCase {
 
     func testNotRunningBecauseThePathIsTooLong() {
         let l = StatusLine.from(.notRunning, lastError: .socketPathTooLong(120))
-        XCTAssertEqual(l.detail, "Your account name is too long for grantd's default socket path.")
+        XCTAssertEqual(l.detail, "Your account name is too long for grantpin's default socket path.")
     }
 
     func testLockedExplainsAndShowsTheSanitisedError() {
@@ -30,7 +30,7 @@ final class StatusLineTests: XCTestCase {
         XCTAssertTrue(l.detail!.contains("keychain"))
         XCTAssertFalse(l.detail!.unicodeScalars.contains("\u{1B}"))
         XCTAssertFalse(l.detail!.unicodeScalars.contains("\u{202E}"))
-        XCTAssertEqual(StatusLine.from(.locked(lastError: nil)).detail, "Unlock your Mac to use secrets. grantd keeps trying.")
+        XCTAssertEqual(StatusLine.from(.locked(lastError: nil)).detail, "Unlock your Mac to use secrets. grantpin keeps trying.")
     }
 
     func testNotInitializedOffersCreateVault() {
@@ -42,7 +42,7 @@ final class StatusLineTests: XCTestCase {
     func testReadyShowsCounts() {
         let l = StatusLine.from(.ready(StatusResult(keystoreTier: .hardware, secrets: 3, activeGrants: 1)))
         XCTAssertEqual(l.level, .ok)
-        XCTAssertEqual(l.headline, "grantd is running")
+        XCTAssertEqual(l.headline, "grantpin is running")
         XCTAssertEqual(l.countsText, "3 secrets · 1 active grant")
         XCTAssertNil(l.tamperedWarning)
         XCTAssertEqual(StatusLine.from(.ready(StatusResult(secrets: 1, activeGrants: 2))).countsText, "1 secret · 2 active grants")
@@ -56,7 +56,7 @@ final class StatusLineTests: XCTestCase {
     }
 
     func testProtocolMismatchAndKeychainOnlyWarn() {
-        XCTAssertEqual(StatusLine.from(.ready(StatusResult(protoV: 2))).headline, "grantd is out of step")
+        XCTAssertEqual(StatusLine.from(.ready(StatusResult(protoV: 2))).headline, "grantpin is out of step")
         let k = StatusLine.from(.ready(StatusResult(keystoreTier: .dialog)))
         XCTAssertEqual(k.level, .warning)
         XCTAssertTrue(k.detail!.contains("Keychain"))
@@ -78,7 +78,7 @@ final class MenuBarIconTests: XCTestCase {
 
     func testEveryStateHasAnAccessibilityLabel() {
         for s in [nil, ConnectionState.notRunning, .notInitialized, .locked(lastError: nil), .ready(StatusResult())] {
-            XCTAssertTrue(MenuBarIcon.from(s).label.hasPrefix("grantd"))
+            XCTAssertTrue(MenuBarIcon.from(s).label.hasPrefix("grantpin"))
         }
     }
 }
@@ -86,7 +86,7 @@ final class MenuBarIconTests: XCTestCase {
 final class FakeActions: DaemonActions, @unchecked Sendable {
     private let lock = NSLock()
     private(set) var started = 0, created = 0
-    var startResult = ActionResult(outcome: .succeeded, summary: "grantd is running in the background.")
+    var startResult = ActionResult(outcome: .succeeded, summary: "grantpin is running in the background.")
     var createResult = ActionResult(outcome: .succeeded, summary: "Vault created.")
     var delayNanos: UInt64 = 0
     func startService() async -> ActionResult {
@@ -106,7 +106,7 @@ final class PopoverModelTests: XCTestCase {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000)
 
     func rows(_ n: Int) -> [AuditEntry] {
-        (0..<n).map { AuditEntry(id: "\($0)", ts: t0.addingTimeInterval(Double($0)), argv: ["grantd", "set", "S\($0)"], secrets: ["S\($0)"], decision: "allowed_once", reason: "set") }.reversed()
+        (0..<n).map { AuditEntry(id: "\($0)", ts: t0.addingTimeInterval(Double($0)), argv: ["grantpin", "set", "S\($0)"], secrets: ["S\($0)"], decision: "allowed_once", reason: "set") }.reversed()
     }
 
     func testShowsTheLastThreeEventsNewestFirst() async {
@@ -133,7 +133,7 @@ final class PopoverModelTests: XCTestCase {
         let m = PopoverModel(audit: svc, actions: nil)
         await m.refreshActivity()
         XCTAssertEqual(m.recent.count, 2)
-        svc.failNext["audit"] = GrantdError.notRunning
+        svc.failNext["audit"] = GrantpinError.notRunning
         await m.refreshActivity()
         XCTAssertTrue(m.recent.isEmpty)
         XCTAssertFalse(m.activityLoaded)
@@ -145,7 +145,7 @@ final class PopoverModelTests: XCTestCase {
         let m = PopoverModel(audit: FakeService(), actions: actions, onActionFinished: { polled += 1 })
         await m.start()
         XCTAssertEqual(actions.started, 1)
-        XCTAssertEqual(m.lastResult?.summary, "grantd is running in the background.")
+        XCTAssertEqual(m.lastResult?.summary, "grantpin is running in the background.")
         XCTAssertNil(m.running)
         XCTAssertEqual(polled, 1, "status is polled right away")
         m.dismissResult()
@@ -163,7 +163,7 @@ final class PopoverModelTests: XCTestCase {
 
     func testFailureIsShown() async {
         let actions = FakeActions()
-        actions.startResult = ActionResult(outcome: .failed, summary: "grantd could not be started.", detail: "boom")
+        actions.startResult = ActionResult(outcome: .failed, summary: "grantpin could not be started.", detail: "boom")
         let m = PopoverModel(audit: FakeService(), actions: actions)
         await m.start()
         XCTAssertEqual(m.lastResult?.isSuccess, false)
@@ -208,7 +208,7 @@ final class PopoverModelTests: XCTestCase {
     func testOutsideApplicationsTheButtonsAreOff() async {
         let actions = FakeActions()
         let m = PopoverModel(audit: FakeService(), actions: actions, location: .elsewhere)
-        XCTAssertEqual(m.buttonsDisabledReason, "Move grantd to your Applications folder first")
+        XCTAssertEqual(m.buttonsDisabledReason, "Move grantpin to your Applications folder first")
         await m.start()
         XCTAssertEqual(actions.started, 0)
         m.location = .ok
@@ -235,7 +235,7 @@ final class PopoverModelTests: XCTestCase {
         let m = PopoverModel(audit: svc, actions: nil, secrets: svc)
         await m.refreshSecrets()
         XCTAssertEqual(m.quickSecrets.map(\.name), ["A"])
-        svc.listFailure = GrantdError.daemon(category: .failed, reason: .vaultNotInitialized, message: "")
+        svc.listFailure = GrantpinError.daemon(category: .failed, reason: .vaultNotInitialized, message: "")
         await m.refreshSecrets()
         XCTAssertTrue(m.quickSecrets.isEmpty, "hidden, not shown as an error")
     }

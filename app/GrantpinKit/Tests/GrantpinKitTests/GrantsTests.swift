@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 final class GrantRowTests: XCTestCase {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -53,7 +53,7 @@ final class GrantRowTests: XCTestCase {
         XCTAssertTrue(r.tampered)
         XCTAssertEqual(r.badges, [.tampered])
         XCTAssertEqual(r.id, "forgeda")
-        XCTAssertEqual(r.tamperedNote, "Failed verification. grantd ignores it. Remove it.")
+        XCTAssertEqual(r.tamperedNote, "Failed verification. grantpin ignores it. Remove it.")
         for field in [r.caller, r.folder, r.secrets, r.command, r.kind, r.timeLeft, r.usesLeft] { XCTAssertEqual(field, "") }
         XCTAssertNil(r.expiresAt)
         XCTAssertFalse(r.standing)
@@ -81,7 +81,7 @@ final class GrantConfirmationTests: XCTestCase {
         let bad = GrantInfo(id: "x", caller: "evil", tampered: true)
         let c = Confirmation.revoke(bad)
         XCTAssertEqual(c.title, "Remove this grant?")
-        XCTAssertEqual(c.message, "grantd could not verify this grant, so it is ignored and never allows anything. Removing it clears the warning.")
+        XCTAssertEqual(c.message, "grantpin could not verify this grant, so it is ignored and never allows anything. Removing it clears the warning.")
         XCTAssertEqual(c.confirmLabel, "Remove")
         XCTAssertFalse(c.message.contains("evil"))
     }
@@ -170,20 +170,20 @@ final class GrantsViewModelTests: XCTestCase {
     func testRevokeFailureIsABanner() async {
         let f = FakeGrants()
         f.grants = [g("a", in: 100)]
-        f.revokeFailure = GrantdError.timeout
+        f.revokeFailure = GrantpinError.timeout
         let m = model(f)
         await m.refresh()
         let ok = await m.revoke(id: "a")
         XCTAssertFalse(ok)
-        XCTAssertEqual(m.banner?.headline, "grantd took too long to answer.")
+        XCTAssertEqual(m.banner?.headline, "grantpin took too long to answer.")
     }
 
     func testDisabledWhileTheDaemonIsNotUsable() {
         let m = GrantsViewModel(service: FakeGrants(), now: { self.now })
         XCTAssertFalse(m.isEnabled)
-        XCTAssertEqual(m.disabledReason, "Checking grantd…")
+        XCTAssertEqual(m.disabledReason, "Checking grantpin…")
         m.connectionChanged(.notRunning)
-        XCTAssertEqual(m.disabledReason, "grantd is not running. Start it from the menu bar item.")
+        XCTAssertEqual(m.disabledReason, "grantpin is not running. Start it from the menu bar item.")
         m.connectionChanged(.locked(lastError: nil))
         XCTAssertEqual(m.disabledReason, "Unlock your Mac to use grants.")
         m.connectionChanged(.notInitialized)
@@ -195,12 +195,12 @@ final class GrantsViewModelTests: XCTestCase {
     func testListFailureWhileNotRunningIsQuietOtherwiseABanner() async {
         let f = FakeGrants()
         let m = model(f)
-        f.listFailure = GrantdError.notRunning
+        f.listFailure = GrantpinError.notRunning
         await m.refresh()
         XCTAssertNil(m.banner)
-        f.listFailure = GrantdError.malformedResponse("x")
+        f.listFailure = GrantpinError.malformedResponse("x")
         await m.refresh()
-        XCTAssertEqual(m.banner?.headline, "grantd printed something unexpected.")
+        XCTAssertEqual(m.banner?.headline, "grantpin printed something unexpected.")
         f.listFailure = nil
         await m.refresh()
         XCTAssertNil(m.banner, "a good load clears a load banner")
@@ -492,7 +492,7 @@ final class StandingGrantFormTests: XCTestCase {
     }
 
     func testKnownCallersFromTheAuditLog() {
-        let rows = ["grantd-app", "cursor", "claude-code", "cli", "cursor", "(invalid)", "windsurf", "a\u{202E}b", ""].enumerated().map {
+        let rows = ["grantpin-app", "cursor", "claude-code", "cli", "cursor", "(invalid)", "windsurf", "a\u{202E}b", ""].enumerated().map {
             AuditEntry(id: "\($0.offset)", caller: $0.element, decision: "allowed_once")
         }
         XCTAssertEqual(StandingGrantFormModel.callers(from: rows), ["claude-code", "cursor", "windsurf"])
@@ -556,10 +556,10 @@ final class StandingGrantFormTests: XCTestCase {
         let denied = msg(.denied, .userDenied)
         XCTAssertEqual(denied.headline, "Not created. You cancelled the confirmation.")
         XCTAssertEqual(denied.severity, .info)
-        XCTAssertTrue(msg(.denied, .approverUnavailable).headline.hasPrefix("grantd could not show the confirmation dialog."))
-        let policy = msg(.refused, .policyRefused, "command not allowed by /p/.grantd.yml")
-        XCTAssertEqual(policy.headline, "A .grantd.yml in that folder does not allow this:")
-        XCTAssertEqual(policy.detail, "command not allowed by /p/.grantd.yml")
+        XCTAssertTrue(msg(.denied, .approverUnavailable).headline.hasPrefix("grantpin could not show the confirmation dialog."))
+        let policy = msg(.refused, .policyRefused, "command not allowed by /p/.grantpin.yml")
+        XCTAssertEqual(policy.headline, "A .grantpin.yml in that folder does not allow this:")
+        XCTAssertEqual(policy.detail, "command not allowed by /p/.grantpin.yml")
         XCTAssertEqual(msg(.refused, .tierUnmet, "requires hardware").headline, "This secret needs a stronger protection level than this vault provides.")
         XCTAssertEqual(msg(.refused, .secretExpired).headline, "That secret has expired.")
         let missing = msg(.notFound, .secretNotFound, "secret not found: NOPE")
@@ -568,7 +568,7 @@ final class StandingGrantFormTests: XCTestCase {
         let cap = msg(.badRequest, .badRequest, "ttl 91d exceeds the maximum standing grant lifetime of 90d (daemon maximum)")
         XCTAssertEqual(cap.headline, "ttl 91d exceeds the maximum standing grant lifetime of 90d (daemon maximum)", "verbatim, never clamped")
         XCTAssertNil(cap.detail)
-        XCTAssertEqual(StandingGrantFormModel.message(for: GrantdError.timeout).headline, "grantd took too long to answer.")
+        XCTAssertEqual(StandingGrantFormModel.message(for: GrantpinError.timeout).headline, "grantpin took too long to answer.")
     }
 
     func testFailureLeavesTheFormEditableWithTheError() async {
@@ -583,17 +583,17 @@ final class StandingGrantFormTests: XCTestCase {
 
     func testPolicyCapErrorIsShownAsIs() async {
         let f = FakeGrants()
-        f.addFailure = daemonError(.badRequest, .badRequest, "ttl 60d exceeds the maximum standing grant lifetime of 30d (max_standing_grant_ttl in /p/.grantd.yml)")
+        f.addFailure = daemonError(.badRequest, .badRequest, "ttl 60d exceeds the maximum standing grant lifetime of 30d (max_standing_grant_ttl in /p/.grantpin.yml)")
         let m = form(f)
         m.ttl = .days90
         await m.submit()
         XCTAssertEqual(f.adds.last?.ttlSeconds, 7_776_000, "the request is not clamped locally")
-        XCTAssertEqual(m.error?.headline, "ttl 60d exceeds the maximum standing grant lifetime of 30d (max_standing_grant_ttl in /p/.grantd.yml)")
+        XCTAssertEqual(m.error?.headline, "ttl 60d exceeds the maximum standing grant lifetime of 30d (max_standing_grant_ttl in /p/.grantpin.yml)")
     }
 
     func testExplanationNamesTheDaemonDialogThenTouchID() {
-        XCTAssertEqual(StandingGrantFormModel.explanation, "grantd shows its own dialog next, then Touch ID. Nothing is created unless you approve both.")
-        XCTAssertEqual(StandingGrantFormModel.waitingText, "Waiting for you to confirm in the grantd dialog, then Touch ID.")
+        XCTAssertEqual(StandingGrantFormModel.explanation, "grantpin shows its own dialog next, then Touch ID. Nothing is created unless you approve both.")
+        XCTAssertEqual(StandingGrantFormModel.waitingText, "Waiting for you to confirm in the grantpin dialog, then Touch ID.")
     }
 
     func testViewModelHandsOutTheFormAndShowsTheToast() async {

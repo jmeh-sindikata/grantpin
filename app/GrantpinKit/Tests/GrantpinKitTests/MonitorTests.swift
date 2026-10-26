@@ -1,6 +1,6 @@
 import Foundation
 import XCTest
-@testable import GrantdKit
+@testable import GrantpinKit
 
 /// A transport that answers from a script.
 final class FakeTransport: StatusTransport, @unchecked Sendable {
@@ -76,12 +76,12 @@ final class MonitorStateTests: XCTestCase {
     }
 
     func testNotRunningKeepsTheReason() async {
-        let (m, _) = monitor([.failure(GrantdError.notRunning)])
+        let (m, _) = monitor([.failure(GrantpinError.notRunning)])
         await m.refreshNow()
         XCTAssertEqual(m.state, .notRunning)
         XCTAssertEqual(m.lastError, .notRunning)
         // a daemon that is there but answers wrongly is also "no usable daemon", with its reason kept
-        let (m2, _) = monitor([.failure(GrantdError.noResponse)])
+        let (m2, _) = monitor([.failure(GrantpinError.noResponse)])
         await m2.refreshNow()
         XCTAssertEqual(m2.state, .notRunning)
         XCTAssertEqual(m2.lastError, .noResponse)
@@ -89,8 +89,8 @@ final class MonitorStateTests: XCTestCase {
 
     func testTransitionsFollowTheDaemon() async {
         let (m, _) = monitor([
-            .failure(GrantdError.notRunning), .success(Self.uninit), .success(Self.locked), .success(Self.ready),
-            .success(Self.ready), .failure(GrantdError.notRunning),
+            .failure(GrantpinError.notRunning), .success(Self.uninit), .success(Self.locked), .success(Self.ready),
+            .success(Self.ready), .failure(GrantpinError.notRunning),
         ])
         var seen = [ConnectionState?]()
         for _ in 0..<6 { await m.refreshNow(); seen.append(m.state) }
@@ -100,7 +100,7 @@ final class MonitorStateTests: XCTestCase {
     }
 
     func testAnswerClearsThePreviousError() async {
-        let (m, _) = monitor([.failure(GrantdError.timeout), .success(Self.ready)])
+        let (m, _) = monitor([.failure(GrantpinError.timeout), .success(Self.ready)])
         await m.refreshNow()
         XCTAssertEqual(m.lastError, .timeout)
         await m.refreshNow()
@@ -148,7 +148,7 @@ final class MonitorScheduleTests: XCTestCase {
     }
 
     func testUnreachableIntervals() async {
-        let m = monitor([.failure(GrantdError.notRunning)])
+        let m = monitor([.failure(GrantpinError.notRunning)])
         await m.refreshNow()
         m.isVisible = true
         XCTAssertEqual(m.nextDelay(), 3)
@@ -185,7 +185,7 @@ final class MonitorScheduleTests: XCTestCase {
 
     func testTheLoopPollsAndSleepsForTheComputedDelays() async throws {
         let rec = SleepRecorder()
-        let t = FakeTransport([.failure(GrantdError.notRunning), .success(Fixture.locked), .success(Fixture.locked), .success(Fixture.ready)])
+        let t = FakeTransport([.failure(GrantpinError.notRunning), .success(Fixture.locked), .success(Fixture.locked), .success(Fixture.ready)])
         let m = DaemonMonitor(transport: t, sleep: { try await rec.sleep($0) })
         m.isVisible = true
         m.start()
