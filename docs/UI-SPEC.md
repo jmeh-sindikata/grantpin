@@ -1,8 +1,8 @@
-# grantd v0.2: menu-bar app spec
+# grantpin v0.2: menu-bar app spec
 
-> **Status (2026-10-26): v0.2 step 3b done (the remaining screens); step 3a (the menu-bar popover and the Secrets window) was done before it. The owner accepted every default in section 8.** Steps 1 and 2 (G1 to G4, the nested helper bundle, `GrantdKit` as a complete typed client, `DaemonMonitor`, the `.env` import runner, the display-text sanitiser) are as described in the work breakdown. Step 3a adds, in `GrantdKit`: the name, tag, url, notes and value validators (`Validators`, parity-tested against the dev daemon), the expiry parser and formatter (`ExpiryParser` matches `grantd set --expires`, tested against the CLI), audit pairing with the 3.4 labels (`AuditPairing`), the 3.0 error mapping and the confirmation texts of 3.2 (`UserMessage`, `Confirmation`), `StatusLine`, `MenuBarIcon`, the view models (`SecretFormModel`, `SecretsViewModel`, `ImportViewModel`, `PopoverModel`, all driven through fakeable service protocols), `HelperLocator`, `PathDetector` and `HelperActions`. In the app: the popover (status line with the four states, counts, TAMPERED warning, the last three events, Open Secrets, Open Activity, Settings, Quit, and the Start and Create vault buttons), the Secrets window (table, search, sort, detail inspector with the on-demand `masked` check, Add / Edit details / Replace value sheet, delete, Import .env with a dry-run preview, empty state, banners, monitor-driven disabled state) and placeholder Activity and Settings windows (replaced in 3b). **Start** runs `grantd service install --exe <outer grantd.app> --path <PATH>` through the helper (the one way the app starts the daemon); the outer app path is passed and G1 resolves it to the helper binary, instead of the explicit helper path of 2.5. **Create vault** runs `grantd init`. `make ci-app` ran 264 Swift tests against the dev daemon at that step. **Step 3b adds**, in `GrantdKit`: `GrantsViewModel` and `StandingGrantFormModel` (command tokenizer, secret patterns with brace-aware splitting, lifetime presets capped at 90 days, the plain-language summary, one cancellable `grants add` that never retries, the 3.3 outcome mapping, the shell and interpreter "I understand" tick), `ActivityViewModel` (pairing, filters, search, Load more that stops at `truncated`, Verify and the export outcome), `ServiceStatus` (the `service status` parser, exit 3 = not installed), `ServiceDiagnosis` and `ServiceWatcher` (the down states of 2.5 and "keeps stopping": three pid changes in 60 s), `SettingsModel`, `SecurityFacts`, `UninstallModel` (staged, never deletes a vault while the daemon answers), `OnboardingModel` (state-derived steps, the weaker-protection retry), `ConnectSnippets` (shell quoting and JSON escaping, tested through a real `/bin/sh`), `ConnectionTest`, `AppLocation` and the popover's new buttons (Repair, Restart, Review, Set Up, Open Logs Folder) and secrets quick list; `HelperActions` also runs `service status`, `service uninstall`, `--version` and `init --keychain-fallback`. In the app: the Grants window (badges, time left, revoke, revoke all, the tampered row), the "New standing grant" sheet, the Activity window, Settings (General, Connect, Security & Data, Uninstall), the Welcome window, "Grants (n)...", Review, the quick list and the Updated column, the location check with "Move to Applications and Relaunch", the second-launch handling and `Localizable.xcstrings`. `make ci-app` runs 433 Swift tests, among them dev-daemon tests of the Grants window (a standing grant through the form with the allow approver, list, revoke, revoke all, a forged row shown as tampered, a policy refusal and ceiling) and of the Activity window (a real run paired into one event, a log too big for one page, verify, a tampered log, export).
+> **Status (2026-10-26): v0.2 step 3b done (the remaining screens); step 3a (the menu-bar popover and the Secrets window) was done before it. The owner accepted every default in section 8.** Steps 1 and 2 (G1 to G4, the nested helper bundle, `GrantpinKit` as a complete typed client, `DaemonMonitor`, the `.env` import runner, the display-text sanitiser) are as described in the work breakdown. Step 3a adds, in `GrantpinKit`: the name, tag, url, notes and value validators (`Validators`, parity-tested against the dev daemon), the expiry parser and formatter (`ExpiryParser` matches `grantpin set --expires`, tested against the CLI), audit pairing with the 3.4 labels (`AuditPairing`), the 3.0 error mapping and the confirmation texts of 3.2 (`UserMessage`, `Confirmation`), `StatusLine`, `MenuBarIcon`, the view models (`SecretFormModel`, `SecretsViewModel`, `ImportViewModel`, `PopoverModel`, all driven through fakeable service protocols), `HelperLocator`, `PathDetector` and `HelperActions`. In the app: the popover (status line with the four states, counts, TAMPERED warning, the last three events, Open Secrets, Open Activity, Settings, Quit, and the Start and Create vault buttons), the Secrets window (table, search, sort, detail inspector with the on-demand `masked` check, Add / Edit details / Replace value sheet, delete, Import .env with a dry-run preview, empty state, banners, monitor-driven disabled state) and placeholder Activity and Settings windows (replaced in 3b). **Start** runs `grantpin service install --exe <outer grantpin.app> --path <PATH>` through the helper (the one way the app starts the daemon); the outer app path is passed and G1 resolves it to the helper binary, instead of the explicit helper path of 2.5. **Create vault** runs `grantpin init`. `make ci-app` ran 264 Swift tests against the dev daemon at that step. **Step 3b adds**, in `GrantpinKit`: `GrantsViewModel` and `StandingGrantFormModel` (command tokenizer, secret patterns with brace-aware splitting, lifetime presets capped at 90 days, the plain-language summary, one cancellable `grants add` that never retries, the 3.3 outcome mapping, the shell and interpreter "I understand" tick), `ActivityViewModel` (pairing, filters, search, Load more that stops at `truncated`, Verify and the export outcome), `ServiceStatus` (the `service status` parser, exit 3 = not installed), `ServiceDiagnosis` and `ServiceWatcher` (the down states of 2.5 and "keeps stopping": three pid changes in 60 s), `SettingsModel`, `SecurityFacts`, `UninstallModel` (staged, never deletes a vault while the daemon answers), `OnboardingModel` (state-derived steps, the weaker-protection retry), `ConnectSnippets` (shell quoting and JSON escaping, tested through a real `/bin/sh`), `ConnectionTest`, `AppLocation` and the popover's new buttons (Repair, Restart, Review, Set Up, Open Logs Folder) and secrets quick list; `HelperActions` also runs `service status`, `service uninstall`, `--version` and `init --keychain-fallback`. In the app: the Grants window (badges, time left, revoke, revoke all, the tampered row), the "New standing grant" sheet, the Activity window, Settings (General, Connect, Security & Data, Uninstall), the Welcome window, "Grants (n)...", Review, the quick list and the Updated column, the location check with "Move to Applications and Relaunch", the second-launch handling and `Localizable.xcstrings`. `make ci-app` runs 433 Swift tests, among them dev-daemon tests of the Grants window (a standing grant through the form with the allow approver, list, revoke, revoke all, a forged row shown as tampered, a policy refusal and ceiling) and of the Activity window (a real run paired into one event, a log too big for one page, verify, a tampered log, export).
 
-**Step 3b leaves open:** nothing was opened on a screen; the screens were compiled and rendered offscreen against the dev daemon, and the Table-with-inspector windows (Secrets, Activity) do not draw their rows in an offscreen render, so their first real look (Tables, toolbars, the segmented filter, sheets, the Settings tabs, activation policy, Cmd-N and Cmd-F) is the owner's. Every flow that needs the signed bundle (Install Service, Create Vault, Repair, Move to Applications, the login item, Uninstall, `SMAppService`) is untested end to end and is in MANUAL-TEST-MACOS.md section 8. Not built: the custom socket path offered when the account name makes the default socket path too long (the screens only say so), XCUITest, and a way to keep `Localizable.xcstrings` current from `xcodebuild` (Xcode keeps it in step, a command-line build does not; strings from `GrantdKit` such as `UserMessage` and `Confirmation` are English constants and not in the catalog). "Move to Applications" copies the app and leaves the original, because a translocated or disk-image copy cannot be moved. Deleting the vault always stops the service first, and Uninstall also removes the app's own login item.
+**Step 3b leaves open:** nothing was opened on a screen; the screens were compiled and rendered offscreen against the dev daemon, and the Table-with-inspector windows (Secrets, Activity) do not draw their rows in an offscreen render, so their first real look (Tables, toolbars, the segmented filter, sheets, the Settings tabs, activation policy, Cmd-N and Cmd-F) is the owner's. Every flow that needs the signed bundle (Install Service, Create Vault, Repair, Move to Applications, the login item, Uninstall, `SMAppService`) is untested end to end and is in MANUAL-TEST-MACOS.md section 8. Not built: the custom socket path offered when the account name makes the default socket path too long (the screens only say so), XCUITest, and a way to keep `Localizable.xcstrings` current from `xcodebuild` (Xcode keeps it in step, a command-line build does not; strings from `GrantpinKit` such as `UserMessage` and `Confirmation` are English constants and not in the catalog). "Move to Applications" copies the app and leaves the original, because a translocated or disk-image copy cannot be moved. Deleting the vault always stops the service first, and Uninstall also removes the app's own login item.
 
 Status: design spec, no code. Audience: the agent that implements v0.2 and the owner who reviews it. Written against the tree at commit `d1675b5` (plus uncommitted work in `internal/grant` and `internal/audit` that nothing here depends on). File references are to this repository; protocol names are exactly those in [PROTOCOL.md](PROTOCOL.md).
 
@@ -10,10 +10,10 @@ Decisions in this document are made; the six open questions in section 8 each ca
 
 ## 0. Summary of the decisions that matter most
 
-1. **The Go daemon/CLI cannot be a bare second executable in the bundle.** I tested it: a Go binary signed with the project's entitlements and placed at `Contents/MacOS/grantd` or `Contents/Helpers/grantd` next to a different main executable is killed at launch (exit 137, amfid: `No matching profile found`). The same binary inside its own nested bundle `Contents/Helpers/grantd-daemon.app/` with a copy of the provisioning profile launches, and `grantd init` prints `keystore tier: hardware`. So the layout is: SwiftUI app is the outer bundle's main executable; the Go binary is the main executable of a nested helper bundle. Section 2.1.
+1. **The Go daemon/CLI cannot be a bare second executable in the bundle.** I tested it: a Go binary signed with the project's entitlements and placed at `Contents/MacOS/grantpin` or `Contents/Helpers/grantpin` next to a different main executable is killed at launch (exit 137, amfid: `No matching profile found`). The same binary inside its own nested bundle `Contents/Helpers/grantpin-daemon.app/` with a copy of the provisioning profile launches, and `grantpin init` prints `keystore tier: hardware`. So the layout is: SwiftUI app is the outer bundle's main executable; the Go binary is the main executable of a nested helper bundle. Section 2.1.
 2. **The app is a client of the socket and nothing else.** It never touches the Keychain, never reads a secret value back, never answers an approval prompt. The daemon keeps osascript + Touch ID for v0.2.
-3. **A few small Go-side changes are prerequisites or strongly recommended** (section 2.8): the service layer must find the helper bundle, the standing-grant dialog sentence must stop saying "you just ran `grantd grants add`", and metadata-only edit needs a new `update` op (otherwise editing a tag means retyping the secret).
-4. **Xcode project checked in under `app/`, logic in a local Swift package `app/GrantdKit`** so the protocol client and its tests run with plain `swift test`, no signing, no Xcode GUI.
+3. **A few small Go-side changes are prerequisites or strongly recommended** (section 2.8): the service layer must find the helper bundle, the standing-grant dialog sentence must stop saying "you just ran `grantpin grants add`", and metadata-only edit needs a new `update` op (otherwise editing a tag means retyping the secret).
+4. **Xcode project checked in under `app/`, logic in a local Swift package `app/GrantpinKit`** so the protocol client and its tests run with plain `swift test`, no signing, no Xcode GUI.
 
 ## 1. Goals and non-goals for v0.2
 
@@ -23,7 +23,7 @@ A person who never opens a terminal can do all of this from the app:
 
 | # | Task | Screen | Protocol / mechanism |
 |---|---|---|---|
-| 1 | Install: drag `grantd.app` to Applications, open it, be guided | Onboarding | `service install` via helper |
+| 1 | Install: drag `grantpin.app` to Applications, open it, be guided | Onboarding | `service install` via helper |
 | 2 | Create the vault | Onboarding | helper `init` (not a protocol op) |
 | 3 | Add, replace, delete secrets; edit tags/URL/notes/expiry | Secrets | `set`, `delete`, `list`, `masked`, `update` (new, see 2.8) |
 | 4 | Import a `.env` file, with conflict handling and a dry-run preview | Secrets | helper `import` |
@@ -35,13 +35,13 @@ A person who never opens a terminal can do all of this from the app:
 | 10 | Connect Claude Code: show the exact `claude mcp add` command and the `.mcp.json` snippet, each with a copy button | Onboarding, Settings | none (text) |
 | 11 | Uninstall everything, optionally including the vault | Settings | `service uninstall`, file removal |
 
-Also required: the signed bundle keeps the Secure Enclave working (`keystore tier: hardware`), and the live install (`~/Applications/grantd.app`, team `MT2QHQX6PS`, Apple Development identity plus macOS App Development profile) can be upgraded in place by the app's "Repair" action.
+Also required: the signed bundle keeps the Secure Enclave working (`keystore tier: hardware`), and the live install (`~/Applications/grantpin.app`, team `MT2QHQX6PS`, Apple Development identity plus macOS App Development profile) can be upgraded in place by the app's "Repair" action.
 
 ### Non-goals (v0.2)
 
 - **No reveal button, no `show`.** Section 4.2 says why.
 - **No in-app approval.** Dialogs stay in the daemon (osascript chooser, then LocalAuthentication). Section 4.7 describes v0.3.
-- **No test-run of a command** (`run` is not used by the app), no policy (`.grantd.yml`) editor, no per-run "Allow for N" configuration.
+- **No test-run of a command** (`run` is not used by the app), no policy (`.grantpin.yml`) editor, no per-run "Allow for N" configuration.
 - **No automatic detection of whether Claude Code is connected.** The daemon does not know its clients, and reading `~/.claude.json` is another tool's private state. The Connect panel shows the command and a test prompt.
 - **No "Run it for me" button for `claude mcp add`.** Finding the user's `claude` binary and its PATH from a GUI process is a source of opaque failures; a copy button is enough for now.
 - **No notarization, DMG or auto-update.** The Makefile signing path stays parameterised (`IDENTITY`, `PROFILE`, `TEAM_ID`) so Developer ID can be dropped in later (open question 1).
@@ -53,67 +53,67 @@ Also required: the signed bundle keeps the Secure Enclave working (`keystore tie
 
 ### 2.1 Bundle layout and why
 
-What exists today (`make bundle`, `build/bundle/Info.plist`): `Contents/MacOS/grantd` is both the main executable and the daemon, signed with `com.apple.application-identifier = MT2QHQX6PS.dev.grantd.app` and `keychain-access-groups = [MT2QHQX6PS.dev.grantd]` (verified with `codesign -d --entitlements -` on `~/Applications/grantd.app`; flags `runtime`).
+What exists today (`make bundle`, `build/bundle/Info.plist`): `Contents/MacOS/grantpin` is both the main executable and the daemon, signed with `com.apple.application-identifier = MT2QHQX6PS.dev.grantpin.app` and `keychain-access-groups = [MT2QHQX6PS.dev.grantpin]` (verified with `codesign -d --entitlements -` on `~/Applications/grantpin.app`; flags `runtime`).
 
 After v0.2:
 
 ```
-grantd.app/
+grantpin.app/
   Contents/
-    Info.plist                          CFBundleIdentifier dev.grantd.app
-                                        CFBundleExecutable grantd-app, LSUIElement, min macOS 14.0
+    Info.plist                          CFBundleIdentifier dev.grantpin.app
+                                        CFBundleExecutable grantpin-app, LSUIElement, min macOS 14.0
     embedded.provisionprofile           same profile as today
     MacOS/
-      grantd-app                        the SwiftUI app (main executable)
+      grantpin-app                        the SwiftUI app (main executable)
     Helpers/
-      grantd-daemon.app/                nested helper bundle
+      grantpin-daemon.app/                nested helper bundle
         Contents/
-          Info.plist                    CFBundleIdentifier dev.grantd.app.daemon
-                                        CFBundleExecutable grantd, LSBackgroundOnly
+          Info.plist                    CFBundleIdentifier dev.grantpin.app.daemon
+                                        CFBundleExecutable grantpin, LSBackgroundOnly
           embedded.provisionprofile     a copy of the same profile
           MacOS/
-            grantd                      the Go binary (daemon, CLI, MCP shim)
+            grantpin                      the Go binary (daemon, CLI, MCP shim)
     Resources/                          Assets.car, Localizable.xcstrings, AppIcon
 ```
 
-Both bundles are signed with the same Apple Development identity, `--options runtime`, and the same entitlements file (`build/bundle/grantd-app.entitlements`, expanded by `make sign-bundle`). Only the helper uses `keychain-access-groups`; sharing the file keeps one signing recipe and costs nothing now (re-evaluate for v0.3, section 4.7).
+Both bundles are signed with the same Apple Development identity, `--options runtime`, and the same entitlements file (`build/bundle/grantpin-app.entitlements`, expanded by `make sign-bundle`). Only the helper uses `keychain-access-groups`; sharing the file keeps one signing recipe and costs nothing now (re-evaluate for v0.3, section 4.7).
 
 **Why a nested bundle and not a plain executable (tested, not assumed).** On this machine I copied the live bundle, replaced the main executable with a trivial one, and put the Go binary (signed with the project entitlements, same identity) in each candidate place:
 
 | Placement of the Go binary | Result |
 |---|---|
-| `Contents/MacOS/grantd` beside another main executable | killed at launch, exit 137 |
-| `Contents/Helpers/grantd` | killed at launch, exit 137 |
-| `Contents/Helpers/<x>.app/Contents/MacOS/grantd` with a copy of the profile, bundle id `dev.grantd.app` | runs; `GRANTD_HOME=<tmp> grantd init` prints `keystore tier: hardware` |
-| same, bundle id `dev.grantd.app.daemon` | same result |
+| `Contents/MacOS/grantpin` beside another main executable | killed at launch, exit 137 |
+| `Contents/Helpers/grantpin` | killed at launch, exit 137 |
+| `Contents/Helpers/<x>.app/Contents/MacOS/grantpin` with a copy of the profile, bundle id `dev.grantpin.app` | runs; `GRANTPIN_HOME=<tmp> grantpin init` prints `keystore tier: hardware` |
+| same, bundle id `dev.grantpin.app.daemon` | same result |
 
 The unified log for the first two says `amfid: ... not valid: ... Code=-413 "No matching profile found"` and `Code has restricted entitlements, but the validation of its code signature failed`. Reading: the provisioning profile that authorises restricted entitlements (`keychain-access-groups`) is looked up for a bundle's main executable; a non-main plain executable has no profile and is refused. `codesign --verify --deep --strict` passed for the nested layouts. This is the reason for the structure above, and it is why "put the Go binary in `Contents/MacOS` or `Contents/Helpers`" (the two options in the brief) are both rejected. `Contents/Helpers` as the parent directory is kept because codesign's default resource rules (`CodeResources` in the live bundle) already treat `Helpers/` as nested code.
 
 Consequences:
 
-- **launchd** runs `…/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd daemon` directly (ProgramArguments, as `internal/service/plist.go` writes it). No LaunchServices involvement; the kernel path that I tested is the same one.
-- **Executable names:** the Swift executable is `grantd-app` and the Go one stays `grantd`, so process lists and crash reports tell them apart. `internal/service/service.go` `bundleExe` resolves a `.app` through `CFBundleExecutable` of the *outer* bundle, which is now the Swift binary; that is why change G1 is needed. 
+- **launchd** runs `…/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin daemon` directly (ProgramArguments, as `internal/service/plist.go` writes it). No LaunchServices involvement; the kernel path that I tested is the same one.
+- **Executable names:** the Swift executable is `grantpin-app` and the Go one stays `grantpin`, so process lists and crash reports tell them apart. `internal/service/service.go` `bundleExe` resolves a `.app` through `CFBundleExecutable` of the *outer* bundle, which is now the Swift binary; that is why change G1 is needed. 
 - **Signing order** is inside-out: helper bundle first, then the outer bundle, without `--deep` (section 5.3).
-- **Two bundle identifiers** (`dev.grantd.app`, `dev.grantd.app.daemon`) are used with one profile. This worked with the current Apple Development profile (which carries `MT2QHQX6PS.*`-style group access per the owner); it has not been tried with a Developer ID profile (Appendix A).
-- **Do not use `SMAppService.agent(plistName:)` for the daemon.** It would remove the hand-written plist, but its plist is static inside the bundle and cannot record the user's PATH, and the CLI path (`grantd service install`) must keep working for people who never install the app. One mechanism: `service install`.
-- **Migration of the live install.** The launchd plist currently names `…/grantd.app/Contents/MacOS/grantd`; after the upgrade that file no longer exists. The app detects this (`service status` prints `warning: executable no longer exists`, and `Status.ExeMissing` is true) and offers "Repair" which re-runs `service install` with the new path. The `claude mcp add` registration also names the old path and breaks; the Connect panel shows the new command and the one-liner `claude mcp remove grantd` to run first.
+- **Two bundle identifiers** (`dev.grantpin.app`, `dev.grantpin.app.daemon`) are used with one profile. This worked with the current Apple Development profile (which carries `MT2QHQX6PS.*`-style group access per the owner); it has not been tried with a Developer ID profile (Appendix A).
+- **Do not use `SMAppService.agent(plistName:)` for the daemon.** It would remove the hand-written plist, but its plist is static inside the bundle and cannot record the user's PATH, and the CLI path (`grantpin service install`) must keep working for people who never install the app. One mechanism: `service install`.
+- **Migration of the live install.** The launchd plist currently names `…/grantpin.app/Contents/MacOS/grantpin`; after the upgrade that file no longer exists. The app detects this (`service status` prints `warning: executable no longer exists`, and `Status.ExeMissing` is true) and offers "Repair" which re-runs `service install` with the new path. The `claude mcp add` registration also names the old path and breaks; the Connect panel shows the new command and the one-liner `claude mcp remove grantpin` to run first.
 
 ### 2.2 Processes and IPC
 
 ```
- ┌───────────────────────── grantd.app (user session) ─────────────────────────┐
+ ┌───────────────────────── grantpin.app (user session) ─────────────────────────┐
  │                                                                             │
- │  grantd-app (SwiftUI, no sandbox)                                           │
- │   ├─ GrantdKit.Client ──────── one Unix-socket connection per request ──┐   │
+ │  grantpin-app (SwiftUI, no sandbox)                                           │
+ │   ├─ GrantpinKit.Client ──────── one Unix-socket connection per request ──┐   │
  │   │                                                                     │   │
- │   └─ Process (spawn, own env) ──► grantd-daemon.app/…/grantd            │   │
+ │   └─ Process (spawn, own env) ──► grantpin-daemon.app/…/grantpin            │   │
  │        init | import | service install/uninstall/status | --version     │   │
  │        (short-lived; never `daemon`, never `mcp`)                       │   │
  └─────────────────────────────────────────────────────────────────────────┼───┘
                                                                            │
-   launchd (LaunchAgent dev.grantd.daemon, Aqua) ──starts──►  grantd daemon ◄┘
-                                                              │  ~/Library/Application Support/grantd/grantd.sock (0600, same-UID)
-   Claude Code ──spawns──► grantd mcp ──one request per call──┘
+   launchd (LaunchAgent dev.grantpin.daemon, Aqua) ──starts──►  grantpin daemon ◄┘
+                                                              │  ~/Library/Application Support/grantpin/grantpin.sock (0600, same-UID)
+   Claude Code ──spawns──► grantpin mcp ──one request per call──┘
                                                               │
                                   osascript chooser ◄─────────┤ policy → grants → approver
                                   LocalAuthentication ◄───────┘ → keystore (Secure Enclave) → audit
@@ -123,27 +123,27 @@ Who does what:
 
 | Concern | Owner | Notes |
 |---|---|---|
-| Create the vault | the helper's `grantd init`, spawned by the app | Only the helper (inside the signed bundle, with the profile) may touch the Secure Enclave key (`dev.grantd.vault-kek`). `init` is a CLI verb, not a protocol op; the running daemon opens the new vault without a restart (README, `grantd daemon`). |
-| Start the daemon | launchd, always | The app never runs `grantd daemon`. It installs or repairs the job with `grantd service install --exe <helper path> --path <PATH>`. The MCP shim's own auto-start is a fallback and stays untouched. |
+| Create the vault | the helper's `grantpin init`, spawned by the app | Only the helper (inside the signed bundle, with the profile) may touch the Secure Enclave key (`dev.grantpin.vault-kek`). `init` is a CLI verb, not a protocol op; the running daemon opens the new vault without a restart (README, `grantpin daemon`). |
+| Start the daemon | launchd, always | The app never runs `grantpin daemon`. It installs or repairs the job with `grantpin service install --exe <helper path> --path <PATH>`. The MCP shim's own auto-start is a fallback and stays untouched. |
 | Secrets / grants / audit / status | the daemon | The app speaks the socket protocol only. |
 | Approval dialogs, Touch ID | the daemon | Unchanged. The app can be closed or crashed while a prompt is on screen. |
-| Claude Code to daemon | `grantd mcp` spawned by Claude Code | The app is not involved at runtime. |
+| Claude Code to daemon | `grantpin mcp` spawned by Claude Code | The app is not involved at runtime. |
 
 ### 2.3 Finding the socket
 
-Resolution order in the app (a Finder-launched process has none of the user's shell environment, and the launchd job defines only `PATH` and optionally `GRANTD_SOCKET`):
+Resolution order in the app (a Finder-launched process has none of the user's shell environment, and the launchd job defines only `PATH` and optionally `GRANTPIN_SOCKET`):
 
-1. `GRANTD_SOCKET` in the app's own environment. Used by tests and by the development scheme (section 5.5). When set, the app is in **development mode**: service install/uninstall, vault init, uninstall-everything and the login-item toggle are disabled, with a banner "Development socket: <path>". This stops a debug build from touching the real launchd job.
-2. `EnvironmentVariables.GRANTD_SOCKET` in `~/Library/LaunchAgents/dev.grantd.daemon.plist`, if the file exists and defines it (parsed with `PropertyListSerialization`; this is the only file the app reads that it did not write).
-3. `~/Library/Application Support/grantd/grantd.sock`, built from `FileManager.homeDirectoryForCurrentUser`.
+1. `GRANTPIN_SOCKET` in the app's own environment. Used by tests and by the development scheme (section 5.5). When set, the app is in **development mode**: service install/uninstall, vault init, uninstall-everything and the login-item toggle are disabled, with a banner "Development socket: <path>". This stops a debug build from touching the real launchd job.
+2. `EnvironmentVariables.GRANTPIN_SOCKET` in `~/Library/LaunchAgents/dev.grantpin.daemon.plist`, if the file exists and defines it (parsed with `PropertyListSerialization`; this is the only file the app reads that it did not write).
+3. `~/Library/Application Support/grantpin/grantpin.sock`, built from `FileManager.homeDirectoryForCurrentUser`.
 
-`XDG_RUNTIME_DIR` is not consulted (it is never set for a launchd GUI job or a Finder app). The path must be at most 103 bytes (`internal/daemon/socket.go`); if the default exceeds it (very long account name) the app shows "Your account name is too long for grantd's default socket path" and offers a custom path via `service install --socket`, stored in the plist (so rule 2 finds it). The socket path shown in Settings comes from `status.socket` when reachable, else the resolved path.
+`XDG_RUNTIME_DIR` is not consulted (it is never set for a launchd GUI job or a Finder app). The path must be at most 103 bytes (`internal/daemon/socket.go`); if the default exceeds it (very long account name) the app shows "Your account name is too long for grantpin's default socket path" and offers a custom path via `service install --socket`, stored in the plist (so rule 2 finds it). The socket path shown in Settings comes from `status.socket` when reachable, else the resolved path.
 
 ### 2.4 One request per connection: what it means for the UI
 
 The daemon closes the connection after one final response (PROTOCOL.md "Transport"). Therefore:
 
-- `GrantdKit.Client.call(_:)` opens a new `AF_UNIX` stream socket per request, writes one line, reads stream frames and exactly one final response, closes. A `Client` value is stateless and `Sendable`; there is no connection pool and no long-lived connection. Use POSIX `socket/connect/write/read` on a background task (simple, and no half-close surprises). **Never `shutdown(SHUT_WR)`**: the daemon treats any read result including EOF as "client went away" and cancels the request.
+- `GrantpinKit.Client.call(_:)` opens a new `AF_UNIX` stream socket per request, writes one line, reads stream frames and exactly one final response, closes. A `Client` value is stateless and `Sendable`; there is no connection pool and no long-lived connection. Use POSIX `socket/connect/write/read` on a background task (simple, and no half-close surprises). **Never `shutdown(SHUT_WR)`**: the daemon treats any read result including EOF as "client went away" and cancels the request.
 - Line limit: build the request line, and if it is above 4 MiB (`MaxLineBytes`) fail locally with "value too large" before connecting. A 1 MiB value of control characters JSON-escapes to 6 MiB; the local check matters.
 - **Polling.** There is no push channel. `status` is polled; lists are refreshed on demand.
 
@@ -157,7 +157,7 @@ The daemon closes the connection after one final response (PROTOCOL.md "Transpor
 | `audit list` | Audit window key, popover open | on appear, every 5 s |
 | anything | system wake (`NSWorkspace.didWakeNotification`) | once, immediately |
 
-Every request is logged by the daemon at INFO, `status` included, into `~/Library/Logs/grantd/daemon.err.log`, and I found no log rotation anywhere in the tree. At the idle 30 s interval that is about 2,900 lines a day. Recommended change G6 (section 2.8) demotes read-only ops to DEBUG; the intervals above are chosen so the app is acceptable without it.
+Every request is logged by the daemon at INFO, `status` included, into `~/Library/Logs/grantpin/daemon.err.log`, and I found no log rotation anywhere in the tree. At the idle 30 s interval that is about 2,900 lines a day. Recommended change G6 (section 2.8) demotes read-only ops to DEBUG; the intervals above are chosen so the app is acceptable without it.
 
 - **Per-op client timeouts** (the daemon's own deadline for `run` is irrelevant here):
 
@@ -175,15 +175,15 @@ Cancelling a request means closing the connection; the daemon cancels the approv
 
 ### 2.5 When the daemon is down
 
-`Client.call` maps `ENOENT`/`ECONNREFUSED` to `DaemonError.notRunning` (as `internal/client` does with `ErrNotRunning`). The monitor then runs `<helper> service status` (exit code 3 means not installed; otherwise it parses `installed/loaded/running/exe/warning` lines, format in `cmd/grantd/cmd_service.go`) and shows one of:
+`Client.call` maps `ENOENT`/`ECONNREFUSED` to `DaemonError.notRunning` (as `internal/client` does with `ErrNotRunning`). The monitor then runs `<helper> service status` (exit code 3 means not installed; otherwise it parses `installed/loaded/running/exe/warning` lines, format in `cmd/grantpin/cmd_service.go`) and shows one of:
 
 | Situation | Popover headline | Action button |
 |---|---|---|
-| service not installed (exit 3) | "grantd is not set up to run in the background" | **Start** = `service install` |
+| service not installed (exit 3) | "grantpin is not set up to run in the background" | **Start** = `service install` |
 | installed, `exe` missing (app moved, replaced, or upgraded layout) | "The background service points to a file that no longer exists" | **Repair** = `service install` |
-| installed, not running | "grantd is not running" | **Start** = `service install` (idempotent; it restarts the job) |
-| installed, running (pid), socket refuses | "grantd is running but not answering" | **Restart** = `service install`; plus "Open Logs Folder" |
-| the job keeps exiting (pid changes between polls, 3 times in 60 s) | "grantd keeps stopping" | "Open Logs Folder" (`daemon.err.log`); no automatic retry |
+| installed, not running | "grantpin is not running" | **Start** = `service install` (idempotent; it restarts the job) |
+| installed, running (pid), socket refuses | "grantpin is running but not answering" | **Restart** = `service install`; plus "Open Logs Folder" |
+| the job keeps exiting (pid changes between polls, 3 times in 60 s) | "grantpin keeps stopping" | "Open Logs Folder" (`daemon.err.log`); no automatic retry |
 
 **Start/Repair/Restart** all run, with the app's environment replaced (section 2.6):
 
@@ -191,9 +191,9 @@ Cancelling a request means closing the connection; the daemon cancels the approv
 <helper> service install --exe <helper path> --path <computed PATH> [--socket <custom>]
 ```
 
-`--exe` is passed explicitly (the app's own bundle location is known). The shipped app passes the outer `grantd.app` and relies on G1 to resolve it to the helper binary; the explicit helper path above is equivalent. The command waits up to 10 s for the socket (`service.DefaultReadyTimeout`); exit 0 with a `WARNING:` line means launchd started the job but the socket was not ready: show "Started, but grantd has not answered yet" and keep polling. A non-zero exit shows the last 500 characters of stderr, escaped (4.4), in a disclosure.
+`--exe` is passed explicitly (the app's own bundle location is known). The shipped app passes the outer `grantpin.app` and relies on G1 to resolve it to the helper binary; the explicit helper path above is equivalent. The command waits up to 10 s for the socket (`service.DefaultReadyTimeout`); exit 0 with a `WARNING:` line means launchd started the job but the socket was not ready: show "Started, but grantpin has not answered yet" and keep polling. A non-zero exit shows the last 500 characters of stderr, escaped (4.4), in a disclosure.
 
-**Where the app may run from.** `service install` refuses temporary directories (`checkExe`), and a downloaded app that Gatekeeper translocates runs from a randomised read-only path. Before any install the app checks `Bundle.main.bundleURL`: it must be under `/Applications` or `~/Applications`. Otherwise every service/vault action is disabled and the popover says "Move grantd to your Applications folder first" with a button "Move to Applications and Relaunch". The button copies the bundle to a hidden temporary name in the destination folder and renames it into place in one step (`renamex_np` with `RENAME_EXCL`, which also never replaces an existing app), removing the temporary copy on any failure, so a stopped copy cannot leave a broken `grantd.app`. The app then starts the copy and quits itself only if the process it got back is a different one; with `LSMultipleInstancesProhibited` the system may return the running instance (MANUAL-TEST-MACOS section 8, item 7).
+**Where the app may run from.** `service install` refuses temporary directories (`checkExe`), and a downloaded app that Gatekeeper translocates runs from a randomised read-only path. Before any install the app checks `Bundle.main.bundleURL`: it must be under `/Applications` or `~/Applications`. Otherwise every service/vault action is disabled and the popover says "Move grantpin to your Applications folder first" with a button "Move to Applications and Relaunch". The button copies the bundle to a hidden temporary name in the destination folder and renames it into place in one step (`renamex_np` with `RENAME_EXCL`, which also never replaces an existing app), removing the temporary copy on any failure, so a stopped copy cannot leave a broken `grantpin.app`. The app then starts the copy and quits itself only if the process it got back is a different one; with `LSMultipleInstancesProhibited` the system may return the running instance (MANUAL-TEST-MACOS section 8, item 7).
 
 **PATH for the daemon.** The daemon, and every command it runs for an agent, gets only the PATH recorded in the plist (README "Environment of the child process"). A Finder app's PATH is `/usr/bin:/bin:/usr/sbin:/sbin`, so `php`, `node` or `aws` from Homebrew would be "command not found" (exit 127) for a user who never opens a terminal. The app computes the PATH to record:
 
@@ -201,7 +201,7 @@ Cancelling a request means closing the connection; the daemon cancels the approv
 2. If that fails or is empty: `/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`.
 3. Pass it as `--path`. The service layer keeps only absolute entries and drops duplicates (`sanitizePath`).
 
-Settings shows the result in an editable field "Where grantd looks for commands" with a "Re-detect" button and the sentence "Programs that agents run through grantd can only find commands in these folders." Changing it re-runs `service install`. This PATH decides what an approved command resolves to, so it is user-controlled input to a security-relevant setting: the field is plain text, shown in full, and never filled from an agent or a project file.
+Settings shows the result in an editable field "Where grantpin looks for commands" with a "Re-detect" button and the sentence "Programs that agents run through grantpin can only find commands in these folders." Changing it re-runs `service install`. This PATH decides what an approved command resolves to, so it is user-controlled input to a security-relevant setting: the field is plain text, shown in full, and never filled from an agent or a project file.
 
 macOS will probably show a "Background Items Added" notification when the LaunchAgent plist appears (system behaviour for LaunchAgents written by an app since macOS 13; I did not observe it here). The onboarding step mentions it in one sentence.
 
@@ -209,15 +209,15 @@ macOS will probably show a "Background Items Added" notification when the Launch
 
 The app spawns the helper only for `init`, `import`, `service install|uninstall|status`, `keystore delete`, `--version`. Rules:
 
-- Executable path: `Bundle.main.bundleURL/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd`, resolved once, symlinks rejected, verified to be inside the bundle.
-- Environment: `HOME`, `USER`, `LOGNAME`, `TMPDIR`, `LANG`, `PATH=/usr/bin:/bin` and, in development mode only, `GRANTD_SOCKET`. Nothing else (no inherited environment).
+- Executable path: `Bundle.main.bundleURL/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin`, resolved once, symlinks rejected, verified to be inside the bundle.
+- Environment: `HOME`, `USER`, `LOGNAME`, `TMPDIR`, `LANG`, `PATH=/usr/bin:/bin` and, in development mode only, `GRANTPIN_SOCKET`. Nothing else (no inherited environment).
 - `standardInput`: `/dev/null`, except `import` (below). stdout/stderr captured, each capped at 64 KiB. Timeouts: `init` 30 s, `import` 120 s, `service install` 20 s, `service uninstall`/`status`/`--version` 10 s, `keystore delete` 20 s; then SIGTERM, and SIGKILL 2 s later if the process is still running (an interactive login shell ignores SIGTERM, and Start, Install and Repair must not hang on it). The timeout timer starts before the process does, and cancelling the task takes the same SIGTERM-then-SIGKILL path.
 - Never put a secret value in `arguments` or `environment`. (`import` gets the `.env` bytes through an open file descriptor, section 3.2.)
 - Exit codes the app interprets: `service status` 3 = not installed. `init` and `import` use 1 for every failure; the app shows stderr, it does not branch on it, with one exception: if `init` fails and stderr contains "Secure Enclave" (case-insensitive) the app offers the weaker-protection retry (3.6). Brittle by nature; a stable error code is backlog (G7).
 
 ### 2.7 Application structure (for the implementer)
 
-- `GrantdKit` (Swift package, no UI imports): `Client`, `Request`/`Response`/result models (`Codable`, snake_case keys, unknown fields ignored), `DaemonError` with `category`, `reason`, `message`, validators (name, tag, expiry, command prefix, TTL), audit pairing, text sanitiser, MCP snippet builder, socket resolver, `.env` report parser, helper runner.
+- `GrantpinKit` (Swift package, no UI imports): `Client`, `Request`/`Response`/result models (`Codable`, snake_case keys, unknown fields ignored), `DaemonError` with `category`, `reason`, `message`, validators (name, tag, expiry, command prefix, TTL), audit pairing, text sanitiser, MCP snippet builder, socket resolver, `.env` report parser, helper runner.
 - App target: `AppModel` (`@Observable`, `@MainActor`) owning a `Monitor` (status/service polling) and per-screen models; views are thin. No third-party dependencies (Hardened Runtime and library validation stay on, section 4.5).
 - Windows: `MenuBarExtra(...).menuBarExtraStyle(.window)` for the popover; `Window("Secrets", id: "secrets")`, `Window("Grants", id: "grants")`, `Window("Activity", id: "audit")`, `Window("Settings", id: "settings")` (a `Settings { }` scene cannot be opened from a menu-bar app on macOS 14+; the popover row and Cmd-, call `requestWindow`), onboarding as a `Window("Welcome", id: "onboarding")`. Activation policy: start `.accessory`; switch to `.regular` and activate when any window opens; back to `.accessory` when the last closes. `LSMultipleInstancesProhibited` is true; a second launch activates the first and opens the Secrets window.
 - State persisted in `UserDefaults`: `onboardingDone`, window frames, last-used standing-grant TTL (only if it is one of the presets; a custom or unrecognised value gives the 30-day default), "show activity in popover". `UserDefaults` is writable by any program running as the user, so nothing in it may widen what a form proposes: the standing-grant folder is never remembered (the form always opens with no folder, and a value left by an older version is deleted). **Never persisted:** anything typed into a value field, notes, or a pasted `.env` path's contents. No `@SceneStorage`. Windows are marked non-restorable.
@@ -228,13 +228,13 @@ The app is a client of the existing protocol, with these exceptions. Each is sma
 
 | ID | Change | Why | Required? |
 |---|---|---|---|
-| G1 | `internal/service` `bundleExe`: when a `.app` contains `Contents/Helpers/grantd-daemon.app`, resolve to its `Contents/MacOS/<CFBundleExecutable>`; otherwise keep today's behaviour. Add tests next to `bundle_test.go`. | Without it `grantd service install --exe /Applications/grantd.app` (README, MANUAL-TEST §2c(f)) would resolve to the Swift binary and install a job that runs the UI with the argument `daemon`. The app itself passes the explicit inner path and does not need G1. | Required (CLI users, docs) |
-| G2 | Makefile and `build/bundle`: new layout, helper Info.plist template, Go built with `CGO_CFLAGS=-mmacosx-version-min=14.0 CGO_LDFLAGS=-mmacosx-version-min=14.0`, `MIN_MACOS=14.0` pinned. | Today `make bundle` takes `LSMinimumSystemVersion` from the Go binary's `LC_BUILD_VERSION`. On this machine that is `27.0` (verified with `otool -l bin/grantd`); with the flags it is `14.0` (verified). Without the flags the helper does not start on macOS 14 to 26. Another agent is editing the Makefile now; rebase on it. | Required |
-| G3 | `internal/approve/darwin/reason.go` `StandingText`: replace the last sentence "Only continue if you just ran `grantd grants add` yourself." with "Only continue if you just asked for this yourself." (and the same in the Touch ID reason if it repeats it; update `reason_test.go`, README "Standing grants", THREAT-MODEL 4.7). | The app triggers this dialog; a sentence that names a CLI command the user never typed is wrong and trains people to ignore it. Do not make the text depend on the `caller` string: it is untrusted and an agent could pick it. | Strongly recommended (default yes, open question 3) |
+| G1 | `internal/service` `bundleExe`: when a `.app` contains `Contents/Helpers/grantpin-daemon.app`, resolve to its `Contents/MacOS/<CFBundleExecutable>`; otherwise keep today's behaviour. Add tests next to `bundle_test.go`. | Without it `grantpin service install --exe /Applications/grantpin.app` (README, MANUAL-TEST §2c(f)) would resolve to the Swift binary and install a job that runs the UI with the argument `daemon`. The app itself passes the explicit inner path and does not need G1. | Required (CLI users, docs) |
+| G2 | Makefile and `build/bundle`: new layout, helper Info.plist template, Go built with `CGO_CFLAGS=-mmacosx-version-min=14.0 CGO_LDFLAGS=-mmacosx-version-min=14.0`, `MIN_MACOS=14.0` pinned. | Today `make bundle` takes `LSMinimumSystemVersion` from the Go binary's `LC_BUILD_VERSION`. On this machine that is `27.0` (verified with `otool -l bin/grantpin`); with the flags it is `14.0` (verified). Without the flags the helper does not start on macOS 14 to 26. Another agent is editing the Makefile now; rebase on it. | Required |
+| G3 | `internal/approve/darwin/reason.go` `StandingText`: replace the last sentence "Only continue if you just ran `grantpin grants add` yourself." with "Only continue if you just asked for this yourself." (and the same in the Touch ID reason if it repeats it; update `reason_test.go`, README "Standing grants", THREAT-MODEL 4.7). | The app triggers this dialog; a sentence that names a CLI command the user never typed is wrong and trains people to ignore it. Do not make the text depend on the `caller` string: it is untrusted and an agent could pick it. | Strongly recommended (default yes, open question 3) |
 | G4 | New op `update`: fields `name`, optional `tags`, `url`, `notes`, `expires`, `min_tier` and a `clear` list. No `value`. Same validation as `set`; `not_found`/`secret_not_found` if absent; not presence-gated (same class as `set`) except that lowering `min_tier` asks the human (`KindLowerTier`); audit row `allowed_once`, reason `update` (`update: lower min_tier` for an approved lowering). Additive protocol change. | Today `set` needs a non-empty value, so the only way to fix a tag is to retype the secret, which the app cannot read back. `min_tier` is bound into the GCM additional data, so changing it re-encrypts the value, and lowering it must never be a silent metadata edit. New capability for an agent: it can clear or change an expiry without knowing the value. It could already replace the value; I judge it the same trust class as `set`. | Recommended (default yes, open question 2); fallback is "Replace value" only |
-| G5 | `grantd import --caller NAME` (default `cli`), passed to each `set`. | Audit rows for imported secrets would otherwise say `cli` instead of `grantd-app`. | Optional |
+| G5 | `grantpin import --caller NAME` (default `cli`), passed to each `set`. | Audit rows for imported secrets would otherwise say `cli` instead of `grantpin-app`. | Optional |
 | G6 | Log `status`, `list`, `exists`, `masked`, `grants list`, `audit list` at DEBUG. | Polling noise in an unrotated log. | Optional |
-| G7 | Stable machine-readable results: `grantd import --json`, distinct exit code for "Secure Enclave unavailable" in `init`. | Removes the text parsing in 2.6 and 3.2. | Backlog (v0.2.1) |
+| G7 | Stable machine-readable results: `grantpin import --json`, distinct exit code for "Secure Enclave unavailable" in `init`. | Removes the text parsing in 2.6 and 3.2. | Backlog (v0.2.1) |
 
 ## 3. Screens
 
@@ -249,22 +249,22 @@ The app is a client of the existing protocol, with these exceptions. Each is sma
 | `secret_not_found` (not_found) | "That secret no longer exists." (then refresh) |
 | `grant_not_found` (not_found) | "That grant is already gone." (then refresh) |
 | `user_denied` (denied) | "You cancelled the confirmation." |
-| `approver_unavailable` (denied) | "grantd could not show the confirmation dialog. Make sure you are logged in at this Mac and have a device password, then try again." |
-| `policy_refused` (refused) | "A .grantd.yml file in that folder does not allow this." + `message` |
+| `approver_unavailable` (denied) | "grantpin could not show the confirmation dialog. Make sure you are logged in at this Mac and have a device password, then try again." |
+| `policy_refused` (refused) | "A .grantpin.yml file in that folder does not allow this." + `message` |
 | `tier_unmet` (refused) | "This secret needs a stronger protection level than this vault provides." + `message` |
 | `secret_expired` (refused) | "That secret has expired." |
-| `bad_request` (bad_request) | "grantd rejected the request:" + `message` |
+| `bad_request` (bad_request) | "grantpin rejected the request:" + `message` |
 | `unsupported_version` (bad_request) | "This app and the background service are out of step. Use Repair in Settings." |
-| `canceled`, `timeout` (failed) | "The request was cancelled." / "grantd took too long to answer." |
-| `internal` (failed) | "grantd had an internal error. Details are in the log." + "Open Logs Folder" |
-| unknown reason | by category: denied "grantd said no.", refused "grantd refused this.", bad_request "grantd rejected this request.", not_found "Not found.", failed "grantd could not finish this." |
+| `canceled`, `timeout` (failed) | "The request was cancelled." / "grantpin took too long to answer." |
+| `internal` (failed) | "grantpin had an internal error. Details are in the log." + "Open Logs Folder" |
+| unknown reason | by category: denied "grantpin said no.", refused "grantpin refused this.", bad_request "grantpin rejected this request.", not_found "Not found.", failed "grantpin could not finish this." |
 | `notRunning` (local) | see 2.5 |
 
 **Untrusted text.** Any string that did not originate from the user's own keystrokes in this window (secret names, URLs, notes, tags, callers, cwd, argv, grant fields, error messages, stderr) is rendered through `Text(verbatim:)` after the sanitiser in 4.4. Never `Text("\(x)")` (that parses Markdown and makes links).
 
-**Caller.** Every request the app sends carries `"caller":"grantd-app"`. For `grants add`, `caller` is `grantd-app` and `grant_caller` is the label the grant is for.
+**Caller.** Every request the app sends carries `"caller":"grantpin-app"`. For `grants add`, `caller` is `grantpin-app` and `grant_caller` is the label the grant is for.
 
-**Environment variable preview.** Wherever a secret name is shown in an editor, a gray line "Programs see this as `$NAME`" shows the derived variable: last path segment, uppercased, `.` and `-` turned into `_` (README "grantd run"). It says "unless another secret ends in the same word; then the full name is used" in a help popover.
+**Environment variable preview.** Wherever a secret name is shown in an editor, a gray line "Programs see this as `$NAME`" shows the derived variable: last path segment, uppercased, `.` and `-` turned into `_` (README "grantpin run"). It says "unless another secret ends in the same word; then the full name is used" in a help popover.
 
 ### 3.1 Menu-bar item and popover
 
@@ -277,14 +277,14 @@ The app is a client of the existing protocol, with these exceptions. Each is sma
 1. **Status header**: colored dot + headline + one detail line. Derived in this order (first match wins):
    - unreachable: see 2.5 (red) with its action button;
    - `status.proto_v != 1`: orange, "This app and the background service are out of step." + **Repair**;
-   - `status.version` differs from `<helper> --version` (checked once per launch): orange, "grantd was updated. Restart the background service to finish." + **Restart** (`service install`);
+   - `status.version` differs from `<helper> --version` (checked once per launch): orange, "grantpin was updated. Restart the background service to finish." + **Restart** (`service install`);
    - `vault_initialized == false`: orange, "No vault yet" + **Set Up…** (opens onboarding at the vault step);
    - `tampered_grants > 0`: orange, "{n} grant(s) failed verification" + **Review** (opens Grants);
    - `keystore_tier == "dialog"`: yellow, "Vault key is protected by Keychain only" (detail: "Weaker than the Secure Enclave. See Settings.");
-   - otherwise green, "grantd is running", detail "{secrets} secrets · {active_grants} active grants".
+   - otherwise green, "grantpin is running", detail "{secrets} secrets · {active_grants} active grants".
 2. **Secrets quick list**: the 6 most recently updated names (from `list`), each with tier badge; click opens the Secrets window with that row selected. Footer buttons: "Add Secret…" (opens the add sheet), "All Secrets…".
 3. **Recent activity**: the last 3 logical events (from `audit list` with `limit` 12, collapsed by the pairing rules in 3.4); click opens Activity. Empty: "Nothing yet. When an agent asks to use a secret, it shows up here."
-4. **Footer**: "Grants ({n})…", "Activity…", "Settings…", "Quit grantd". The quit item's help text: "Quits this app. The background service keeps running."
+4. **Footer**: "Grants ({n})…", "Activity…", "Settings…", "Quit grantpin". The quit item's help text: "Quits this app. The background service keeps running."
 
 **Protocol ops:** `status`, `list`, `audit` `list`. **Empty/error:** every section degrades independently; if `list` fails with `vault_not_initialized` the lists are hidden, not shown as errors.
 
@@ -312,7 +312,7 @@ The app is a client of the existing protocol, with these exceptions. Each is sma
 
 **Replace value / edit.** Context menu and toolbar "Edit…" opens the same sheet with metadata prefilled from `list` and the value empty. Two actions in a segmented control:
 
-- "Edit details" (needs G4): changes tags, URL, notes, expiry via `update`; protection is shown read-only with the line "Set when the secret was created. To change it, replace the secret." Without G4 this segment is disabled with the help "Update support needs a newer grantd" and only "Replace value" exists.
+- "Edit details" (needs G4): changes tags, URL, notes, expiry via `update`; protection is shown read-only with the line "Set when the secret was created. To change it, replace the secret." Without G4 this segment is disabled with the help "Update support needs a newer grantpin" and only "Replace value" exists.
 - "Replace value": requires a new value, sends `set` with `overwrite: true` and **all** metadata fields from the form (an overwrite does not keep the old tags, URL, notes or expiry; `created_at` is preserved by the daemon). Confirmation, shown on Save:
   - Title: `Replace "{name}"?`
   - Body: `The current value will be overwritten. It can't be recovered.`
@@ -327,8 +327,8 @@ The app is a client of the existing protocol, with these exceptions. Each is sma
 **Import .env.** Toolbar "Import .env…" or a file dropped on the window.
 
 1. File choice: `fileImporter` (allow hidden files and any content type, since `.env` has none) or drop. The app opens the file itself with `FileHandle(forReadingFrom:)`; this is what keeps macOS folder-access prompts attributed to the app and the user's click.
-2. **The app never reads the file's bytes.** It hands the open descriptor to the helper as standard input: `grantd import - --dry-run --on-conflict skip`. The Go parser (`vault.ParseDotenv`) is the only parser; values never enter the Swift process. (Per `cmd_import.go`, `FILE` may be `-`.)
-3. Preview parsed from stdout lines of the form `(dry run) would be added: 3 (A, B, C)`, labels `added`, `overwritten`, `skipped (exists)`, `ignored (empty value)`, or `nothing to import`. Names cannot contain commas or spaces, so splitting is safe. A line the parser does not recognise aborts the import with "grantd printed something unexpected." (contract test in section 6; G7 replaces this with `--json`).
+2. **The app never reads the file's bytes.** It hands the open descriptor to the helper as standard input: `grantpin import - --dry-run --on-conflict skip`. The Go parser (`vault.ParseDotenv`) is the only parser; values never enter the Swift process. (Per `cmd_import.go`, `FILE` may be `-`.)
+3. Preview parsed from stdout lines of the form `(dry run) would be added: 3 (A, B, C)`, labels `added`, `overwritten`, `skipped (exists)`, `ignored (empty value)`, or `nothing to import`. Names cannot contain commas or spaces, so splitting is safe. A line the parser does not recognise aborts the import with "grantpin printed something unexpected." (contract test in section 6; G7 replaces this with `--json`).
 4. The sheet lists the groups: **New** (will be added), **Already exist** (names), **Empty** (ignored). Conflict choice, default **Skip existing**: `Skip existing` (`--on-conflict skip`), `Overwrite existing` (`overwrite`), `Stop if any exist` (`error`). Choosing Overwrite re-runs the dry run (to list exactly what would be overwritten) and, on Import, confirms:
    - Title: `Overwrite {n} existing secrets?`
    - Body: `These secrets will get the values from the file: {names, at most 10, then "and {k} more"}. The old values can't be recovered.`
@@ -346,7 +346,7 @@ The app is a client of the existing protocol, with these exceptions. Each is sma
 - **Standing** (blue) for `standing: true`.
 - **Expiring soon** (orange) under 10 minutes left.
 - **Expired** (gray): the daemon omits expired grants from `list` (`handleGrants`), so this badge only appears for a row that crosses `expires_at` between two refreshes; the row disappears at the next poll. The client compares with `Date.now`.
-- **Tampered** (red) for `tampered: true`: the row shows only the ID and the text "Failed verification. grantd ignores it. Remove it." Other fields of a tampered row are untrusted and are not displayed (same as `grantd grants`). Its only action is Remove.
+- **Tampered** (red) for `tampered: true`: the row shows only the ID and the text "Failed verification. grantpin ignores it. Remove it." Other fields of a tampered row are untrusted and are not displayed (same as `grantpin grants`). Its only action is Remove.
 
 **Actions.**
 
@@ -354,7 +354,7 @@ The app is a client of the existing protocol, with these exceptions. Each is sma
   - Title: `Revoke this grant?`
   - Body: `{caller} will have to ask you again before it can use {secrets} in {folder}. A command that is already running keeps running.`
   - Buttons: `Revoke` (destructive), `Cancel`.
-- **Tampered row**: Title `Remove this grant?`, body `grantd could not verify this grant, so it is ignored and never allows anything. Removing it clears the warning.`, buttons `Remove` (destructive), `Cancel`. Same op.
+- **Tampered row**: Title `Remove this grant?`, body `grantpin could not verify this grant, so it is ignored and never allows anything. Removing it clears the warning.`, buttons `Remove` (destructive), `Cancel`. Same op.
 - **Revoke All** (toolbar, disabled when the list is empty): `grants` `revoke_all`. Confirmation:
   - Title: `Revoke all {n} grants?`
   - Body: `Every agent will have to ask you again, including for standing grants you created on purpose. Commands already running keep running.`
@@ -367,7 +367,7 @@ The app is a client of the existing protocol, with these exceptions. Each is sma
 
 #### New standing grant
 
-A standing grant lets a caller run a command prefix with listed secrets in a folder, unprompted, for up to 90 days (README "Standing grants"). It is the most powerful object grantd stores, so the form is built to make the scope visible.
+A standing grant lets a caller run a command prefix with listed secrets in a folder, unprompted, for up to 90 days (README "Standing grants"). It is the most powerful object grantpin stores, so the form is built to make the scope visible.
 
 **Fields and validation** (mirrors `handleGrantAdd` and `validateRun` in `internal/broker`):
 
@@ -377,14 +377,14 @@ A standing grant lets a caller run a command prefix with listed secrets in a fol
 | Folder (`cwd`) | **Choose Folder…** (`NSOpenPanel`, directories only) plus a read-only path field | required; absolute; must exist and be a directory (the daemon resolves symlinks; the form shows the resolved path it will send, computed with `realpath(3)`, not `URL.resolvingSymlinksInPath`, which turns `/private/tmp/x` back into `/tmp/x` and so disagrees with the daemon). |
 | Secrets (`secrets`) | checklist of current secrets plus a "Pattern…" field for globs like `aws/*` | at least 1, at most 256; each entry 1 to 256 bytes, name charset `[A-Za-z0-9_/.-]` plus glob characters `* ? [ ] { }` and no backslash; deeper glob syntax is validated by the daemon (`bad_request`, `malformed glob`). A glob grants matching secrets added later (README "Grants"); the form says so next to a glob. |
 | Command (`argv`) | one text field, tokenised on whitespace with single/double quotes honoured; no shell expansion; tokens shown as chips | at least 1 token, no empty token, at most 4,096 tokens. Help: "`php artisan` also covers `php artisan migrate`." |
-| Lasts (`ttl_s`) | presets 1 hour, 1 day, 7 days, 30 days, 90 days, plus custom (`d`/`h`/`m`) | greater than 0 and at most 90 days (7,776,000 s). A repo `.grantd.yml` may lower the ceiling (`max_standing_grant_ttl`); then the daemon answers `bad_request` with the limit in `message` and the app shows it as is. Never clamp locally. |
+| Lasts (`ttl_s`) | presets 1 hour, 1 day, 7 days, 30 days, 90 days, plus custom (`d`/`h`/`m`) | greater than 0 and at most 90 days (7,776,000 s). A repo `.grantpin.yml` may lower the ceiling (`max_standing_grant_ttl`); then the daemon answers `bad_request` with the limit in `message` and the app shows it as is. Never clamp locally. |
 | Run limit (`uses`) | optional integer | blank = no limit; otherwise at least 1. |
 
 **Soft warning (UI heuristic, not a daemon rule).** If the command is a single token among `sh bash zsh fish dash ksh env sudo python python3 node deno bun ruby perl php npx npm yarn pnpm`, the form shows a red callout "This lets {caller} run any code with these secrets" and requires ticking "I understand" before the button enables. Reason: THREAT-MODEL 4.7, "never for a shell or interpreter prefix".
 
 **Summary line** under the form, always visible, in plain language: `{caller} will be able to run "{command} …" with {secrets} in {folder} and its subfolders for {duration}, without asking you again.` (plus ` It stops after {n} runs.` if set).
 
-**The confirmation is the daemon's, and the app must not shortcut it.** The button is labelled **Ask Me to Confirm…**, not "Create". Clicking it sends exactly one `grants` `add` request. The daemon then validates, applies policy, shows its own "Create a standing grant?" dialog (osascript) and, after "Create standing grant", the Touch ID sheet; nothing is stored before both succeed (PROTOCOL.md `grants`, `internal/broker/standing.go`). While the request is open the sheet shows a spinner and: `Waiting for you to confirm in the grantd dialog, then Touch ID.` plus a **Cancel** button that closes the connection (the daemon then cancels the dialog). The app must not:
+**The confirmation is the daemon's, and the app must not shortcut it.** The button is labelled **Ask Me to Confirm…**, not "Create". Clicking it sends exactly one `grants` `add` request. The daemon then validates, applies policy, shows its own "Create a standing grant?" dialog (osascript) and, after "Create standing grant", the Touch ID sheet; nothing is stored before both succeed (PROTOCOL.md `grants`, `internal/broker/standing.go`). While the request is open the sheet shows a spinner and: `Waiting for you to confirm in the grantpin dialog, then Touch ID.` plus a **Cancel** button that closes the connection (the daemon then cancels the dialog). The app must not:
 
 - show its own "Are you sure? Yes" that could be mistaken for the approval, or pre-fill, click, or script the dialog (no Accessibility, no AppleScript, no `osascript` from the app);
 - retry automatically, or send a second `add` while one is pending;
@@ -397,11 +397,11 @@ Outcomes:
 | `ok` with `result` GrantInfo | Toast `Standing grant created. {caller} can run "{command}" with {secrets} in {folder} until {date, time}.` and the list refreshes. |
 | `denied`/`user_denied` | `Not created. You cancelled the confirmation.` |
 | `denied`/`approver_unavailable` | text from the table in 3.0 |
-| `refused`/`policy_refused` | `A .grantd.yml in that folder does not allow this:` + `message` |
+| `refused`/`policy_refused` | `A .grantpin.yml in that folder does not allow this:` + `message` |
 | `refused`/`tier_unmet`, `secret_expired`; `not_found`/`secret_not_found` | per 3.0, naming the secret from `message` |
 | `bad_request` | `message` verbatim (it names the TTL ceiling and its source) |
 
-Until G3 lands, the daemon's dialog ends with "Only continue if you just ran `grantd grants add` yourself." The sheet warns about this in one line: `The dialog says "grants add". That is the same request this app just sent.` Remove that line after G3.
+Until G3 lands, the daemon's dialog ends with "Only continue if you just ran `grantpin grants add` yourself." The sheet warns about this in one line: `The dialog says "grants add". That is the same request this app just sent.` Remove that line after G3.
 
 ### 3.4 Activity (audit) window
 
@@ -419,10 +419,10 @@ Until G3 lands, the daemon's dialog ends with "Only continue if you just ran `gr
 | `allowed_once` + `released` | "Allowed once" |
 | `allowed_new_grant` + `released` | "Allowed for a while (grant created)" |
 | `allowed_new_grant` + `standing` | "Standing grant created" |
-| `allowed_once` + `set` / `delete` / `show` / `update` | "Secret saved" / "Secret deleted" / "Secret revealed in a terminal" / "Secret details changed" (the daemon records these with `argv` `["grantd", verb, name]`; Detail shows the name) |
-| `allowed_once` + `grants revoke` / `grants revoke_all` | "Grant revoked" / "All grants revoked" (the daemon writes one row per revoked grant, with `grant_id` set and `argv` `["grantd","grants","revoke",<id>]` or `["grantd","grants","revoke","--all",<id>]`; a revoke-all that found nothing writes one row without `grant_id`, shown as "none were active"). Detail shows the grant ID; the Caller column shows the label that asked. These are lifecycle rows: a single standalone event of kind change (in the Changes filter), never paired with a run. |
+| `allowed_once` + `set` / `delete` / `show` / `update` | "Secret saved" / "Secret deleted" / "Secret revealed in a terminal" / "Secret details changed" (the daemon records these with `argv` `["grantpin", verb, name]`; Detail shows the name) |
+| `allowed_once` + `grants revoke` / `grants revoke_all` | "Grant revoked" / "All grants revoked" (the daemon writes one row per revoked grant, with `grant_id` set and `argv` `["grantpin","grants","revoke",<id>]` or `["grantpin","grants","revoke","--all",<id>]`; a revoke-all that found nothing writes one row without `grant_id`, shown as "none were active"). Detail shows the grant ID; the Caller column shows the label that asked. These are lifecycle rows: a single standalone event of kind change (in the Changes filter), never paired with a run. |
 | `denied_user` | "You said no" |
-| `refused_policy` | "Blocked by .grantd.yml" |
+| `refused_policy` | "Blocked by .grantpin.yml" |
 | `refused_tier` | "Blocked: protection level" |
 | `error` | "Error" (reason text in Detail) |
 
@@ -434,7 +434,7 @@ Until G3 lands, the daemon's dialog ends with "Only continue if you just ran `gr
 - `ok: false`: red, `Log check failed at entry {first_bad_id}. Entries from there on can't be trusted. Someone may have edited the vault file. Export a copy now.` with an **Export CSV…** button. (The response itself is `ok: true`; the app reads `result.ok`.)
 - request failure: normal error mapping. The banner persists until the next verify or until the window closes.
 
-**Export CSV.** Toolbar button, `audit` `export`, then a save panel (`fileExporter` with `.commaSeparatedText`, default name `grantd-audit-{yyyy-MM-dd}.csv`, directory Documents). The CSV is written exactly as received (columns per `internal/audit/audit.go` `ExportCSV`: `id, ts, caller, cwd, argv, secrets, expanded, decision, grant_id, reason, exit_code, duration_ms`; note `expanded` is not in the README's list). If the daemon answers `failed`/`internal` ("too large to export"), the app says `The log is over 1 MB and can't be exported in one piece yet. Use Load more and copy what you need.` The panel message reads `Cells contain text chosen by other programs. Open this file in a text editor if you are not sure.` (the app does not rewrite cells, so a caller label starting with `=` would be a formula in a spreadsheet).
+**Export CSV.** Toolbar button, `audit` `export`, then a save panel (`fileExporter` with `.commaSeparatedText`, default name `grantpin-audit-{yyyy-MM-dd}.csv`, directory Documents). The CSV is written exactly as received (columns per `internal/audit/audit.go` `ExportCSV`: `id, ts, caller, cwd, argv, secrets, expanded, decision, grant_id, reason, exit_code, duration_ms`; note `expanded` is not in the README's list). If the daemon answers `failed`/`internal` ("too large to export"), the app says `The log is over 1 MB and can't be exported in one piece yet. Use Load more and copy what you need.` The panel message reads `Cells contain text chosen by other programs. Open this file in a text editor if you are not sure.` (the app does not rewrite cells, so a caller label starting with `=` would be a formula in a spreadsheet).
 
 **Empty state.** `No activity yet.` **Protocol ops:** `audit` `list`, `verify`, `export`.
 
@@ -443,46 +443,46 @@ Until G3 lands, the daemon's dialog ends with "Only continue if you just ran `gr
 A `Window("Settings")` scene with four tabs. Everything here that changes the system asks first.
 
 **General**
-- **Start grantd when I log in** (toggle): `SMAppService.mainApp.register()` / `unregister()`. Reflects `SMAppService.mainApp.status`; if `.requiresApproval` it shows "Allow grantd in System Settings > General > Login Items" and a button that opens that pane (`SMAppService.openSystemSettingsLoginItems()`).
-- **Keep grantd running in the background** (toggle, the "install at login" of the daemon): on = `service install`, off = confirm then `service uninstall`. Confirmation:
+- **Start grantpin when I log in** (toggle): `SMAppService.mainApp.register()` / `unregister()`. Reflects `SMAppService.mainApp.status`; if `.requiresApproval` it shows "Allow grantpin in System Settings > General > Login Items" and a button that opens that pane (`SMAppService.openSystemSettingsLoginItems()`).
+- **Keep grantpin running in the background** (toggle, the "install at login" of the daemon): on = `service install`, off = confirm then `service uninstall`. Confirmation:
   - Title: `Stop the background service?`
-  - Body: `Agents will not be able to use grantd until you turn it back on. Your secrets and grants stay as they are.`
+  - Body: `Agents will not be able to use grantpin until you turn it back on. Your secrets and grants stay as they are.`
   - Buttons: `Stop Service` (destructive), `Cancel`.
   Shows the `service status` fields: running (pid), plist path, exe path, and a warning row when `ExeMissing`.
-- **Where grantd looks for commands** (PATH, 2.5) with Re-detect and Apply.
+- **Where grantpin looks for commands** (PATH, 2.5) with Re-detect and Apply.
 - **Show recent activity in the menu** (toggle).
 
 **Connect** (also the onboarding step)
 - Heading `Connect Claude Code`. A segmented control **All my projects** (default) / **Only one project**.
 - Command box (monospaced, selectable) and a **Copy** button. Exact text, with `{HELPER}` = the absolute helper path, shell-quoted with single quotes if it contains anything outside `[A-Za-z0-9_./-]` (an embedded `'` becomes `'\''`):
 
-  - All projects: `claude mcp add --scope user grantd -- {HELPER} mcp`
-  - One project (run inside that project's folder): `claude mcp add grantd -- {HELPER} mcp`
+  - All projects: `claude mcp add --scope user grantpin -- {HELPER} mcp`
+  - One project (run inside that project's folder): `claude mcp add grantpin -- {HELPER} mcp`
 
-  For the default install location: `claude mcp add --scope user grantd -- /Applications/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd mcp`. The `claude mcp add [options] <name> <commandOrUrl> [args...]` syntax and `-s, --scope <scope>` (local, user, project) were checked against `claude mcp add --help` (Claude Code 2.1.310).
+  For the default install location: `claude mcp add --scope user grantpin -- /Applications/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin mcp`. The `claude mcp add [options] <name> <commandOrUrl> [args...]` syntax and `-s, --scope <scope>` (local, user, project) were checked against `claude mcp add --help` (Claude Code 2.1.310).
 - `.mcp.json` box with **Copy**, pretty-printed JSON with the path JSON-escaped:
 
   ```json
   {
     "mcpServers": {
-      "grantd": {
-        "command": "/Applications/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd",
+      "grantpin": {
+        "command": "/Applications/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin",
         "args": ["mcp"]
       }
     }
   }
   ```
   Caption: `Put this in a file named .mcp.json in your project's folder. It contains a path on your Mac, so don't commit it to a shared repository.` There is deliberately no password or environment variable in it (README "Quick start" step 5).
-- If an older registration may exist (the old `Contents/MacOS/grantd` path, i.e. the live install): a callout `Already connected with an older path? Run claude mcp remove grantd first, then the command above.` with its own Copy.
-- **Test prompt** with Copy: `Use grantd's secret_list tool and tell me the names of my secrets.` Caption: `Claude will see names only, never values. To see an approval, ask it to run a command with a secret.`
+- If an older registration may exist (the old `Contents/MacOS/grantpin` path, i.e. the live install): a callout `Already connected with an older path? Run claude mcp remove grantpin first, then the command above.` with its own Copy.
+- **Test prompt** with Copy: `Use grantpin's secret_list tool and tell me the names of my secrets.` Caption: `Claude will see names only, never values. To see an approval, ask it to run a command with a secret.`
 - A link-less sentence: `Claude Code must be restarted, or run /mcp, to pick up the new server.` (the README says `/mcp` should list four tools: `secret_list`, `secret_exists`, `secret_masked`, `secret_run`; the panel names them).
 
 **Security & data**
-- Read-only facts: Version (`status.version`, protocol `proto_v`), vault protection ("Secure Enclave (hardware)" or "Keychain only (weaker)" from `keystore_tier`), approval method ("Touch ID or your password", from `approver_tier == "hardware"`), socket path, vault folder path (`~/Library/Application Support/grantd`), logs folder.
-- Buttons: **Open Logs Folder** (`NSWorkspace.shared.open` on `~/Library/Logs/grantd`, which `service install` creates), **Open Vault Folder in Finder** (reveal only).
+- Read-only facts: Version (`status.version`, protocol `proto_v`), vault protection ("Secure Enclave (hardware)" or "Keychain only (weaker)" from `keystore_tier`), approval method ("Touch ID or your password", from `approver_tier == "hardware"`), socket path, vault folder path (`~/Library/Application Support/grantpin`), logs folder.
+- Buttons: **Open Logs Folder** (`NSWorkspace.shared.open` on `~/Library/Logs/grantpin`, which `service install` creates), **Open Vault Folder in Finder** (reveal only).
 - A fixed paragraph (not editable): `Saving, replacing and deleting secrets does not ask for Touch ID, and neither does revoking a grant. Any program running as you can do those things. Touch ID protects using a secret, not managing the list. See THREAT-MODEL.md.` This is the honest statement of the gap recorded in BACKLOG.md and THREAT-MODEL 4.1 ("Set, overwrite and delete").
 
-**Uninstall** (also in the app menu as "Uninstall grantd…")
+**Uninstall** (also in the app menu as "Uninstall grantpin…")
 - Sheet with checkboxes, nothing destructive pre-ticked except stopping the service:
   - [x] `Stop and remove the background service` (`service uninstall`)
   - [ ] `Delete my vault: {n} secrets, {m} grants and the audit log`
@@ -490,15 +490,15 @@ A `Window("Settings")` scene with four tabs. Everything here that changes the sy
   - [ ] `Delete logs`
   - [ ] `Delete the Keychain item used by weaker protection` (shown only if `keystore_tier == "dialog"` is known; runs the helper's `keystore delete --fallback --yes`)
   - [ ] `Delete the hardware key` (shown only if `keystore_tier == "hardware"` is known; runs `keystore delete --hardware --yes`)
-  - The app never calls `security delete-generic-password`: the fallback key lives in the data-protection keychain, which `security` cannot reach (it answers exit 44, "not found", for an item that is there), and the Secure Enclave key is invisible to it. Only the signed helper can delete either. The app calls exactly `grantd keystore delete --fallback --yes` or `--hardware --yes` (exit 0 deleted, 3 there was no such key, 2 refused because no `--yes` was given or the daemon is still answering); the command is documented in README.md. The key options are shown only when the tier is known from a `status` answer; with no answer the sheet says so and offers neither; with a locked vault it says the vault is locked and to unlock it to see the protection.
+  - The app never calls `security delete-generic-password`: the fallback key lives in the data-protection keychain, which `security` cannot reach (it answers exit 44, "not found", for an item that is there), and the Secure Enclave key is invisible to it. Only the signed helper can delete either. The app calls exactly `grantpin keystore delete --fallback --yes` or `--hardware --yes` (exit 0 deleted, 3 there was no such key, 2 refused because no `--yes` was given or the daemon is still answering); the command is documented in README.md. The key options are shown only when the tier is known from a `status` answer; with no answer the sheet says so and offers neither; with a locked vault it says the vault is locked and to unlock it to see the protection.
 - If "Delete my vault" or either key option is ticked, an extra paragraph and a confirmation field appear:
-  - Warning for the vault: `Deleting the vault permanently removes all secrets, grants and the audit log. grantd does not keep a copy and this can't be undone.`
+  - Warning for the vault: `Deleting the vault permanently removes all secrets, grants and the audit log. grantpin does not keep a copy and this can't be undone.`
   - Warning for a key: `Deleting the key makes the vault permanently unreadable, even if you keep the vault file.`
   - Field: `Type "delete" to confirm.` The button stays disabled until the field equals `delete`. A key can never be deleted without the typed word, with or without the vault.
 - Buttons: `Remove` (destructive), `Cancel`.
-- Order of operations: `service uninstall`; wait for the socket to disappear (up to 5 s); only then remove `vault.db`, `vault.db-wal`, `vault.db-shm` and a leftover `grantd.sock` in the vault folder, then the folder if empty, then the logs, then the keys. The vault and the keys are never deleted while the daemon may hold them open, so ticking a key also stops the service. The app never passes `--force` to `keystore delete`. "The daemon has stopped" means one thing: a `status` call failed with `notRunning` (socket absent or connection refused). A timeout, a reset connection or any other failure proves nothing, so the flow stops there with `Could not tell whether grantd has stopped (…), so nothing was deleted.` and deletes nothing; a daemon error response counts as an answer (still running). If the vault's tier is not known (the last `status` failed, for instance because the daemon is down), the sheet does not guess `hardware`: it shows neither key option and says so, and if the vault is deleted anyway the result says the vault's key may still be in the Keychain.
-- `keystore delete` result codes: 0 deleted; 3 no such key (the result sheet says `Keychain item was not found, so nothing was deleted` or the same for the hardware key, as a neutral line and not as a success); 2 the daemon is still running (`grantd is still running, so the … was not deleted.`); anything else shows `The … could not be deleted.` plus the helper's stderr, sanitised. The file operations use the default vault folder only (neither the Finder app nor the launchd job sees `GRANTD_HOME`/`XDG_DATA_HOME`).
-- Result sheet states what remains: `The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. To remove it, tick "Delete the hardware key" when you uninstall.` (only when the vault was deleted and the key was not). Then: `To disconnect Claude Code, run: claude mcp remove grantd` (Copy) and `To finish, drag grantd to the Trash.` with a **Reveal in Finder** button. The app does not delete itself.
+- Order of operations: `service uninstall`; wait for the socket to disappear (up to 5 s); only then remove `vault.db`, `vault.db-wal`, `vault.db-shm` and a leftover `grantpin.sock` in the vault folder, then the folder if empty, then the logs, then the keys. The vault and the keys are never deleted while the daemon may hold them open, so ticking a key also stops the service. The app never passes `--force` to `keystore delete`. "The daemon has stopped" means one thing: a `status` call failed with `notRunning` (socket absent or connection refused). A timeout, a reset connection or any other failure proves nothing, so the flow stops there with `Could not tell whether grantpin has stopped (…), so nothing was deleted.` and deletes nothing; a daemon error response counts as an answer (still running). If the vault's tier is not known (the last `status` failed, for instance because the daemon is down), the sheet does not guess `hardware`: it shows neither key option and says so, and if the vault is deleted anyway the result says the vault's key may still be in the Keychain.
+- `keystore delete` result codes: 0 deleted; 3 no such key (the result sheet says `Keychain item was not found, so nothing was deleted` or the same for the hardware key, as a neutral line and not as a success); 2 the daemon is still running (`grantpin is still running, so the … was not deleted.`); anything else shows `The … could not be deleted.` plus the helper's stderr, sanitised. The file operations use the default vault folder only (neither the Finder app nor the launchd job sees `GRANTPIN_HOME`/`XDG_DATA_HOME`).
+- Result sheet states what remains: `The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. To remove it, tick "Delete the hardware key" when you uninstall.` (only when the vault was deleted and the key was not). Then: `To disconnect Claude Code, run: claude mcp remove grantpin` (Copy) and `To finish, drag grantpin to the Trash.` with a **Reveal in Finder** button. The app does not delete itself.
 
 ### 3.6 Onboarding
 
@@ -507,7 +507,7 @@ Shown on first launch, and again from the popover's "Set Up…". State-derived, 
 | Step | Shows | Done when | Action |
 |---|---|---|---|
 | 1 Welcome | Three plain sentences: `Agents like Claude Code can use your passwords and API keys without ever seeing them.` / `Each time one asks, you see the exact command and approve with Touch ID.` / `Your secrets stay on this Mac, encrypted.` Where-from check (2.5): if not in Applications, the move button replaces Continue. | app is in `/Applications` or `~/Applications` | Continue |
-| 2 Background service | `grantd needs a small background service so agents can reach it. macOS may tell you a background item was added; that is this.` | `status` answers | **Install Service** (`service install`, PATH computed as in 2.5) |
+| 2 Background service | `grantpin needs a small background service so agents can reach it. macOS may tell you a background item was added; that is this.` | `status` answers | **Install Service** (`service install`, PATH computed as in 2.5) |
 | 3 Vault | `Your vault is where secrets are kept. Its key lives in this Mac's Secure Enclave and can't be copied off. You'll use Touch ID when an agent asks to use a secret. Saving a secret here doesn't need it.` | `status.vault_initialized` | **Create Vault** (`<helper> init`, 30 s). Success line from stdout: `vault created at … (keystore tier: hardware)`; show "Protection: Secure Enclave". Failure with "Secure Enclave" in stderr: show `This Mac can't create a hardware key (for example inside a virtual machine).` and a secondary button **Use weaker protection…** with confirmation: Title `Use weaker protection?`, Body `The vault key will be kept in your Keychain instead of the Secure Enclave. Programs running as you could read it. Touch ID still protects every use of a secret.`, Buttons `Use Keychain`, `Cancel`; it runs `init --keychain-fallback`. Other failures: stderr in a disclosure. |
 | 4 First secret | `Add your first secret, or import a .env file.` | `status.secrets > 0` | Add Secret…, Import .env…, **Skip** |
 | 5 Connect | the Connect panel (3.5), with `Done` | user presses Done | sets `onboardingDone` |
@@ -529,21 +529,21 @@ Each step has Back, and no step is blocked by a later one. Closing the window mi
 
 The app MUST NOT implement a "reveal", "copy value" or "show value" action in v0.2, and must never send `show`. Reasons:
 
-1. `show` is TTY-gated by design: the rule "the value is only printed to a terminal" is enforced by the CLI (`cmd/grantd/cmd_show.go`), not the daemon, which cannot know what the client's stdout is (PROTOCOL.md `show`; THREAT-MODEL 4.1 "Using `show`"). The app cannot prove TTY-equivalent presence either: a GUI process that sends `show` and renders the answer is exactly the "client that is not a terminal" the rule exists to keep out, and a bug or a prompt-injected UI automation would turn it into a value-export button.
-2. The daemon's own dialog for `show` is titled as running `grantd show NAME` and offers "Reveal once"; an app-driven request would put a dialog on screen that misdescribes who is asking.
+1. `show` is TTY-gated by design: the rule "the value is only printed to a terminal" is enforced by the CLI (`cmd/grantpin/cmd_show.go`), not the daemon, which cannot know what the client's stdout is (PROTOCOL.md `show`; THREAT-MODEL 4.1 "Using `show`"). The app cannot prove TTY-equivalent presence either: a GUI process that sends `show` and renders the answer is exactly the "client that is not a terminal" the rule exists to keep out, and a bug or a prompt-injected UI automation would turn it into a value-export button.
+2. The daemon's own dialog for `show` is titled as running `grantpin show NAME` and offers "Reveal once"; an app-driven request would put a dialog on screen that misdescribes who is asking.
 3. A visible value in a GUI is readable by screen recorders, screenshots and accessibility clients, none of which the TTY rule exposes it to.
 
-`masked` stays: it returns at most the last four characters of values of 12 or more characters (`********` otherwise), needs no approval, and is already offered to every agent as `secret_masked` (README MCP table). The Secrets detail pane shows it only after a click, as an identity check ("is this the key I think it is"). Anyone who wants the full value uses `grantd show NAME` in a terminal.
+`masked` stays: it returns at most the last four characters of values of 12 or more characters (`********` otherwise), needs no approval, and is already offered to every agent as `secret_masked` (README MCP table). The Secrets detail pane shows it only after a click, as an identity check ("is this the key I think it is"). Anyone who wants the full value uses `grantpin show NAME` in a terminal.
 
 ### 4.3 Caller string and trust
 
-`caller` is `grantd-app` on every request (valid under `labelOf`: at most 64 bytes, printable). It is informational and unauthenticated, as for every client; the daemon does not and cannot treat it as proof of the app's identity in v0.2. Consequences the UI must not paper over: an agent can send the same string; the audit rows the app causes (`set`, `delete`, `update`) say `grantd-app` only as a label.
+`caller` is `grantpin-app` on every request (valid under `labelOf`: at most 64 bytes, printable). It is informational and unauthenticated, as for every client; the daemon does not and cannot treat it as proof of the app's identity in v0.2. Consequences the UI must not paper over: an agent can send the same string; the audit rows the app causes (`set`, `delete`, `update`) say `grantpin-app` only as a label.
 
 ### 4.4 Untrusted text from the daemon
 
 Untrusted fields: `caller`, `cwd`, `argv`, `secrets`, `reason`, `message`, grant fields, secret `url`/`notes`/`tags`, helper stderr. The daemon bounds `caller` (64 bytes, no control characters) but the audit `argv`/`cwd` can be 4,096 elements of anything, and `url`/`notes` are free text.
 
-Sanitiser (`GrantdKit.DisplayText.sanitise`), applied before any display, copy or export of a display string (not to the CSV bytes):
+Sanitiser (`GrantpinKit.DisplayText.sanitise`), applied before any display, copy or export of a display string (not to the CSV bytes):
 
 1. Replace C0 and C1 control characters (except `\n` in the multi-line detail pane, `\t` shown as a visible arrow) with `⟦U+XXXX⟧`.
 2. Replace bidirectional and invisible formatting characters with the same visible escape: U+061C, U+200B to U+200F, U+202A to U+202E, U+2060 to U+2064, U+2066 to U+2069, U+FEFF.
@@ -556,8 +556,8 @@ Sanitiser (`GrantdKit.DisplayText.sanitise`), applied before any display, copy o
 
 **App Sandbox: off for v0.2.** Reasons:
 
-- The socket lives in `~/Library/Application Support/grantd/`, outside any container; a sandboxed app cannot connect to it without a temporary-exception entitlement, and such exceptions are what the sandbox exists to avoid.
-- The app spawns the helper for `init`, `import` and `service`; a sandboxed parent's children inherit the sandbox, which would break `launchctl bootstrap`, writing `~/Library/LaunchAgents/dev.grantd.daemon.plist`, and the Keychain access group.
+- The socket lives in `~/Library/Application Support/grantpin/`, outside any container; a sandboxed app cannot connect to it without a temporary-exception entitlement, and such exceptions are what the sandbox exists to avoid.
+- The app spawns the helper for `init`, `import` and `service`; a sandboxed parent's children inherit the sandbox, which would break `launchctl bootstrap`, writing `~/Library/LaunchAgents/dev.grantpin.daemon.plist`, and the Keychain access group.
 - The helper bundle is not a sandboxed helper; sandboxing only the outer app would still stop it from launching it with the needed environment.
 
 Since the app is not sandboxed, its safety comes from what it does not do (4.6).
@@ -574,7 +574,7 @@ Since the app is not sandboxed, its safety comes from what it does not do (4.6).
 | `com.apple.security.automation.apple-events` | absent | the app must not script other apps (4.6) |
 | `com.apple.application-identifier`, `keychain-access-groups` | present on the helper; present on the app too in v0.2 (one entitlements file) | only the helper uses them |
 
-Info.plist keys for the app: `LSUIElement` true, `LSMultipleInstancesProhibited` true, `LSMinimumSystemVersion` 14.0, `CFBundleExecutable` `grantd-app`. No `NSAppleEventsUsageDescription`, no `NSAppTransportSecurity` exceptions (the app opens no network connection).
+Info.plist keys for the app: `LSUIElement` true, `LSMultipleInstancesProhibited` true, `LSMinimumSystemVersion` 14.0, `CFBundleExecutable` `grantpin-app`. No `NSAppleEventsUsageDescription`, no `NSAppTransportSecurity` exceptions (the app opens no network connection).
 
 ### 4.6 The app must not
 
@@ -589,11 +589,11 @@ Info.plist keys for the app: `LSUIElement` true, `LSMultipleInstancesProhibited`
 
 ### 4.7 Future work (v0.3, not designed here): approval moves into the app
 
-Goal: replace the osascript chooser with a native alert/sheet. Why it needs more than UI work: today the daemon is the only party that decides, and every decision input is a system UI answered by the user (`internal/approve/darwin/doc.go`). If the daemon accepts an "approved" answer over the socket, then every same-UID process becomes a potential approver, and the peer-UID check (THREAT-MODEL 4.6) identifies the user, not the program. So the daemon must be able to say "this answer came from the genuine grantd app".
+Goal: replace the osascript chooser with a native alert/sheet. Why it needs more than UI work: today the daemon is the only party that decides, and every decision input is a system UI answered by the user (`internal/approve/darwin/doc.go`). If the daemon accepts an "approved" answer over the socket, then every same-UID process becomes a potential approver, and the peer-UID check (THREAT-MODEL 4.6) identifies the user, not the program. So the daemon must be able to say "this answer came from the genuine grantpin app".
 
 Reasoning the v0.3 design has to follow:
 
-- **Verify the peer's code, not its PID.** Read the peer's audit token from the socket (`getsockopt` `LOCAL_PEERTOKEN`) and use `SecCodeCopyGuestWithAttributes` with `kSecGuestAttributeAudit`, then `SecCodeCheckValidity` against a designated requirement pinning identifier and team (for example `identifier "dev.grantd.app" and anchor apple generic and certificate leaf[subject.OU] = "MT2QHQX6PS"`). A PID is reusable and racy; an audit token names one process instance.
+- **Verify the peer's code, not its PID.** Read the peer's audit token from the socket (`getsockopt` `LOCAL_PEERTOKEN`) and use `SecCodeCopyGuestWithAttributes` with `kSecGuestAttributeAudit`, then `SecCodeCheckValidity` against a designated requirement pinning identifier and team (for example `identifier "dev.grantpin.app" and anchor apple generic and certificate leaf[subject.OU] = "MT2QHQX6PS"`). A PID is reusable and racy; an audit token names one process instance.
 - **The app must be hard to inject into**, otherwise the check proves nothing: Hardened Runtime on, library validation on, no `get-task-allow`, no `allow-dyld-environment-variables`, which is why section 4.5 insists on them now.
 - **Keep Touch ID in the daemon.** Move only the chooser (once / for N / deny); the daemon still runs `LAContext` itself after an allow, so the app is trusted for "which button" and not for "the user authenticated". An app-side authentication result sent over the socket would make the app's signature the entire boundary.
 - **Bind the answer to the request.** The daemon sends the full request (caller, cwd, argv, expanded secrets, scope) to the verified app for display and accepts an answer only on that connection, once, with a nonce, so the app cannot be tricked into approving a different request than the one shown.
@@ -604,34 +604,34 @@ None of this is built in v0.2. The only v0.2 consequence is the hardening in 4.5
 
 ### 4.8 Who is on the other end of the socket
 
-The socket sits in `~/Library/Application Support/grantd`, a folder the user owns. Any program running as the user can bind that path when the daemon is stopped (or move the real socket aside and bind its own), and the app would then send it whatever a request contains. For most requests that is no worse than what such a program can already read. A **typed secret value** is different, so the app checks who answers before it sends one.
+The socket sits in `~/Library/Application Support/grantpin`, a folder the user owns. Any program running as the user can bind that path when the daemon is stopped (or move the real socket aside and bind its own), and the app would then send it whatever a request contains. For most requests that is no worse than what such a program can already read. A **typed secret value** is different, so the app checks who answers before it sends one.
 
 - **Which requests.** Every request that carries a plaintext value: `set` (the add and replace sheet), `update` if it ever carries a value (today it never does), and `.env` import. Read-only requests (`status`, `list`, `masked`, `grants list`, `audit list`, ...) and requests without a value (`delete`, `grants add`) are not checked, so polling does not pay for it.
 - **How.** After `connect` and before the first byte is written, the app reads the peer's pid from the connected socket (`getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID)`), asks for its code object (`SecCodeCopyGuestWithAttributes` with `kSecGuestAttributePid`) and runs `SecCodeCheckValidity` against `anchor apple generic and certificate leaf[subject.OU] = "<TEAMID>"`. `<TEAMID>` is the team identifier in the app's own signature, read at run time (`SecCodeCopySelf`, `SecCodeCopySigningInformation`), so a re-signed build needs no change. The string is built only from a ten-character upper-case alphanumeric team identifier (`PeerVerifier.requirement(teamID:)`), nothing else reaches the requirement language. The daemon is the helper inside the app bundle, signed with the same team, so this accepts it and refuses an unrelated program.
 - **Import.** The values of an import travel from the user's file to the helper process, which opens its own connection, so the app cannot check that connection. A real import (not the dry run, which sends nothing) first connects once, checks the peer the same way, closes and only then starts the helper. This is a pre-flight and not a guarantee: a program could swap the socket between the check and the helper's connect.
-- **On a mismatch** (or if the pid, the code object or the requirement cannot be obtained: it fails closed) the request is not written and the user sees `The process answering grantd's socket is not grantd. Nothing was sent.` (`GrantdError.peerNotGrantd`). The value buffer is wiped as on every other path.
-- **When it is skipped.** If the running app has no team identifier (an unsigned or ad-hoc development build, the unit tests), the check is skipped without a message. It is also off in development mode (`GRANTD_SOCKET` set), where the app talks to the unsigned dev daemon by design and shows the "Development socket" banner. In a signed release build the check always runs.
+- **On a mismatch** (or if the pid, the code object or the requirement cannot be obtained: it fails closed) the request is not written and the user sees `The process answering grantpin's socket is not grantpin. Nothing was sent.` (`GrantpinError.peerNotGrantpin`). The value buffer is wiped as on every other path.
+- **When it is skipped.** If the running app has no team identifier (an unsigned or ad-hoc development build, the unit tests), the check is skipped without a message. It is also off in development mode (`GRANTPIN_SOCKET` set), where the app talks to the unsigned dev daemon by design and shows the "Development socket" banner. In a signed release build the check always runs.
 - **Limits, stated.** The pid is not an audit token: a process could hand the connected descriptor to another or a pid could be reused between the check and the write. `LOCAL_PEERTOKEN` with `kSecGuestAttributeAudit` closes that and is the better primitive (section 4.7 uses it for the daemon's side). Same-team code is trusted: another app signed by the same team passes. This protects against an unrelated program on the socket path, not against the owner's own other builds.
 
 ## 5. Build and signing
 
 ### 5.1 Xcode project, with the logic in a Swift package
 
-**Decision: an Xcode project checked in at `app/Grantd.xcodeproj` for the app target, and a local Swift package `app/GrantdKit` for everything that is not UI.** `make app` drives `xcodebuild`.
+**Decision: an Xcode project checked in at `app/Grantpin.xcodeproj` for the app target, and a local Swift package `app/GrantpinKit` for everything that is not UI.** `make app` drives `xcodebuild`.
 
-Why Xcode and not a SwiftPM-only executable: the app needs an asset catalog and icon, a String Catalog, an Info.plist with launch-services keys, a run-script phase that embeds the helper bundle, and entitlements; SwiftPM can produce an executable but not a `.app` with these, so it would need a pile of custom scripts that Xcode already provides. Why the package: `swift test --package-path app/GrantdKit` builds and runs the protocol client and its tests with no signing identity, no provisioning profile and no Xcode GUI, which is what an implementing agent and CI need. `xcodegen` is installed on this machine (`/opt/homebrew/bin/xcodegen`) and may be used once to generate the initial `.xcodeproj`; after that the checked-in project is the source and there is no `project.yml` (two sources of truth drift).
+Why Xcode and not a SwiftPM-only executable: the app needs an asset catalog and icon, a String Catalog, an Info.plist with launch-services keys, a run-script phase that embeds the helper bundle, and entitlements; SwiftPM can produce an executable but not a `.app` with these, so it would need a pile of custom scripts that Xcode already provides. Why the package: `swift test --package-path app/GrantpinKit` builds and runs the protocol client and its tests with no signing identity, no provisioning profile and no Xcode GUI, which is what an implementing agent and CI need. `xcodegen` is installed on this machine (`/opt/homebrew/bin/xcodegen`) and may be used once to generate the initial `.xcodeproj`; after that the checked-in project is the source and there is no `project.yml` (two sources of truth drift).
 
 ```
 app/
-  Grantd.xcodeproj/
-  Grantd/                  SwiftUI sources, Info.plist, Assets.xcassets, Localizable.xcstrings
-  GrantdKit/               Package.swift, Sources/GrantdKit/, Tests/GrantdKitTests/
+  Grantpin.xcodeproj/
+  Grantpin/                  SwiftUI sources, Info.plist, Assets.xcassets, Localizable.xcstrings
+  GrantpinKit/               Package.swift, Sources/GrantpinKit/, Tests/GrantpinKitTests/
 build/bundle/
-  helper-Info.plist        was Info.plist; CFBundleExecutable grantd, LSBackgroundOnly, no LSUIElement
-  grantd-app.entitlements  unchanged; used for both bundles
+  helper-Info.plist        was Info.plist; CFBundleExecutable grantpin, LSBackgroundOnly, no LSUIElement
+  grantpin-app.entitlements  unchanged; used for both bundles
 ```
 
-Ignore in git: `/build/xcode`, `/build/grantd-dev`, `app/**/xcuserdata`, `app/GrantdKit/.build`.
+Ignore in git: `/build/xcode`, `/build/grantpin-dev`, `app/**/xcuserdata`, `app/GrantpinKit/.build`.
 
 ### 5.2 Targets
 
@@ -639,32 +639,32 @@ The names below are what the implementer adds to the Makefile (existing `build`,
 
 | Target | Does |
 |---|---|
-| `make helper` | `CGO_ENABLED=1 CGO_CFLAGS=-mmacosx-version-min=14.0 CGO_LDFLAGS=-mmacosx-version-min=14.0 go build -ldflags '-X main.version=$(VERSION)' -o bin/grantd ./cmd/grantd`. Then asserts `otool -l bin/grantd` reports `minos 14.0`. |
-| `make app` | depends on `helper`. `xcodebuild -project app/Grantd.xcodeproj -scheme Grantd -configuration Release -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO MACOSX_DEPLOYMENT_TARGET=14.0 MARKETING_VERSION=… CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build`, then copies the product to `dist/grantd.app` (replacing it). Unsigned. |
+| `make helper` | `CGO_ENABLED=1 CGO_CFLAGS=-mmacosx-version-min=14.0 CGO_LDFLAGS=-mmacosx-version-min=14.0 go build -ldflags '-X main.version=$(VERSION)' -o bin/grantpin ./cmd/grantpin`. Then asserts `otool -l bin/grantpin` reports `minos 14.0`. |
+| `make app` | depends on `helper`. `xcodebuild -project app/Grantpin.xcodeproj -scheme Grantpin -configuration Release -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO MACOSX_DEPLOYMENT_TARGET=14.0 MARKETING_VERSION=… CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build`, then copies the product to `dist/grantpin.app` (replacing it). Unsigned. |
 | `make sign-bundle` | same variables as today (`IDENTITY`, `PROFILE`, `TEAM_ID`, `BUNDLE_ID`, `KEYCHAIN_GROUP`), new recipe in 5.3. |
-| `make app-test` | builds the dev daemon (`go build -tags grantd_dev -o build/grantd-dev ./cmd/grantd`), then `GRANTD_DEV_BIN=$(PWD)/build/grantd-dev swift test --package-path app/GrantdKit`. |
-| `make app-dev-daemon` | runs the dev daemon on `/tmp/gd-dev/s.sock` with `GRANTD_HOME=/tmp/gd-dev` and `GRANTD_DEV_APPROVE=allow` for UI work (5.5). |
+| `make app-test` | builds the dev daemon (`go build -tags grantpin_dev -o build/grantpin-dev ./cmd/grantpin`), then `GRANTPIN_DEV_BIN=$(PWD)/build/grantpin-dev swift test --package-path app/GrantpinKit`. |
+| `make app-dev-daemon` | runs the dev daemon on `/tmp/gd-dev/s.sock` with `GRANTPIN_HOME=/tmp/gd-dev` and `GRANTPIN_DEV_APPROVE=allow` for UI work (5.5). |
 
-**Embedding the Go helper.** `make helper` runs first; the Xcode target has a Run Script build phase "Embed grantd helper", after "Copy Bundle Resources", that creates `$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/grantd-daemon.app/Contents/{Info.plist,MacOS/grantd}` from `$SRCROOT/../bin/grantd` and `$SRCROOT/../build/bundle/helper-Info.plist` (same `@BUNDLE_ID@`/`@VERSION@`/`@BUILD@`/`@MIN_MACOS@` substitution as the current `bundle` recipe, with `@BUNDLE_ID@` = `dev.grantd.app.daemon` and `@MIN_MACOS@` = `14.0`, then `plutil -lint`). It fails the build with "bin/grantd missing: run make helper" if the binary is absent. It declares the two inputs and the output so Xcode can skip it. The target sets `ENABLE_USER_SCRIPT_SANDBOXING = NO` (the default in current Xcode is YES, which would stop the script reading `../bin`). The Xcode target itself does no code signing; there is one signing path (5.3).
+**Embedding the Go helper.** `make helper` runs first; the Xcode target has a Run Script build phase "Embed grantpin helper", after "Copy Bundle Resources", that creates `$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/grantpin-daemon.app/Contents/{Info.plist,MacOS/grantpin}` from `$SRCROOT/../bin/grantpin` and `$SRCROOT/../build/bundle/helper-Info.plist` (same `@BUNDLE_ID@`/`@VERSION@`/`@BUILD@`/`@MIN_MACOS@` substitution as the current `bundle` recipe, with `@BUNDLE_ID@` = `dev.grantpin.app.daemon` and `@MIN_MACOS@` = `14.0`, then `plutil -lint`). It fails the build with "bin/grantpin missing: run make helper" if the binary is absent. It declares the two inputs and the output so Xcode can skip it. The target sets `ENABLE_USER_SCRIPT_SANDBOXING = NO` (the default in current Xcode is YES, which would stop the script reading `../bin`). The Xcode target itself does no code signing; there is one signing path (5.3).
 
 ### 5.3 The one signing path
 
 `make sign-bundle` (existing guards for `IDENTITY`, `PROFILE`, `TEAM_ID` stay) does, in this order:
 
 ```sh
-cp "$PROFILE" dist/grantd.app/Contents/embedded.provisionprofile
-cp "$PROFILE" dist/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/embedded.provisionprofile
-# expand build/bundle/grantd-app.entitlements into dist/grantd-app.entitlements, as the current recipe does
+cp "$PROFILE" dist/grantpin.app/Contents/embedded.provisionprofile
+cp "$PROFILE" dist/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/embedded.provisionprofile
+# expand build/bundle/grantpin-app.entitlements into dist/grantpin-app.entitlements, as the current recipe does
 codesign --force --options runtime --timestamp --sign "$IDENTITY" \
-  --entitlements dist/grantd-app.entitlements dist/grantd.app/Contents/Helpers/grantd-daemon.app
+  --entitlements dist/grantpin-app.entitlements dist/grantpin.app/Contents/Helpers/grantpin-daemon.app
 codesign --force --options runtime --timestamp --sign "$IDENTITY" \
-  --entitlements dist/grantd-app.entitlements dist/grantd.app
-codesign --verify --deep --strict --verbose=2 dist/grantd.app
-codesign -d --entitlements - dist/grantd.app
-codesign -d --entitlements - dist/grantd.app/Contents/Helpers/grantd-daemon.app
+  --entitlements dist/grantpin-app.entitlements dist/grantpin.app
+codesign --verify --deep --strict --verbose=2 dist/grantpin.app
+codesign -d --entitlements - dist/grantpin.app
+codesign -d --entitlements - dist/grantpin.app/Contents/Helpers/grantpin-daemon.app
 ```
 
-Inner first, outer second, no `--deep` on the signing calls (the outer seal records the already-signed inner bundle). I ran the same sequence (without `--timestamp`) on a scratch bundle with this Mac's Apple Development identity: `codesign --verify --deep --strict` passed and both executables launched. The recipe ends by printing the smoke test the old recipe printed, pointed at the helper: `GRANTD_HOME=$(mktemp -d) …/grantd-daemon.app/Contents/MacOS/grantd init     # must print: keystore tier: hardware`. The profile must cover `keychain-access-groups` for `TEAMID.dev.grantd` (the existing check in MANUAL-TEST-MACOS §2c(b) applies unchanged), and the same file serves both bundles.
+Inner first, outer second, no `--deep` on the signing calls (the outer seal records the already-signed inner bundle). I ran the same sequence (without `--timestamp`) on a scratch bundle with this Mac's Apple Development identity: `codesign --verify --deep --strict` passed and both executables launched. The recipe ends by printing the smoke test the old recipe printed, pointed at the helper: `GRANTPIN_HOME=$(mktemp -d) …/grantpin-daemon.app/Contents/MacOS/grantpin init     # must print: keystore tier: hardware`. The profile must cover `keychain-access-groups` for `TEAMID.dev.grantpin` (the existing check in MANUAL-TEST-MACOS §2c(b) applies unchanged), and the same file serves both bundles.
 
 ### 5.4 Minimum macOS 14, and what was checked
 
@@ -679,11 +679,11 @@ Floor: **macOS 14.0**. It is the lowest release with `SettingsLink`/`OpenSetting
 
 Not checked: behaviour on a real macOS 14, 15 or 26 machine (only macOS 27.0.1 is available here); the deployment target is enforced by the compiler's availability checking, not by running on those releases (Appendix A).
 
-The Go helper must be built for 14.0 explicitly (G2): the default build records `minos 27.0` (verified with `otool -l bin/grantd`), and `make bundle` copies that into `LSMinimumSystemVersion`. With the two `-mmacosx-version-min=14.0` flags the same source produced `minos 14.0` (verified).
+The Go helper must be built for 14.0 explicitly (G2): the default build records `minos 27.0` (verified with `otool -l bin/grantpin`), and `make bundle` copies that into `LSMinimumSystemVersion`. With the two `-mmacosx-version-min=14.0` flags the same source produced `minos 14.0` (verified).
 
 ### 5.5 Developing the UI without a signing identity
 
-An unsigned or ad-hoc app cannot run the real helper (the restricted entitlements fail), and does not need to: set `GRANTD_SOCKET=/tmp/gd-dev/s.sock` in the Xcode scheme and run `make app-dev-daemon`. The app then talks to the insecure dev daemon (`grantd_dev`: constant public key, tier `none`, approver auto-allows with `GRANTD_DEV_APPROVE=allow`; README "Environment"; never use real secrets with it) and is in development mode (2.3), so it cannot touch the real launchd job or vault. The dev daemon's approver tier is `none`, so the UI states that depend on `hardware` are exercised with canned `status` fixtures in tests.
+An unsigned or ad-hoc app cannot run the real helper (the restricted entitlements fail), and does not need to: set `GRANTPIN_SOCKET=/tmp/gd-dev/s.sock` in the Xcode scheme and run `make app-dev-daemon`. The app then talks to the insecure dev daemon (`grantpin_dev`: constant public key, tier `none`, approver auto-allows with `GRANTPIN_DEV_APPROVE=allow`; README "Environment"; never use real secrets with it) and is in development mode (2.3), so it cannot touch the real launchd job or vault. The dev daemon's approver tier is `none`, so the UI states that depend on `hardware` are exercised with canned `status` fixtures in tests.
 
 ## 6. Testing
 
@@ -691,11 +691,11 @@ UI tests (XCUITest) are optional and not required for v0.2. Required: (a) and (b
 
 ### 6(a). Swift unit tests for the protocol client, against the Go dev daemon
 
-Target: `GrantdKitTests` in `app/GrantdKit`. Fixture `DevDaemon` (XCTest `setUp`/`tearDown`):
+Target: `GrantpinKitTests` in `app/GrantpinKit`. Fixture `DevDaemon` (XCTest `setUp`/`tearDown`):
 
-1. `GRANTD_DEV_BIN` points at `build/grantd-dev` (built by `make app-test`; unset from the Xcode GUI means `XCTSkip`, never a silent pass in `make`).
+1. `GRANTPIN_DEV_BIN` points at `build/grantpin-dev` (built by `make app-test`; unset from the Xcode GUI means `XCTSkip`, never a silent pass in `make`).
 2. Create `/tmp/gdt-<random>` (short: the socket path limit is 103 bytes on macOS and `NSTemporaryDirectory()` can exceed it).
-3. Run `grantd-dev init` with `GRANTD_HOME=<dir>`, then `grantd-dev daemon --socket <dir>/s.sock` with `GRANTD_HOME=<dir>` and `GRANTD_DEV_APPROVE` set per test class (`allow`, `allow-no-standing`, or unset which auto-denies). Wait for the socket (5 s), then run the test, then SIGTERM and delete the directory. A variant starts the daemon **before** `init` to test the no-vault state.
+3. Run `grantpin-dev init` with `GRANTPIN_HOME=<dir>`, then `grantpin-dev daemon --socket <dir>/s.sock` with `GRANTPIN_HOME=<dir>` and `GRANTPIN_DEV_APPROVE` set per test class (`allow`, `allow-no-standing`, or unset which auto-denies). Wait for the socket (5 s), then run the test, then SIGTERM and delete the directory. A variant starts the daemon **before** `init` to test the no-vault state.
 
 The tests must exercise **every op the app uses** and the behaviours the UI depends on:
 
@@ -711,29 +711,29 @@ The tests must exercise **every op the app uses** and the behaviours the UI depe
 | `grants` `add` | with `allow`: result `GrantInfo` has `standing: true`, the TTL, `cmd_prefix`, `secrets`, `cwd_prefix` equal to the symlink-resolved folder, `uses_remaining` when `uses` set; `ttl_s` above 90 days gives `bad_request` with the ceiling in `message`; unknown secret gives `not_found`/`secret_not_found`; missing `grant_caller` gives `bad_request`; non-existent `cwd` gives `bad_request`; with approver unset gives `denied`/`user_denied`; with `allow-no-standing` the same |
 | `grants` `revoke` | ok; unknown ID `not_found`/`grant_not_found`; `revoke_all` leaves an empty list |
 | `grants` tampered | canned JSON with `tampered: true` decodes (a tampered row cannot be created through the protocol) |
-| `audit` `list` | rows for the app's own `set`/`delete` (`decision` `allowed_once`, `reason` `set`/`delete`, `caller` `grantd-app`, `argv` `["grantd","set",<name>]`); `limit` honoured; newest first |
+| `audit` `list` | rows for the app's own `set`/`delete` (`decision` `allowed_once`, `reason` `set`/`delete`, `caller` `grantpin-app`, `argv` `["grantpin","set",<name>]`); `limit` honoured; newest first |
 | `audit` `verify` | `ok: true` with `entries` equal to the row count; then corrupt a row in the fixture's `vault.db` with `sqlite3` (drop the trigger, edit a row) and expect `ok: false` with `first_bad_id` |
 | `audit` `export` | `csv` parses as RFC 4180; header is exactly `id,ts,caller,cwd,argv,secrets,expanded,decision,grant_id,reason,exit_code,duration_ms`; row count equals `list`; `argv` cell is a JSON array |
 | Pairing | a test-only `run` request (not exposed by the app; the dev approver allows it) creates a `released` + `completed` pair; the pairing function merges them; canned rows cover interleaved runs by the same caller, a lone `released`, a lone `completed`, and rows cut at the window edge |
 | Validator parity | for ~40 names, `validateSecretName(n) == nil` exactly when the daemon's `exists` accepts `n` (invalid names give `bad_request`); same for ~20 tags through `set` |
 | Transport | daemon not running gives `notRunning`; a `Client` used twice throws; a fake server that closes without a response gives `noResponse`; stream frames before the final response are skipped; cancelling a pending call closes the connection (a fake server observes EOF); no `shutdown(SHUT_WR)` is ever issued (fake server asserts the write side stays open) |
 | Hygiene | `String(describing:)`, `debugDescription` and `dump` of a `Request` with a value contain `[REDACTED]` and not the value; the request buffer is all zero after `send` (test hook); sanitiser cases (RLO U+202E, NUL, ESC sequences, 5,000-character arg, zero-width joiner); MCP snippet cases (path with spaces, with `'`, with `"` and a backslash; JSON round-trips; shell quoting parses back with `/bin/sh -c 'printf %s\n' …`) |
-| Helpers | `import` report parser against real `grantd-dev import - --dry-run` output for each conflict mode (a contract test that fails loudly if the CLI wording changes); `service status` parser against canned outputs of each state |
+| Helpers | `import` report parser against real `grantpin-dev import - --dry-run` output for each conflict mode (a contract test that fails loudly if the CLI wording changes); `service status` parser against canned outputs of each state |
 
 ### 6(b). Manual checklist to append to MANUAL-TEST-MACOS.md (new section "8. v0.2 app")
 
 The implementing agent appends these (in the file's existing style, with expected outcomes) when the screens exist:
 
-1. `make helper`: `otool -l bin/grantd` shows `minos 14.0`.
-2. `make app && make sign-bundle …`: `codesign --verify --deep --strict` passes; `codesign -d --entitlements -` of the app and of `Contents/Helpers/grantd-daemon.app` shows `TEAMID.dev.grantd.app` and `TEAMID.dev.grantd`; `LSMinimumSystemVersion` is `14.0`; neither shows `get-task-allow` nor `app-sandbox`.
-3. Helper alone: `GRANTD_HOME=$(mktemp -d) …/grantd-daemon.app/Contents/MacOS/grantd init` prints `keystore tier: hardware`.
-4. Negative control (documents the layout finding): a copy of the Go binary at `Contents/Helpers/grantd` signed the same way exits 137 and the log says `No matching profile found`.
-5. Fresh install: drag to `/Applications`, open; onboarding completes; the "background item added" notification (if any) is noted; `launchctl print gui/$(id -u)/dev.grantd.daemon` names the helper path.
+1. `make helper`: `otool -l bin/grantpin` shows `minos 14.0`.
+2. `make app && make sign-bundle …`: `codesign --verify --deep --strict` passes; `codesign -d --entitlements -` of the app and of `Contents/Helpers/grantpin-daemon.app` shows `TEAMID.dev.grantpin.app` and `TEAMID.dev.grantpin`; `LSMinimumSystemVersion` is `14.0`; neither shows `get-task-allow` nor `app-sandbox`.
+3. Helper alone: `GRANTPIN_HOME=$(mktemp -d) …/grantpin-daemon.app/Contents/MacOS/grantpin init` prints `keystore tier: hardware`.
+4. Negative control (documents the layout finding): a copy of the Go binary at `Contents/Helpers/grantpin` signed the same way exits 137 and the log says `No matching profile found`.
+5. Fresh install: drag to `/Applications`, open; onboarding completes; the "background item added" notification (if any) is noted; `launchctl print gui/$(id -u)/dev.grantpin.daemon` names the helper path.
 6. Upgrade over the live pre-v0.2 install: popover shows Repair; Repair fixes it; the vault opens, secrets and grants are intact; `claude mcp` registration with the old path is reported by the Connect panel.
-7. Run from `~/Downloads` or a mounted DMG: service and vault actions are blocked with "Move grantd to your Applications folder first"; the move-and-relaunch button works.
+7. Run from `~/Downloads` or a mounted DMG: service and vault actions are blocked with "Move grantpin to your Applications folder first"; the move-and-relaunch button works.
 8. Quit the app: the daemon keeps running and a Claude Code `secret_run` still prompts.
-9. `launchctl kill SIGTERM gui/$(id -u)/dev.grantd.daemon`: popover turns red (3 s open, 30 s closed) and recovers; repeated kills show "grantd keeps stopping".
-10. Add a secret with the SecureField, with Paste, with Show characters (hides on focus loss and after 30 s) and with the multi-line toggle (PEM). Afterwards `grep -r <sentinel>` over `~/Library/Logs/grantd`, `~/Library/Preferences`, `~/Library/Saved Application State`, and the app's temp dirs finds nothing; `grantd list` shows metadata only.
+9. `launchctl kill SIGTERM gui/$(id -u)/dev.grantpin.daemon`: popover turns red (3 s open, 30 s closed) and recovers; repeated kills show "grantpin keeps stopping".
+10. Add a secret with the SecureField, with Paste, with Show characters (hides on focus loss and after 30 s) and with the multi-line toggle (PEM). Afterwards `grep -r <sentinel>` over `~/Library/Logs/grantpin`, `~/Library/Preferences`, `~/Library/Saved Application State`, and the app's temp dirs finds nothing; `grantpin list` shows metadata only.
 11. Replace and Delete show the exact confirmation texts of 3.2; Cancel changes nothing.
 12. Import: dry-run preview, Skip, Overwrite (confirmation text), a file with a bad line (shows "Line N: …"), an empty value; the `.env` file is untouched; no value in any log.
 13. "Hardware" protection is disabled on a Keychain-fallback vault.
@@ -747,7 +747,7 @@ The implementing agent appends these (in the file's existing style, with expecte
 21. Settings: turn the background service off and on; Start-at-login (log out and in: icon appears); PATH field: an agent running `php --version` or another Homebrew tool works after install from a Finder-launched app.
 22. Connect: both Copy buttons put exactly the displayed text on the clipboard; running the command in a new terminal registers the server; `/mcp` in Claude Code lists `secret_list`, `secret_exists`, `secret_masked`, `secret_run`; repeat with the app in a folder whose name contains a space and an apostrophe.
 23. Uninstall: each checkbox separately; vault deletion needs the typed word; afterwards the plist, vault files and logs are gone as selected; the app is still there; the dialog states the hardware key remains unless "Delete the hardware key" was ticked; a key box alone needs the typed word; "not found" is reported as not deleted.
-24. Privacy: System Settings > Privacy & Security shows no Accessibility, Automation or Screen Recording request from grantd; `lsof -a -p <app pid> -i` shows no network sockets.
+24. Privacy: System Settings > Privacy & Security shows no Accessibility, Automation or Screen Recording request from grantpin; `lsof -a -p <app pid> -i` shows no network sockets.
 
 ## 7. Work breakdown
 
@@ -755,9 +755,9 @@ Ordered; each step is one commit (or two) and has a definition of done (DoD). St
 
 | # | Step | DoD |
 |---|---|---|
-| 1 | **G1**: `bundleExe` finds `Contents/Helpers/grantd-daemon.app/Contents/MacOS/<CFBundleExecutable>`; legacy bundles unchanged. Tests in `internal/service/bundle_test.go`. | `go test ./internal/service` passes with new cases: helper bundle resolves; legacy `MacOS/grantd` bundle resolves; a helper whose executable name escapes the bundle is rejected; `make ci` green. |
-| 2 | **G2 + bundle restructure + skeleton app**: `app/` with a menu-bar-only SwiftUI skeleton (empty `MenuBarExtra`), `build/bundle/helper-Info.plist`, Run Script embedding, `make helper`, `make app`, new `make sign-bundle` recipe (5.2, 5.3). Rebase on the other agent's Makefile edits first. | On the owner's Mac: `make app && make sign-bundle IDENTITY=… PROFILE=… TEAM_ID=MT2QHQX6PS` verifies; manual items 1 to 3 pass; the skeleton shows a menu-bar icon; `<helper> service install --exe <helper path>` installs a daemon that answers `grantd status`; `minos 14.0`. |
-| 3 | **GrantdKit client**: `Client`, models, `DaemonError`, socket resolver, request builder with zeroed buffer, `DevDaemon` fixture, `make app-test`, tests for `status`, `set`, `list`, `masked`, `delete`, transport and hygiene rows of 6(a). | `make app-test` green; no test skips under `make`; coverage of the listed rows. |
+| 1 | **G1**: `bundleExe` finds `Contents/Helpers/grantpin-daemon.app/Contents/MacOS/<CFBundleExecutable>`; legacy bundles unchanged. Tests in `internal/service/bundle_test.go`. | `go test ./internal/service` passes with new cases: helper bundle resolves; legacy `MacOS/grantpin` bundle resolves; a helper whose executable name escapes the bundle is rejected; `make ci` green. |
+| 2 | **G2 + bundle restructure + skeleton app**: `app/` with a menu-bar-only SwiftUI skeleton (empty `MenuBarExtra`), `build/bundle/helper-Info.plist`, Run Script embedding, `make helper`, `make app`, new `make sign-bundle` recipe (5.2, 5.3). Rebase on the other agent's Makefile edits first. | On the owner's Mac: `make app && make sign-bundle IDENTITY=… PROFILE=… TEAM_ID=MT2QHQX6PS` verifies; manual items 1 to 3 pass; the skeleton shows a menu-bar icon; `<helper> service install --exe <helper path>` installs a daemon that answers `grantpin status`; `minos 14.0`. |
+| 3 | **GrantpinKit client**: `Client`, models, `DaemonError`, socket resolver, request builder with zeroed buffer, `DevDaemon` fixture, `make app-test`, tests for `status`, `set`, `list`, `masked`, `delete`, transport and hygiene rows of 6(a). | `make app-test` green; no test skips under `make`; coverage of the listed rows. |
 | 4 | **Shell + Monitor**: `Monitor` (status/service polling per 2.4), helper runner (2.6), PATH detection, popover status header and the down-state actions Start/Repair/Restart (2.5), location check, development mode, activation-policy handling. No data screens. | Manual items 5 (partly), 7, 8, 9; unit tests for the state derivation using canned `status`/`service status` fixtures. |
 | 5 | **Secrets window**: list, search, detail with `masked`, Add sheet with all fields and validators, Replace, Delete, empty state. | Validator parity test green; manual items 10, 11, 13; no value in logs/prefs. |
 | 6 | **Grants window**: list, badges, Revoke, Revoke All, Remove for tampered; popover grant count. | `grants` tests green; manual items 15 and 18. |
@@ -779,13 +779,13 @@ Each has a default so work can start now.
 2. **Add the `update` op (G4) so tags, URL, notes and expiry can be edited without retyping the value?** It lets any socket client, an agent included, change or clear an expiry without knowing the value (it can already replace the value). Default: yes; ship "Replace value" first and "Edit details" when the op lands.
 3. **Change the standing-grant dialog sentence (G3) to "Only continue if you just asked for this yourself."?** It touches the daemon's wording and its tests, README and THREAT-MODEL 4.7. Default: yes, in step 9.
 4. **Should the app itself start at login, in addition to the background service?** Without it the menu-bar icon is gone after a restart, though agents keep working. Default: yes, on by default at the end of onboarding, with the toggle in Settings.
-5. **Which scope does the Connect panel show first for `claude mcp add`?** `--scope user` (every project) is what a non-terminal user wants, but it registers grantd in all projects. Default: `--scope user` first; "Only one project" as the second option and the `.mcp.json` snippet with the warning about committing a machine-specific path.
-6. **Uninstall and the Secure Enclave key** (invisible to `security`; only the signed bundle's binary can delete it). Resolved: the helper has `grantd keystore delete --fallback|--hardware --yes` and Uninstall offers both options behind the typed word (3.5). The app does not pass `--force`.
+5. **Which scope does the Connect panel show first for `claude mcp add`?** `--scope user` (every project) is what a non-terminal user wants, but it registers grantpin in all projects. Default: `--scope user` first; "Only one project" as the second option and the `.mcp.json` snippet with the warning about committing a machine-specific path.
+6. **Uninstall and the Secure Enclave key** (invisible to `security`; only the signed bundle's binary can delete it). Resolved: the helper has `grantpin keystore delete --fallback|--hardware --yes` and Uninstall offers both options behind the typed word (3.5). The app does not pass `--force`.
 
 ## Appendix A. Not verified
 
-- **The nested-helper layout with a Developer ID profile**, and with the app on any machine other than this one. The tests used this Mac's Apple Development identity and the profile embedded in the live bundle (App ID `MT2QHQX6PS.dev.grantd.app`; entitlement `keychain-access-groups` `MT2QHQX6PS.dev.grantd`). A second bundle identifier (`dev.grantd.app.daemon`) under the same profile worked; whether a profile restricted to one explicit App ID keeps allowing it on a Developer ID profile was not tried.
-- **Launch through launchd** from the nested helper. I ran the helper directly (`exec` from a shell) and ran `init` against a throwaway `GRANTD_HOME` (which uses the existing Secure Enclave key in the shared group; the live vault was not touched, `grantd status` against the live daemon was unchanged). The AMFI path is the same for a launchd-started process, but `service install --exe <helper>` end to end is step 2's DoD.
+- **The nested-helper layout with a Developer ID profile**, and with the app on any machine other than this one. The tests used this Mac's Apple Development identity and the profile embedded in the live bundle (App ID `MT2QHQX6PS.dev.grantpin.app`; entitlement `keychain-access-groups` `MT2QHQX6PS.dev.grantpin`). A second bundle identifier (`dev.grantpin.app.daemon`) under the same profile worked; whether a profile restricted to one explicit App ID keeps allowing it on a Developer ID profile was not tried.
+- **Launch through launchd** from the nested helper. I ran the helper directly (`exec` from a shell) and ran `init` against a throwaway `GRANTPIN_HOME` (which uses the existing Secure Enclave key in the shared group; the live vault was not touched, `grantpin status` against the live daemon was unchanged). The AMFI path is the same for a launchd-started process, but `service install --exe <helper>` end to end is step 2's DoD.
 - **macOS 14 to 26 behaviour.** Only macOS 27.0.1 and SDK 27.0 exist here. Availability was checked in the SDK interfaces and by type-checking against `-target arm64-apple-macos14.0`; nothing was run on those releases. The Go helper at `minos 14.0` was built but not run on a 14 machine.
 - **The "Background Items Added" notification** for a LaunchAgent written by an app, and whether `SMAppService.mainApp.register()` prompts for approval on a fresh account: documented system behaviour as I understand it, not observed.
 - **Folder-access (TCC) prompts** for `.env` files under Desktop/Documents when the app opens the file and passes the descriptor to the helper: the design avoids the child process opening the file by path, but I did not exercise it.
@@ -796,9 +796,9 @@ Each has a default so work can start now.
 
 ## Appendix B. What was checked on this machine
 
-- Layout experiment (section 2.1): scratch copy of `~/Applications/grantd.app`, `codesign --force --options runtime --sign <Apple Development: Jetmir Mehmetaj (W5Q6SQZZNG)> --entitlements dist/grantd-app.entitlements`; `Contents/MacOS/grantd` and `Contents/Helpers/grantd` beside a trivial main executable: exit 137, `log show` lines from `amfid` (`Code=-413 "No matching profile found"`) and the kernel (`Code has restricted entitlements, but the validation of its code signature failed`); nested `Helpers/*.app` with a copied profile: `--version` runs, `init` prints `keystore tier: hardware`, `codesign --verify --deep --strict` passes. The live bundle's `CodeResources` has `nested` rules for `Helpers/` and `MacOS/`.
-- Live bundle: `codesign -dvv` (Identifier `dev.grantd.app`, TeamIdentifier `MT2QHQX6PS`, `flags=0x10000(runtime)`), entitlements as in 2.1, profile expiry 2027-10-25.
+- Layout experiment (section 2.1): scratch copy of `~/Applications/grantpin.app`, `codesign --force --options runtime --sign <Apple Development: Jetmir Mehmetaj (W5Q6SQZZNG)> --entitlements dist/grantpin-app.entitlements`; `Contents/MacOS/grantpin` and `Contents/Helpers/grantpin` beside a trivial main executable: exit 137, `log show` lines from `amfid` (`Code=-413 "No matching profile found"`) and the kernel (`Code has restricted entitlements, but the validation of its code signature failed`); nested `Helpers/*.app` with a copied profile: `--version` runs, `init` prints `keystore tier: hardware`, `codesign --verify --deep --strict` passes. The live bundle's `CodeResources` has `nested` rules for `Helpers/` and `MacOS/`.
+- Live bundle: `codesign -dvv` (Identifier `dev.grantpin.app`, TeamIdentifier `MT2QHQX6PS`, `flags=0x10000(runtime)`), entitlements as in 2.1, profile expiry 2027-10-25.
 - Go: `go version go1.27.3`; `otool -l` minos 27.0 (default) and 14.0 (with `CGO_CFLAGS`/`CGO_LDFLAGS` `-mmacosx-version-min=14.0`).
 - SDK and Swift: Xcode 27.1, Swift 6.4, SDK 27.0; availability of `MenuBarExtra`, `SettingsLink`, `OpenSettingsAction`, `SMAppService`; type-check at macOS 14.0.
 - `claude mcp add --help` (Claude Code 2.1.310): `claude mcp add [options] <name> <commandOrUrl> [args...]`, `-s, --scope <scope>` with `local` (default), `user`, `project`; `--` separates the server command.
-- Code read for every protocol, validation and exit-code claim: `internal/proto`, `internal/broker` (`secrets.go`, `admin.go`, `standing.go`, `run.go`), `internal/vault` (`name.go`, `secrets.go`, `dotenv.go`, `import.go`), `internal/audit/audit.go`, `internal/approve/darwin` (`chooser.go`, `reason.go`, `doc.go`), `internal/service`, `internal/mcp`, `internal/daemon`, `cmd/grantd` (`cmd_*.go`, `clihelp.go`).
+- Code read for every protocol, validation and exit-code claim: `internal/proto`, `internal/broker` (`secrets.go`, `admin.go`, `standing.go`, `run.go`), `internal/vault` (`name.go`, `secrets.go`, `dotenv.go`, `import.go`), `internal/audit/audit.go`, `internal/approve/darwin` (`chooser.go`, `reason.go`, `doc.go`), `internal/service`, `internal/mcp`, `internal/daemon`, `cmd/grantpin` (`cmd_*.go`, `clihelp.go`).

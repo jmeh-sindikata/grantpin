@@ -1,28 +1,28 @@
-# grantd
+# grantpin
 
-grantd is a local secrets broker for AI coding agents on macOS. It lets an agent such as Claude Code run a command that needs credentials (an API key, a database URL) without the agent ever receiving the credential. You keep your secrets in an encrypted vault on your Mac. The agent asks to run a command with named secrets, grantd shows you the exact command and asks for Touch ID, and only then runs it. It is for developers who use coding agents and do not want API keys in a `.env` file, in the chat history or in the model provider's logs. Local only: no cloud, no account.
+grantpin is a local secrets broker for AI coding agents on macOS. It lets an agent such as Claude Code run a command that needs credentials (an API key, a database URL) without the agent ever receiving the credential. You keep your secrets in an encrypted vault on your Mac. The agent asks to run a command with named secrets, grantpin shows you the exact command and asks for Touch ID, and only then runs it. It is for developers who use coding agents and do not want API keys in a `.env` file, in the chat history or in the model provider's logs. Local only: no cloud, no account.
 
-Website: <https://jmeh-sindikata.github.io/grantd-web/>
+Website: <https://jmeh-sindikata.github.io/grantpin-web/>
 
 ## Install
 
-Download the latest DMG from the [releases page](https://github.com/jmeh-sindikata/grantd/releases/latest). It is a universal (Apple Silicon and Intel), Developer ID signed and notarized build for macOS 14 or later.
+Download the latest DMG from the [releases page](https://github.com/jmeh-sindikata/grantpin/releases/latest). It is a universal (Apple Silicon and Intel), Developer ID signed and notarized build for macOS 14 or later.
 
-1. Open the DMG and drag grantd to Applications.
-2. Open grantd from Applications. It lives in the menu bar; there is no Dock icon.
+1. Open the DMG and drag grantpin to Applications.
+2. Open grantpin from Applications. It lives in the menu bar; there is no Dock icon.
 3. The Welcome window walks you through creating the vault, installing the background service, adding a first secret and connecting Claude Code.
 
-There is no auto-update yet: to update, download the new DMG and drag the app over the old one. Your vault is in `~/Library/Application Support/grantd` and is not touched.
+There is no auto-update yet: to update, download the new DMG and drag the app over the old one. Your vault is in `~/Library/Application Support/grantpin` and is not touched.
 
 ## Connect Claude Code
 
 The app's Connect screen shows this command (the path is where the app is installed; this is the usual `/Applications` one). Run it in a terminal:
 
 ```sh
-claude mcp add --scope user grantd -- /Applications/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd mcp
+claude mcp add --scope user grantpin -- /Applications/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin mcp
 ```
 
-Then restart Claude Code, or run `/mcp`, and ask it: "Use grantd's secret_list tool and tell me the names of my secrets." It sees names only. To see an approval, ask it to run a command that uses one of them. For a single project instead of every project, drop `--scope user` and run it in that project's folder.
+Then restart Claude Code, or run `/mcp`, and ask it: "Use grantpin's secret_list tool and tell me the names of my secrets." It sees names only. To see an approval, ask it to run a command that uses one of them. For a single project instead of every project, drop `--scope user` and run it in that project's folder.
 
 ## How it works
 
@@ -33,9 +33,9 @@ Then restart Claude Code, or run `/mcp`, and ask it: "Use grantd's secret_list t
 
 ## Security
 
-grantd narrows what an agent can do with your secrets; it is not a sandbox. Read [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) for the full analysis. In short, it does not protect against:
+grantpin narrows what an agent can do with your secrets; it is not a sandbox. Read [docs/THREAT-MODEL.md](docs/THREAT-MODEL.md) for the full analysis. In short, it does not protect against:
 
-- **An approved command that exfiltrates.** If you approve a command that sends the key somewhere, grantd cannot tell. You are the control: read the command in the dialog. There is no sandbox and no network egress control.
+- **An approved command that exfiltrates.** If you approve a command that sends the key somewhere, grantpin cannot tell. You are the control: read the command in the dialog. There is no sandbox and no network egress control.
 - **Malware running as you.** Human presence is enforced by the daemon's own logic, not by cryptography on the key. Code with full control of your account can replace the binary, delete the vault or tamper with the service. A vault created with the Keychain fallback (a build that cannot use the Secure Enclave) has a key readable by anything running as you.
 - **Everything the agent could do around the gate.** Redaction is an exact match of the value, so a command that prints it base64-encoded gets through. Storing, overwriting and deleting secrets are not behind Touch ID, so a same-user process can destroy or replace them.
 
@@ -45,10 +45,14 @@ You need macOS 14 or later, Go 1.27 or newer, and Xcode (the app is built with `
 
 ```sh
 make ci     # Go: build, vet, staticcheck, tests (also with the dev tag), coverage
-make app    # dist/grantd.app, unsigned: SwiftUI app plus the Go helper inside it
+make app    # dist/grantpin.app, unsigned: SwiftUI app plus the Go helper inside it
 ```
 
-A from-source build is not signed with a provisioning profile, so it cannot use the Secure Enclave and falls back to a Keychain-held key. [docs/RELEASE.md](docs/RELEASE.md) describes how the signed, notarized DMG is made. [docs/README.md](docs/README.md) is the detailed manual: install from source, the `grantd` command line, policy files, grants and the audit log.
+A from-source build is not signed with a provisioning profile, so it cannot use the Secure Enclave and falls back to a Keychain-held key. [docs/RELEASE.md](docs/RELEASE.md) describes how the signed, notarized DMG is made. [docs/README.md](docs/README.md) is the detailed manual: install from source, the `grantpin` command line, policy files, grants and the audit log.
+
+## Renamed from grantd
+
+grantpin was called grantd until v0.2.0, which shipped as grantd. There is no automatic migration: the new app uses its own bundle identifier (`dev.grantpin.app`), launchd label, data directory, Keychain key and environment variables (`GRANTPIN_*`), so the two never share state. To move over, remove the grantd install with its own Settings, Uninstall (tick everything), then install grantpin and add your secrets again.
 
 ## Status
 
