@@ -19,13 +19,22 @@ const (
 	// secret list alone does.
 	MaxReasonRunes = 250
 
+	// MaxDialogArgvRunes is the most of the command the release dialog shows
+	// in one piece. Longer commands show the first and last half of this
+	// budget with an explicit "omitted" marker and a line stating the full
+	// length (see ReleaseText); the omission is never silent.
+	MaxDialogArgvRunes = 2000
+
 	minArgvRunes   = 24
 	minCwdRunes    = 24
 	maxCallerRunes = 32
 	ellipsis       = "…"
 )
 
-// BuildReason renders the LocalAuthentication localizedReason for req:
+// BuildReason renders the LocalAuthentication localizedReason for req. It is
+// for the Touch ID sheet only, whose text has a hard length budget; the dialog
+// shows the command through ReleaseText instead, which never cuts the middle
+// silently:
 //
 //	<caller> wants to run `<argv>` with <secrets> in <cwd>[ (approval lasts 1h)][ (no policy)]
 //
@@ -56,14 +65,7 @@ func BuildReason(req approve.ApprovalRequest, grantTTL time.Duration) string {
 	if standing && len(req.GrantCmdPrefix) > 0 {
 		cmd = req.GrantCmdPrefix
 	}
-	args := make([]string, len(cmd))
-	for i, a := range cmd {
-		args[i] = strings.ReplaceAll(clean(a), "`", "'")
-	}
-	argv := strings.Join(args, " ")
-	if argv == "" {
-		argv = "(empty command)"
-	}
+	argv := cleanArgv(cmd)
 
 	suffix := ""
 	if standing {
@@ -102,6 +104,84 @@ func BuildReason(req approve.ApprovalRequest, grantTTL time.Duration) string {
 	cwdLen := utf8.RuneCountInString(cwd)
 	cwd = truncateMiddle(cwd, max(cwdLen-over, minCwdRunes))
 	return assemble(argv, cwd)
+}
+
+// cleanArgv sanitises and joins a command for display: every argument is
+// cleaned (control and bidi characters become spaces), backticks become
+// apostrophes so the argv cannot close the code span it is shown in, and an
+// empty command is named.
+func cleanArgv(cmd []string) string {
+	args := make([]string, len(cmd))
+	for i, a := range cmd {
+		args[i] = strings.ReplaceAll(clean(a), "`", "'")
+	}
+	argv := strings.Join(args, " ")
+	if argv == "" {
+		argv = "(empty command)"
+	}
+	return argv
+}
+
+// dialogArgv returns the command for the release dialog and, when it had to be
+// shortened, a sentence stating the full length. A command of at most
+// MaxDialogArgvRunes is returned whole with an empty note. A longer one keeps
+// its first and last MaxDialogArgvRunes/2 runes around a
+// "[… N characters omitted …]" marker, and the note repeats N and the total.
+func dialogArgv(cmd []string) (argv, note string) {
+	argv = cleanArgv(cmd)
+	r := []rune(argv)
+	if len(r) <= MaxDialogArgvRunes {
+		return argv, ""
+	}
+	half := MaxDialogArgvRunes / 2
+	omitted := len(r) - 2*half
+	marker := "[" + ellipsis + " " + strconv.Itoa(omitted) + " characters omitted " + ellipsis + "]"
+	argv = string(r[:half]) + marker + string(r[len(r)-half:])
+	note = "The command is " + strconv.Itoa(len(r)) + " characters long. The " + strconv.Itoa(omitted) +
+		" in the middle are not shown here. Deny unless you know what the whole command does."
+	return argv, note
+}
+
+// ReleaseText is the body of the release (and show) dialog:
+//
+//	An agent is asking grantd to release secrets:
+//
+//	<caller> wants to run `<argv>` with <secrets> in <cwd>[ (no policy)]
+//
+//	[<length note>]
+//
+//	[Allow for 1h covers: <cmd prefix> … in <cwd> and subfolders.]
+//
+// Unlike BuildReason it carries the whole command: this dialog is the place
+// where the human reads it, and a payload hidden in the middle of a long
+// command must not be cut away. The only cap is MaxDialogArgvRunes, and a cut
+// is announced in the text (marker and length note). Secrets and the
+// directory are never shortened. ttl is the duration the "Allow for N" button
+// offers (0 = none) and decides the scope sentence.
+func ReleaseText(req approve.ApprovalRequest, ttl time.Duration) string {
+	caller := truncateMiddle(clean(req.Caller), maxCallerRunes)
+	if caller == "" {
+		caller = "unknown caller"
+	}
+	cwd := clean(req.Cwd)
+	if cwd == "" {
+		cwd = "unknown directory"
+	}
+	argv, note := dialogArgv(req.Argv)
+	text := "An agent is asking grantd to release secrets:\n\n" + caller + " wants to run `" + argv +
+		"` with " + renderSecrets(req.Secrets, req.Expanded) + " in " + cwd
+	if !req.PolicyPresent {
+		text += " (no policy)"
+	}
+	if note != "" {
+		text += "\n\n" + note
+	}
+	if scope := GrantScope(req, ttl); scope != "" {
+		text += "\n\n" + scope + "."
+	} else if ttl > 0 {
+		text += "\n\n\"" + allowForLabel(ttl) + "\" lets the same request run again for that long."
+	}
+	return text
 }
 
 // GrantScope states what an "Allow for N" answer covers, e.g.
