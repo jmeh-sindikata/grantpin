@@ -1,6 +1,8 @@
 # grantd — local secrets broker for AI coding agents
 
 > This is the original v0.1 design brief, kept for history. It is not kept up to date: the current documentation is in [docs/](docs/README.md).
+>
+> The project was renamed from grantd to grantpin on 2026-10-26. This brief still uses the old name throughout; it is left as written.
 
 Handoff for the implementing agent. Read fully before writing code. Decisions below are made; don't reopen them unless you hit a hard blocker, and then say so explicitly rather than silently deviating.
 
