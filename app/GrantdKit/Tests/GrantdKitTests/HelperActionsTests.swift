@@ -104,6 +104,28 @@ final class PathDetectorTests: XCTestCase {
         XCTAssertNil(PathDetector.extract(from: "__GD_END__/a__GD_BEGIN__"))
     }
 
+    func testPlausiblePathValidation() throws {
+        XCTAssertTrue(PathDetector.isPlausible("/usr/bin:/bin"))
+        XCTAssertTrue(PathDetector.isPlausible("/nonexistent/x:/usr/bin"), "one existing directory is enough")
+        XCTAssertFalse(PathDetector.isPlausible("/usr/bin /bin /usr/sbin"), "fish joins $PATH with spaces")
+        XCTAssertFalse(PathDetector.isPlausible("/usr/bin:/bin\n"))
+        XCTAssertFalse(PathDetector.isPlausible("/nonexistent/a:/nonexistent/b"), "no existing directory")
+        XCTAssertFalse(PathDetector.isPlausible("usr/bin"))
+        XCTAssertFalse(PathDetector.isPlausible(""))
+        let d = try ScriptDir()
+        let file = try d.script("notadir", "exit 0")
+        XCTAssertFalse(PathDetector.isPlausible(file.path), "a file is not a directory")
+    }
+
+    func testDetectFallsBackWhenTheShellPrintsASpaceJoinedPath() async throws {
+        let d = try ScriptDir()
+        let sh = try d.script("fishlike", #"printf '__GD_BEGIN__%s__GD_END__' "/usr/bin /bin /usr/sbin""#)
+        let shells = d.url.appendingPathComponent("shells")
+        try "\(sh.path)\n".write(to: shells, atomically: true, encoding: .utf8)
+        let p = await PathDetector(environment: ["SHELL": sh.path, "HOME": "/tmp"], shellsFile: shells.path).detect()
+        XCTAssertEqual(p, PathDetector.fallback)
+    }
+
     func testShellMustBeListedAndExecutable() throws {
         let d = try ScriptDir()
         let sh = try d.script("myshell", "exit 0")

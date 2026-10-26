@@ -87,6 +87,17 @@ public struct PathDetector: Sendable {
         return path.isEmpty ? nil : path
     }
 
+    /// Whether `path` is a plausible PATH: absolute, no whitespace (fish
+    /// joins a quoted `$PATH` with spaces, which is not a PATH) and at least
+    /// one element that is an existing directory.
+    public static func isPlausible(_ path: String) -> Bool {
+        guard path.hasPrefix("/"), !path.contains(where: { $0.isWhitespace }) else { return false }
+        return path.split(separator: ":").contains { dir in
+            var isDir: ObjCBool = false
+            return FileManager.default.fileExists(atPath: String(dir), isDirectory: &isDir) && isDir.boolValue
+        }
+    }
+
     /// Runs `$SHELL -ilc` and returns its PATH; the fallback list when that
     /// fails, times out or prints nothing usable.
     public func detect() async -> String {
@@ -96,12 +107,15 @@ public struct PathDetector: Sendable {
             if let v = environment[key] { env[key] = v }
         }
         env["SHELL"] = shell
-        let script = "printf \"\(Self.beginMarker)%s\(Self.endMarker)\" \"$PATH\""
+        // The login shell only sets up the environment; /bin/sh prints PATH,
+        // so the quoting of "$PATH" does not depend on the shell (fish expands
+        // it with spaces, not colons).
+        let script = "exec /bin/sh -c 'printf \"\(Self.beginMarker)%s\(Self.endMarker)\" \"$PATH\"'"
         do {
             let out = try await HelperProcess.run(
                 executable: URL(fileURLWithPath: shell), arguments: ["-ilc", script], environment: env,
                 standardInput: nil, timeout: timeout, outputCap: 64 * 1024)
-            if out.succeeded, let p = Self.extract(from: out.stdout), p.hasPrefix("/") { return p }
+            if out.succeeded, let p = Self.extract(from: out.stdout), Self.isPlausible(p) { return p }
         } catch {}
         return Self.fallback
     }
