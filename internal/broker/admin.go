@@ -123,16 +123,18 @@ func (b *Broker) handleAudit(ctx context.Context, req *proto.Request, w daemon.R
 		// is still too large is skipped and counted. Neither stops the walk.
 		// When the page itself is full the rest is cut off and Truncated says
 		// so; NextBeforeID is where the next page starts.
-		res := proto.AuditListResult{Entries: make([]proto.AuditInfo, 0, len(es))}
+		// Each row is encoded once, here, and the page is the slice of those
+		// encodings (same wire form as proto.AuditListResult).
+		res := auditListWire{Entries: make([]json.RawMessage, 0, len(es))}
 		size := len(`{"entries":[],"truncated":true,"skipped":1000,"next_before_id":"9223372036854775807"}`)
 		for _, e := range es {
-			enc, info, err := auditRow(e)
+			enc, err := auditRow(e)
 			if err != nil {
 				b.internal(w, req.Op, err)
 				return
 			}
 			if len(enc) > maxAuditRowBytes {
-				if enc, info, err = auditRow(audit.Capped(e)); err != nil {
+				if enc, err = auditRow(audit.Capped(e)); err != nil {
 					b.internal(w, req.Op, err)
 					return
 				}
@@ -146,7 +148,7 @@ func (b *Broker) handleAudit(ctx context.Context, req *proto.Request, w daemon.R
 				res.Truncated = true
 				break
 			}
-			res.Entries = append(res.Entries, info)
+			res.Entries = append(res.Entries, enc)
 			res.NextBeforeID = e.ID
 		}
 		ok(w, res)
@@ -190,15 +192,23 @@ func (b *Broker) handleAudit(ctx context.Context, req *proto.Request, w daemon.R
 // encoded size). A variable so that tests can reach the skip path.
 var maxAuditRowBytes = 256 << 10
 
-// auditRow converts e and returns its encoding.
-func auditRow(e audit.Entry) ([]byte, proto.AuditInfo, error) {
+// auditListWire is proto.AuditListResult with its entries already encoded; the
+// two must keep the same JSON shape.
+type auditListWire struct {
+	Entries      []json.RawMessage `json:"entries"`
+	Truncated    bool              `json:"truncated,omitempty"`
+	Skipped      int               `json:"skipped,omitempty"`
+	NextBeforeID string            `json:"next_before_id,omitempty"`
+}
+
+// auditRow returns the JSON encoding of e as a proto.AuditInfo.
+func auditRow(e audit.Entry) (json.RawMessage, error) {
 	info := proto.AuditInfo{
 		ID: e.ID, TS: e.TS, Caller: e.Caller, Cwd: e.Cwd, Argv: e.Argv, Secrets: e.Secrets, Expanded: e.Expanded,
 		Decision: e.Decision, GrantID: e.GrantID, ExitCode: e.ExitCode,
 		DurationMS: e.Duration.Milliseconds(), Reason: e.Reason,
 	}
-	enc, err := json.Marshal(info)
-	return enc, info, err
+	return json.Marshal(info)
 }
 
 var errCapExceeded = errors.New("broker: output exceeds the response limit")

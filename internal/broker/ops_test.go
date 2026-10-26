@@ -964,3 +964,33 @@ func TestGrantRevocationsAreAudited(t *testing.T) {
 		t.Errorf("empty revoke_all audit = %+v", a)
 	}
 }
+
+// The pre-encoded audit page must stay byte-compatible with the typed result
+// the clients decode.
+func TestAuditListWireMatchesProtoResult(t *testing.T) {
+	r := auditListWire{Entries: []json.RawMessage{json.RawMessage(`{"id":"1"}`)}, Truncated: true, Skipped: 2, NextBeforeID: "1"}
+	got, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := json.Marshal(proto.AuditListResult{Entries: []proto.AuditInfo{{ID: "1"}}, Truncated: true, Skipped: 2, NextBeforeID: "1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// AuditInfo has more fields than the stub row; compare the envelope keys.
+	var a, b map[string]json.RawMessage
+	if err := json.Unmarshal(got, &a); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(want, &b); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"truncated", "skipped", "next_before_id"} {
+		if string(a[k]) != string(b[k]) || a[k] == nil {
+			t.Errorf("%s: %s vs %s", k, a[k], b[k])
+		}
+	}
+	if len(a) != len(b) {
+		t.Errorf("keys differ: %v vs %v", a, b)
+	}
+}
