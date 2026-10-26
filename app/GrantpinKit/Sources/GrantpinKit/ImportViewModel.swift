@@ -104,7 +104,7 @@ public final class ImportViewModel {
         let out: HelperOutput
         do {
             out = try await service.runImport(from: handle, dryRun: dryRun, onConflict: mode)
-        } catch GrantdError.peerNotGrantd {
+        } catch GrantpinError.peerNotGrantpin {
             // Checked before the helper started: nothing was read or sent.
             return .failed(ImportFailure(headline: PeerVerifier.mismatchMessage, detail: nil, partial: false))
         } catch {
@@ -119,7 +119,7 @@ public final class ImportViewModel {
         do {
             return dryRun ? .preview(try ImportReport.parse(out.stdout)) : .done(try ImportReport.parse(out.stdout))
         } catch {
-            return .failed(ImportFailure(headline: "grantd printed something unexpected.", detail: nil, partial: !dryRun))
+            return .failed(ImportFailure(headline: "grantpin printed something unexpected.", detail: nil, partial: !dryRun))
         }
     }
 }
@@ -168,7 +168,7 @@ public struct ImportFailure: Equatable, Sendable {
             return ImportFailure(headline: "Some of these secrets already exist.", conflicts: names, detail: nil, partial: partial)
         }
         let detail = text.isEmpty ? nil : DisplayText.sanitise(String(text.suffix(500)), limit: 500, allowNewlines: true)
-        return ImportFailure(headline: "grantd could not import that file.", detail: detail, partial: partial)
+        return ImportFailure(headline: "grantpin could not import that file.", detail: detail, partial: partial)
     }
 }
 

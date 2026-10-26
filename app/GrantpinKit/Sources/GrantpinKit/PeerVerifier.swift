@@ -39,7 +39,7 @@ public struct PeerCheck: Sendable {
 
 public enum PeerVerifier {
     /// Shown when the check fails. Nothing was sent.
-    public static let mismatchMessage = "The process answering grantd's socket is not grantd. Nothing was sent."
+    public static let mismatchMessage = "The process answering grantpin's socket is not grantpin. Nothing was sent."
 
     /// `anchor apple generic and certificate leaf[subject.OU] = "<TEAMID>"`,
     /// or nil unless `teamID` looks like a team identifier (ten upper-case

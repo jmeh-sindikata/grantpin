@@ -1,6 +1,6 @@
 import Foundation
 
-/// Where the Go helper (`grantd`) lives inside the app (docs/UI-SPEC.md 2.6).
+/// Where the Go helper (`grantpin`) lives inside the app (docs/UI-SPEC.md 2.6).
 public enum HelperLocator {
     public enum Failure: Error, Equatable, Sendable {
         case missing(String)
@@ -9,15 +9,15 @@ public enum HelperLocator {
         case outsideBundle
     }
 
-    /// `Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd`, relative to the app.
-    public static let relativePath = "Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd"
+    /// `Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin`, relative to the app.
+    public static let relativePath = "Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin"
 
     /// The helper of the app bundle at `bundleURL`. The path is resolved once;
     /// a symlink anywhere on it is refused, and so is anything that does not
     /// end up inside the bundle.
     ///
     /// - Parameter developmentOverride: a helper path to use instead (the
-    ///   `GRANTD_HELPER` variable). Honoured only in development mode, where
+    ///   `GRANTPIN_HELPER` variable). Honoured only in development mode, where
     ///   the app talks to the insecure dev daemon; an unsigned build has no
     ///   usable embedded helper.
     public static func resolve(bundleURL: URL, developmentOverride: String? = nil) throws -> URL {
@@ -161,7 +161,7 @@ public protocol ServiceControl: Sendable {
     func installService(path: String?) async -> ActionResult
     /// `service uninstall`.
     func uninstallService() async -> ActionResult
-    /// `--version`, the text after "grantd version ", or nil.
+    /// `--version`, the text after "grantpin version ", or nil.
     func helperVersion() async -> String?
     /// `init`, or `init --keychain-fallback` (the weaker Keychain protection).
     func initVault(keychainFallback: Bool) async -> ActionResult
@@ -170,10 +170,10 @@ public protocol ServiceControl: Sendable {
 /// Runs the signed helper bundled in the app.
 ///
 /// **This is the only way the app starts the daemon** (docs/UI-SPEC.md 2.2):
-/// `grantd service install --exe <outer app> --path <PATH>` writes the
-/// LaunchAgent and has launchd start it. The app never runs `grantd daemon`
-/// itself, and never `grantd mcp`. `--exe` names the outer `grantd.app`; the
-/// service layer resolves it to `Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd`
+/// `grantpin service install --exe <outer app> --path <PATH>` writes the
+/// LaunchAgent and has launchd start it. The app never runs `grantpin daemon`
+/// itself, and never `grantpin mcp`. `--exe` names the outer `grantpin.app`; the
+/// service layer resolves it to `Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin`
 /// (change G1), the binary the bundle's signature and profile apply to.
 ///
 /// The environment of the helper is replaced, not inherited (`HOME`, `USER`,
@@ -214,7 +214,7 @@ public struct HelperActions: DaemonActions, ServiceControl {
             out = try await HelperProcess.run(executable: helper, arguments: args, environment: environment,
                                               standardInput: nil, timeout: Self.installTimeout)
         } catch {
-            return ActionResult(outcome: .failed, summary: "grantd could not be started: the helper did not run.")
+            return ActionResult(outcome: .failed, summary: "grantpin could not be started: the helper did not run.")
         }
         return Self.interpretInstall(out)
     }
@@ -260,15 +260,15 @@ public struct HelperActions: DaemonActions, ServiceControl {
 
     static func interpretInstall(_ out: HelperOutput) -> ActionResult {
         if out.timedOut {
-            return ActionResult(outcome: .failed, summary: "grantd took too long to start.", detail: tail(out.stderr))
+            return ActionResult(outcome: .failed, summary: "grantpin took too long to start.", detail: tail(out.stderr))
         }
         guard out.exitCode == 0 else {
-            return ActionResult(outcome: .failed, summary: "grantd could not be started.", detail: tail(out.stderr.isEmpty ? out.stdout : out.stderr))
+            return ActionResult(outcome: .failed, summary: "grantpin could not be started.", detail: tail(out.stderr.isEmpty ? out.stdout : out.stderr))
         }
         if out.stdout.contains("WARNING:") {
-            return ActionResult(outcome: .startedNotAnswering, summary: "Started, but grantd has not answered yet.")
+            return ActionResult(outcome: .startedNotAnswering, summary: "Started, but grantpin has not answered yet.")
         }
-        return ActionResult(outcome: .succeeded, summary: "grantd is running in the background.")
+        return ActionResult(outcome: .succeeded, summary: "grantpin is running in the background.")
     }
 
     static func interpretUninstall(_ out: HelperOutput) -> ActionResult {
@@ -282,10 +282,10 @@ public struct HelperActions: DaemonActions, ServiceControl {
         return ActionResult(outcome: .succeeded, summary: "The background service was stopped and removed.")
     }
 
-    /// `grantd version 0.2.0` -> `0.2.0`.
+    /// `grantpin version 0.2.0` -> `0.2.0`.
     static func parseVersion(_ text: String) -> String? {
         let line = text.split(whereSeparator: \.isNewline).first.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
-        let prefix = "grantd version "
+        let prefix = "grantpin version "
         guard line.hasPrefix(prefix) else { return nil }
         let v = String(line.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
         return v.isEmpty ? nil : v

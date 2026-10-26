@@ -199,13 +199,13 @@
         }
       }
     },
-    "Asks grantd for the end of the stored value, to tell two keys apart. The full value is never shown." : {
+    "Asks grantpin for the end of the stored value, to tell two keys apart. The full value is never shown." : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Asks grantd for the end of the stored value, to tell two keys apart. The full value is never shown."
+            "value" : "Asks grantpin for the end of the stored value, to tell two keys apart. The full value is never shown."
           }
         }
       }
@@ -408,13 +408,13 @@
         }
       }
     },
-    "Create a standing grant (⌘N). grantd asks you to confirm." : {
+    "Create a standing grant (⌘N). grantpin asks you to confirm." : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Create a standing grant (⌘N). grantd asks you to confirm."
+            "value" : "Create a standing grant (⌘N). grantpin asks you to confirm."
           }
         }
       }
@@ -771,13 +771,13 @@
         }
       }
     },
-    "Keep grantd running in the background" : {
+    "Keep grantpin running in the background" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Keep grantd running in the background"
+            "value" : "Keep grantpin running in the background"
           }
         }
       }
@@ -1464,13 +1464,13 @@
         }
       }
     },
-    "Start grantd when I log in" : {
+    "Start grantpin when I log in" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Start grantd when I log in"
+            "value" : "Start grantpin when I log in"
           }
         }
       }
@@ -1673,13 +1673,13 @@
         }
       }
     },
-    "Uninstall grantd…" : {
+    "Uninstall grantpin…" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Uninstall grantd…"
+            "value" : "Uninstall grantpin…"
           }
         }
       }
@@ -1783,13 +1783,13 @@
         }
       }
     },
-    "Welcome to grantd" : {
+    "Welcome to grantpin" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Welcome to grantd"
+            "value" : "Welcome to grantpin"
           }
         }
       }
@@ -1915,24 +1915,24 @@
         }
       }
     },
-    "grantd never shows a stored value. Use grantd show in a terminal if you need it." : {
+    "grantpin never shows a stored value. Use grantpin show in a terminal if you need it." : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "grantd never shows a stored value. Use grantd show in a terminal if you need it."
+            "value" : "grantpin never shows a stored value. Use grantpin show in a terminal if you need it."
           }
         }
       }
     },
-    "grantd shows its own dialog next, then Touch ID." : {
+    "grantpin shows its own dialog next, then Touch ID." : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "grantd shows its own dialog next, then Touch ID."
+            "value" : "grantpin shows its own dialog next, then Touch ID."
           }
         }
       }

@@ -1,7 +1,7 @@
 import AppKit
 import ServiceManagement
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 import Observation
 
 /// Something another part of the app asks the Secrets window to do once it is
@@ -49,7 +49,7 @@ final class SystemLoginItem: LoginItemControl {
 ///
 /// The app is a client of the socket and of the signed helper inside its own
 /// bundle, nothing else (docs/UI-SPEC.md 2.2). In development mode, when
-/// `GRANTD_SOCKET` is set, it never touches the real launchd job or vault.
+/// `GRANTPIN_SOCKET` is set, it never touches the real launchd job or vault.
 @MainActor
 @Observable
 final class AppModel {
@@ -83,7 +83,7 @@ final class AppModel {
     /// The running instance, for the application delegate.
     nonisolated(unsafe) static weak var current: AppModel?
 
-    /// The helper (`grantd` in `grantd-daemon.app`), if it can be found.
+    /// The helper (`grantpin` in `grantpin-daemon.app`), if it can be found.
     let helper: URL?
     /// Runs `.env` imports through the helper; nil without a helper.
     let importRunner: ImportRunner?
@@ -99,7 +99,7 @@ final class AppModel {
         self.monitor = monitor
 
         let environment = ProcessInfo.processInfo.environment
-        let override = socket.isDevelopment ? environment["GRANTD_HELPER"] : nil
+        let override = socket.isDevelopment ? environment["GRANTPIN_HELPER"] : nil
         let helper = try? HelperLocator.resolve(bundleURL: Bundle.main.bundleURL, developmentOverride: override)
         self.helper = helper
         self.importRunner = helper.map { ImportRunner(executable: $0, socketPath: socket.path, peerCheck: socket.isDevelopment ? .off : .automatic) }
@@ -245,9 +245,9 @@ final class AppModel {
             }
             return nil
         } catch AppLocation.MoveError.alreadyThere(let path) {
-            return "grantd is already in \(DisplayText.sanitise(path, limit: 120)). Open that one instead."
+            return "grantpin is already in \(DisplayText.sanitise(path, limit: 120)). Open that one instead."
         } catch {
-            return "grantd could not be copied to your Applications folder."
+            return "grantpin could not be copied to your Applications folder."
         }
     }
 

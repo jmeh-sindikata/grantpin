@@ -52,7 +52,7 @@ public final class OnboardingModel {
         "Your secrets stay on this Mac, encrypted.",
     ]
     public static let serviceText =
-        "grantd needs a small background service so agents can reach it. macOS may tell you a background item was added; that is this."
+        "grantpin needs a small background service so agents can reach it. macOS may tell you a background item was added; that is this."
     public static let vaultText =
         "Your vault is where secrets are kept. Its key lives in this Mac's Secure Enclave and can't be copied off. "
         + "You'll use Touch ID when an agent asks to use a secret. Saving a secret here doesn't need it."
@@ -62,7 +62,7 @@ public final class OnboardingModel {
         title: "Use weaker protection?",
         message: "The vault key will be kept in your Keychain instead of the Secure Enclave. Programs running as you could read it. Touch ID still protects every use of a secret.",
         confirmLabel: "Use Keychain")
-    public static let loginLabel = "Start grantd when I log in"
+    public static let loginLabel = "Start grantpin when I log in"
 
     public init(control: ServiceControl?, loginItem: LoginItemControl?, isDevelopment: Bool, location: AppLocation = .ok,
                 onFinished: @escaping @MainActor () -> Void = {}, onActionFinished: @escaping @MainActor () async -> Void = {}) {
@@ -197,7 +197,7 @@ public final class OnboardingModel {
     public func finish() {
         loginError = nil
         if startAtLogin, !isDevelopment, location.isOK, let loginItem, loginItem.status == .notRegistered {
-            do { try loginItem.register() } catch { loginError = "grantd could not be added to the login items." }
+            do { try loginItem.register() } catch { loginError = "grantpin could not be added to the login items." }
         }
         finished = true
         onFinished()

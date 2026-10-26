@@ -9,7 +9,7 @@ public enum StandingTTL: String, CaseIterable, Hashable, Sendable {
     case hour1, day1, days7, days30, days90, custom
 
     /// The ceiling the daemon enforces (`grant.MaxStandingGrantTTL`). A repo
-    /// `.grantd.yml` may lower it; the daemon then answers with the limit and
+    /// `.grantpin.yml` may lower it; the daemon then answers with the limit and
     /// the form shows that answer as it is, never clamping.
     public static let maxSeconds = 90 * 86_400
 
@@ -273,9 +273,9 @@ public final class StandingGrantFormModel: Identifiable {
 
     public static let defaultCaller = "claude-code"
     /// The text shown while the daemon waits.
-    public static let waitingText = "Waiting for you to confirm in the grantd dialog, then Touch ID."
+    public static let waitingText = "Waiting for you to confirm in the grantpin dialog, then Touch ID."
     public static let explanation =
-        "grantd shows its own dialog next, then Touch ID. Nothing is created unless you approve both."
+        "grantpin shows its own dialog next, then Touch ID. Nothing is created unless you approve both."
     public static let callerHelp =
         "Use the name the tool reports. For Claude Code this is claude-code. It is a label, not proof of who is asking."
     public static let commandHelp = "php artisan also covers php artisan migrate."
@@ -322,7 +322,7 @@ public final class StandingGrantFormModel: Identifiable {
         var out = [defaultCaller]
         for e in entries {
             let c = e.caller
-            if ["grantd-app", "cli", "(none)", "(invalid)", "mcp", ""].contains(c) { continue }
+            if ["grantpin-app", "cli", "(none)", "(invalid)", "mcp", ""].contains(c) { continue }
             if callerIssue(c) != nil { continue }
             if seen.insert(c).inserted { out.append(c) }
             if out.count >= 12 { break }
@@ -522,7 +522,7 @@ public final class StandingGrantFormModel: Identifiable {
 
     /// The outcomes of `grants add` (docs/UI-SPEC.md 3.3), worded for the form.
     public static func message(for error: Error) -> UserMessage {
-        guard let e = error as? GrantdError, case .daemon(_, let reason, let raw) = e else {
+        guard let e = error as? GrantpinError, case .daemon(_, let reason, let raw) = e else {
             return UserMessage.from(error)
         }
         let detail = raw.isEmpty ? nil : DisplayText.sanitise(raw)
@@ -530,7 +530,7 @@ public final class StandingGrantFormModel: Identifiable {
         case .userDenied:
             return UserMessage("Not created. You cancelled the confirmation.", severity: .info)
         case .policyRefused:
-            return UserMessage("A .grantd.yml in that folder does not allow this:", detail: detail)
+            return UserMessage("A .grantpin.yml in that folder does not allow this:", detail: detail)
         case .secretNotFound:
             var m = UserMessage.from(e)
             m.headline = "One of those secrets doesn't exist."
@@ -538,7 +538,7 @@ public final class StandingGrantFormModel: Identifiable {
             return m
         case .badRequest:
             // The message names the lifetime ceiling and where it comes from.
-            return UserMessage(detail ?? "grantd rejected the request.")
+            return UserMessage(detail ?? "grantpin rejected the request.")
         default:
             return UserMessage.from(e)
         }

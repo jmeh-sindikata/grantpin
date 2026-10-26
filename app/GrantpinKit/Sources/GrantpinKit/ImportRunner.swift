@@ -1,6 +1,6 @@
 import Foundation
 
-/// How `grantd import` treats a name that already exists (`--on-conflict`).
+/// How `grantpin import` treats a name that already exists (`--on-conflict`).
 public enum ImportConflictMode: String, Sendable, CaseIterable {
     case skip, overwrite, error
 }
@@ -17,13 +17,13 @@ public struct HelperOutput: Equatable, Sendable {
 }
 
 /// Imports a `.env` file by running the helper CLI,
-/// `grantd import - [--dry-run] --on-conflict MODE --socket PATH`, with the
+/// `grantpin import - [--dry-run] --on-conflict MODE --socket PATH`, with the
 /// file's open descriptor as its standard input (docs/UI-SPEC.md 3.2).
 ///
 /// **The Swift process never reads the file.** The descriptor goes straight to
 /// the helper, whose Go parser is the only one; the values never enter this
 /// process. The helper then sends each value to the daemon over the socket,
-/// like any `grantd set`. No value is ever put in the arguments or the
+/// like any `grantpin set`. No value is ever put in the arguments or the
 /// environment.
 ///
 /// The environment is replaced, not inherited: `HOME`, `USER`, `LOGNAME`,
@@ -40,7 +40,7 @@ public struct ImportRunner: Sendable {
     let peerCheck: PeerCheck
 
     /// - Parameters:
-    ///   - executable: the helper, `grantd` inside `grantd-daemon.app`
+    ///   - executable: the helper, `grantpin` inside `grantpin-daemon.app`
     ///     (or the dev binary in tests). Must be an absolute file URL.
     ///   - socketPath: the daemon socket the helper should use, passed as
     ///     `--socket`, so it needs no environment for that.
@@ -81,16 +81,16 @@ public struct ImportRunner: Sendable {
     /// values there. The helper connects on its own afterwards, so this is a
     /// pre-flight check and not a guarantee about that connection.
     ///
-    /// - Throws: `GrantdError.io` if the helper cannot be started, and
-    ///   `GrantdError.peerNotGrantd` if the socket is not answered by grantd
+    /// - Throws: `GrantpinError.io` if the helper cannot be started, and
+    ///   `GrantpinError.peerNotGrantpin` if the socket is not answered by grantpin
     ///   (the helper is then not started and the file is not read).
     public func run(from file: FileHandle, dryRun: Bool, onConflict: ImportConflictMode,
                     timeout: TimeInterval = ImportRunner.timeout) async throws -> HelperOutput {
         if !dryRun {
             do {
                 try await Client(socketPath: socketPath, peerCheck: peerCheck).verifyPeer()
-            } catch GrantdError.peerNotGrantd {
-                throw GrantdError.peerNotGrantd
+            } catch GrantpinError.peerNotGrantpin {
+                throw GrantpinError.peerNotGrantpin
             } catch {
                 // Not running, a long path, a timeout: the helper reports those itself.
             }
@@ -165,7 +165,7 @@ public struct ImportReport: Equatable, Sendable {
         !added.isEmpty || !overwritten.isEmpty || !skipped.isEmpty || !ignoredEmpty.isEmpty
     }
 
-    private static func unexpected() -> GrantdError {
-        .malformedResponse("grantd printed something unexpected")
+    private static func unexpected() -> GrantpinError {
+        .malformedResponse("grantpin printed something unexpected")
     }
 }

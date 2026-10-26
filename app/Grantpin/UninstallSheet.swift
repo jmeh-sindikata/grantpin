@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 /// The Uninstall sheet (docs/UI-SPEC.md 3.5): checkboxes, nothing destructive
 /// pre-ticked except stopping the service; deleting the vault needs the

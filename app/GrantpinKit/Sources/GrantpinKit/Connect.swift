@@ -17,12 +17,12 @@ public enum ConnectSnippets {
     /// The four tools `/mcp` should list (README "Quick start" step 5).
     public static let toolNames = ["secret_list", "secret_exists", "secret_masked", "secret_run"]
 
-    public static let testPrompt = "Use grantd's secret_list tool and tell me the names of my secrets."
+    public static let testPrompt = "Use grantpin's secret_list tool and tell me the names of my secrets."
     public static let testPromptCaption = "Claude will see names only, never values. To see an approval, ask it to run a command with a secret."
     public static let restartNote = "Claude Code must be restarted, or run /mcp, to pick up the new server."
     public static let jsonCaption = "Put this in a file named .mcp.json in your project's folder. It contains a path on your Mac, so don't commit it to a shared repository."
-    public static let oldPathCallout = "Already connected with an older path? Run claude mcp remove grantd first, then the command above."
-    public static let removeCommand = "claude mcp remove grantd"
+    public static let oldPathCallout = "Already connected with an older path? Run claude mcp remove grantpin first, then the command above."
+    public static let removeCommand = "claude mcp remove grantpin"
     public static let projectHint = "Run this inside your project's folder."
 
     /// Single-quotes `path` unless it only has `[A-Za-z0-9_./-]`; an embedded
@@ -36,13 +36,13 @@ public enum ConnectSnippets {
         return "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    /// `claude mcp add --scope user grantd -- {HELPER} mcp` or, for one
-    /// project, `claude mcp add grantd -- {HELPER} mcp`.
+    /// `claude mcp add --scope user grantpin -- {HELPER} mcp` or, for one
+    /// project, `claude mcp add grantpin -- {HELPER} mcp`.
     public static func command(scope: Scope, helper: String) -> String {
         let quoted = shellQuote(helper)
         switch scope {
-        case .allProjects: return "claude mcp add --scope user grantd -- \(quoted) mcp"
-        case .oneProject: return "claude mcp add grantd -- \(quoted) mcp"
+        case .allProjects: return "claude mcp add --scope user grantpin -- \(quoted) mcp"
+        case .oneProject: return "claude mcp add grantpin -- \(quoted) mcp"
         }
     }
 
@@ -52,7 +52,7 @@ public enum ConnectSnippets {
         """
         {
           "mcpServers": {
-            "grantd": {
+            "grantpin": {
               "command": \(jsonString(helper)),
               "args": ["mcp"]
             }
@@ -84,7 +84,7 @@ extension Client: ExistsService {}
 
 /// The Connect panel's "Test connection": asks the daemon whether a secret
 /// exists, the same question `secret_exists` sends, through the same socket
-/// Claude Code's `grantd mcp` uses. It proves the background service answers
+/// Claude Code's `grantpin mcp` uses. It proves the background service answers
 /// and the vault is open. It cannot tell whether Claude Code has the server
 /// registered (the app does not read another tool's configuration).
 public enum ConnectionTest {
@@ -95,7 +95,7 @@ public enum ConnectionTest {
         public var text: String {
             switch self {
             case .answered:
-                return "grantd answered. Claude Code asks it the same way."
+                return "grantpin answered. Claude Code asks it the same way."
             case .failed(let m):
                 return m.text
             }
@@ -103,7 +103,7 @@ public enum ConnectionTest {
     }
 
     /// The name asked about. Valid, and not one a person would store.
-    public static let probeName = "grantd.connection-test"
+    public static let probeName = "grantpin.connection-test"
 
     public static func run(_ service: ExistsService) async -> Result {
         do {
@@ -125,7 +125,7 @@ public enum AppLocation: Equatable, Sendable {
     case translocated
     case elsewhere
 
-    public static let blockedMessage = "Move grantd to your Applications folder first"
+    public static let blockedMessage = "Move grantpin to your Applications folder first"
     public static let moveButton = "Move to Applications and Relaunch"
 
     public static func check(bundleURL: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> AppLocation {
@@ -158,7 +158,7 @@ public enum AppLocation: Equatable, Sendable {
     /// The copy goes to a hidden temporary name next to the destination and is
     /// renamed into place in one step (`renamex_np` with `RENAME_EXCL`, which
     /// also refuses to replace anything), so a copy that stops half-way never
-    /// leaves a broken `grantd.app` behind; the temporary copy is removed on
+    /// leaves a broken `grantpin.app` behind; the temporary copy is removed on
     /// failure.
     public static func copyToApplications(
         bundleURL: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser,

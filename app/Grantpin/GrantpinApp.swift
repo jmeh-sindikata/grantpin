@@ -1,11 +1,11 @@
 import AppKit
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 /// The menu-bar app: a status item with a popover, and the Secrets, Grants,
 /// Activity and Welcome windows plus Settings (docs/UI-SPEC.md section 3).
 @main
-struct GrantdApp: App {
+struct GrantpinApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var app = AppModel()
 
@@ -32,7 +32,7 @@ struct GrantdApp: App {
         }
         .defaultSize(width: 1040, height: 560)
 
-        Window("Welcome to grantd", id: WindowID.onboarding) {
+        Window("Welcome to grantpin", id: WindowID.onboarding) {
             OnboardingWindow(app: app)
         }
         .windowResizability(.contentSize)
@@ -49,7 +49,7 @@ struct GrantdApp: App {
                     .keyboardShortcut(",", modifiers: .command)
             }
             CommandGroup(after: .appInfo) {
-                Button("Uninstall grantd…") { app.showSettings(.uninstall) }
+                Button("Uninstall grantpin…") { app.showSettings(.uninstall) }
             }
         }
     }

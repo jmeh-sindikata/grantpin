@@ -41,7 +41,7 @@ public enum ActivityTone: Equatable, Sendable {
     case failed
     /// You said no.
     case denied
-    /// Blocked by `.grantd.yml` or a protection level.
+    /// Blocked by `.grantpin.yml` or a protection level.
     case blocked
     case error
 }
@@ -160,8 +160,8 @@ public final class ActivityViewModel {
     public var disabledReason: String? {
         switch connection {
         case .ready?: return nil
-        case nil: return "Checking grantd…"
-        case .notRunning?: return "grantd is not running. Start it from the menu bar item."
+        case nil: return "Checking grantpin…"
+        case .notRunning?: return "grantpin is not running. Start it from the menu bar item."
         case .locked?: return "Unlock your Mac to read the log."
         case .notInitialized?: return "There is no vault yet. Create one from the menu bar item."
         }
@@ -251,7 +251,7 @@ public final class ActivityViewModel {
             if let id = selection, !events.contains(where: { $0.id == id }) { selection = nil }
             if banner?.refreshAdvised == true || bannerIsFromLoad { banner = nil; bannerIsFromLoad = false }
         } catch {
-            if let e = error as? GrantdError, e.isNotRunning || e.isVaultLocked || e.isVaultNotInitialized { return }
+            if let e = error as? GrantpinError, e.isNotRunning || e.isVaultLocked || e.isVaultNotInitialized { return }
             if error is CancellationError { return }
             banner = UserMessage.from(error)
             bannerIsFromLoad = true
@@ -294,10 +294,10 @@ public final class ActivityViewModel {
     public static let tooLargeText = "The log is over 1 MB and can't be exported in one piece yet. Use Load more and copy what you need."
     public static let exportPanelMessage = "Cells contain text chosen by other programs. Open this file in a text editor if you are not sure."
 
-    /// `grantd-audit-2026-10-25.csv`.
+    /// `grantpin-audit-2026-10-25.csv`.
     public static func exportFileName(date: Date, calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "grantd-audit-%04d-%02d-%02d.csv", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+        return String(format: "grantpin-audit-%04d-%02d-%02d.csv", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
     /// Asks the daemon for the CSV. The text is returned exactly as received;
@@ -309,7 +309,7 @@ public final class ActivityViewModel {
             let csv = try await service.exportAudit()
             return .csv(csv, fileName: Self.exportFileName(date: now()))
         } catch {
-            if let e = error as? GrantdError, e.reason == .responseTooLarge {
+            if let e = error as? GrantpinError, e.reason == .responseTooLarge {
                 return .failed(UserMessage(Self.tooLargeText))
             }
             return .failed(UserMessage.from(error))

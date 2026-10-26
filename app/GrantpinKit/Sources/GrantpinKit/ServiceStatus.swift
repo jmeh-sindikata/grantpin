@@ -1,16 +1,16 @@
 import Foundation
 import Observation
 
-/// What `grantd service status` printed (cmd/grantd/cmd_service.go
+/// What `grantpin service status` printed (cmd/grantpin/cmd_service.go
 /// `printServiceStatus`), parsed.
 ///
-///     label:     dev.grantd.daemon
+///     label:     dev.grantpin.daemon
 ///     installed: yes
-///     plist:     /Users/x/Library/LaunchAgents/dev.grantd.daemon.plist
+///     plist:     /Users/x/Library/LaunchAgents/dev.grantpin.daemon.plist
 ///     loaded:    yes
 ///     running:   yes (pid 4242)
-///     exe:       /Applications/grantd.app/Contents/Helpers/…/grantd
-///     warning:   executable no longer exists; re-run `grantd service install`
+///     exe:       /Applications/grantpin.app/Contents/Helpers/…/grantpin
+///     warning:   executable no longer exists; re-run `grantpin service install`
 ///
 /// Exit code 3 means "not installed" (only `label:` and `installed: no` are
 /// printed). Every string is untrusted for display (`DisplayText`).
@@ -31,7 +31,7 @@ public struct ServiceStatus: Equatable, Sendable {
     public init() {}
 
     public init(installed: Bool, loaded: Bool = false, running: Bool = false, pid: Int? = nil, exePath: String? = nil,
-                plistPath: String? = nil, exeMissing: Bool = false, label: String = "dev.grantd.daemon", warning: String? = nil) {
+                plistPath: String? = nil, exeMissing: Bool = false, label: String = "dev.grantpin.daemon", warning: String? = nil) {
         self.label = label; self.installed = installed; self.loaded = loaded; self.running = running; self.pid = pid
         self.exePath = exePath; self.plistPath = plistPath; self.exeMissing = exeMissing
         self.warning = warning ?? (exeMissing ? "executable no longer exists" : nil)
@@ -47,11 +47,11 @@ public struct ServiceStatus: Equatable, Sendable {
         case unexpected
     }
 
-    /// The legacy layout: the job still runs `Contents/MacOS/grantd` of a
+    /// The legacy layout: the job still runs `Contents/MacOS/grantpin` of a
     /// pre-0.2 bundle, which a Claude Code registration may name too.
     public var usesLegacyBundlePath: Bool {
         guard let p = exePath else { return false }
-        return p.contains(".app/Contents/MacOS/grantd") && !p.contains("/Contents/Helpers/")
+        return p.contains(".app/Contents/MacOS/grantpin") && !p.contains("/Contents/Helpers/")
     }
 
     /// Parses the helper's answer.
@@ -115,11 +115,11 @@ public enum ServiceDiagnosis: Equatable, Sendable {
 
     public var headline: String {
         switch self {
-        case .notInstalled: return "grantd is not set up to run in the background"
+        case .notInstalled: return "grantpin is not set up to run in the background"
         case .exeMissing: return "The background service points to a file that no longer exists"
-        case .notRunning: return "grantd is not running"
-        case .notAnswering: return "grantd is running but not answering"
-        case .keepsStopping: return "grantd keeps stopping"
+        case .notRunning: return "grantpin is not running"
+        case .notAnswering: return "grantpin is running but not answering"
+        case .keepsStopping: return "grantpin keeps stopping"
         }
     }
 

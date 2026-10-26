@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
-import GrantdKit
+import GrantpinKit
 
 /// The Activity window (docs/UI-SPEC.md 3.4): what agents asked for, what you
 /// answered, whether the record is intact.

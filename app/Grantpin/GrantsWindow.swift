@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 /// The Grants window (docs/UI-SPEC.md 3.3): what is pre-approved, with its
 /// badges and time left, revoke one, revoke all, and the "New standing
@@ -159,7 +159,7 @@ struct GrantsWindow: View {
                 let n = model.tamperedCount
                 BannerView(symbol: "exclamationmark.shield.fill", tint: .red,
                            headline: n == 1 ? "1 grant failed verification" : "\(n) grants failed verification",
-                           detail: "grantd ignores them and they never allow anything. Select one and choose Remove.", dismiss: nil)
+                           detail: "grantpin ignores them and they never allow anything. Select one and choose Remove.", dismiss: nil)
             }
             if let notice = model.notice {
                 BannerView(symbol: "checkmark.circle.fill", tint: .green, headline: notice, detail: nil, dismiss: { model.notice = nil })
@@ -187,7 +187,7 @@ struct GrantsWindow: View {
                 Label("New Standing Grant…", systemImage: "plus")
             }
             .keyboardShortcut("n", modifiers: .command)
-            .help("Create a standing grant (⌘N). grantd asks you to confirm.")
+            .help("Create a standing grant (⌘N). grantpin asks you to confirm.")
             .disabled(!model.isEnabled)
 
             Button {

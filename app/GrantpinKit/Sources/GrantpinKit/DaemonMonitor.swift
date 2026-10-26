@@ -67,7 +67,7 @@ public final class DaemonMonitor {
     /// The latest state; nil until the first poll has finished.
     public private(set) var state: ConnectionState?
     /// Why the last poll found no usable daemon, nil when it answered.
-    public private(set) var lastError: GrantdError?
+    public private(set) var lastError: GrantpinError?
     /// Whether something the user can see is open. Set by the UI; picks the
     /// polling interval.
     public var isVisible = false
@@ -122,12 +122,12 @@ public final class DaemonMonitor {
         polling = true
         defer { polling = false }
         let new: ConnectionState
-        var failure: GrantdError?
+        var failure: GrantpinError?
         do {
             new = ConnectionState.from(try await transport.status())
         } catch is CancellationError {
             return
-        } catch let e as GrantdError {
+        } catch let e as GrantpinError {
             new = .notRunning
             failure = e
         } catch {

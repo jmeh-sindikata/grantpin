@@ -7,7 +7,7 @@ import Foundation
 public struct Request: Encodable, Sendable, Equatable {
     public var v: Int = 1
     public var op: String
-    public var caller: String = "grantd-app"
+    public var caller: String = "grantpin-app"
 
     public var name: String?
     public var tags: [String]?
@@ -29,7 +29,7 @@ public struct Request: Encodable, Sendable, Equatable {
     public var argv: [String]?
     public var secrets: [String]?
 
-    public init(op: String, caller: String = "grantd-app") {
+    public init(op: String, caller: String = "grantpin-app") {
         self.op = op
         self.caller = caller
     }
@@ -76,18 +76,18 @@ public struct Response: Sendable {
     public func decodeResult<T: Decodable>(_ type: T.Type) throws -> T {
         do {
             guard let r = try Wire.decoder.decode(ResultEnvelope<T>.self, from: line).result else {
-                throw GrantdError.malformedResponse("response has no result")
+                throw GrantpinError.malformedResponse("response has no result")
             }
             return r
-        } catch let e as GrantdError {
+        } catch let e as GrantpinError {
             throw e
         } catch {
-            throw GrantdError.malformedResponse("result does not decode as \(T.self)")
+            throw GrantpinError.malformedResponse("result does not decode as \(T.self)")
         }
     }
 
     /// The error this response stands for, or nil when `ok`.
-    var error: GrantdError? {
+    var error: GrantpinError? {
         ok ? nil : .daemon(category: ErrorCategory(wire: category), reason: ErrorReason(wire: reason), message: message)
     }
 
@@ -119,10 +119,10 @@ public struct Response: Sendable {
         do {
             head = try JSONDecoder().decode(Head.self, from: line)
         } catch {
-            throw GrantdError.malformedResponse("not a protocol message")
+            throw GrantpinError.malformedResponse("not a protocol message")
         }
         if head.isStream { return nil }
-        guard let ok = head.ok else { throw GrantdError.malformedResponse("neither a stream frame nor a response") }
+        guard let ok = head.ok else { throw GrantpinError.malformedResponse("neither a stream frame nor a response") }
         return Response(ok: ok, category: head.error ?? "", reason: head.reason ?? "", message: head.message ?? "",
                         auditID: head.auditID ?? "", grantID: head.grantID ?? "", line: line)
     }
@@ -180,20 +180,20 @@ final class RequestLine: @unchecked Sendable, CustomStringConvertible, CustomDeb
         do {
             header = try Request.encoder.encode(request)
         } catch {
-            throw GrantdError.invalidRequest("cannot encode request")
+            throw GrantpinError.invalidRequest("cannot encode request")
         }
-        guard header.last == UInt8(ascii: "}") else { throw GrantdError.invalidRequest("cannot encode request") }
+        guard header.last == UInt8(ascii: "}") else { throw GrantpinError.invalidRequest("cannot encode request") }
 
         var escaped = 0
         if let value {
             guard let n = value.withUnsafeBytes({ Self.escapedLength(of: $0) }) else {
-                throw GrantdError.invalidRequest("the value is not valid UTF-8")
+                throw GrantpinError.invalidRequest("the value is not valid UTF-8")
             }
             escaped = n
         }
         let valueMember = value == nil ? 0 : (header.count > 2 ? 1 : 0) + 9 + escaped + 1  // [,]"value":" ... "
         let total = (header.count - 1) + valueMember + 1 + 1                              // ... } \n
-        guard total <= Wire.maxLineBytes else { throw GrantdError.requestTooLarge }
+        guard total <= Wire.maxLineBytes else { throw GrantpinError.requestTooLarge }
 
         let buf = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: total)
         var i = 0

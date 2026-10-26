@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 /// One run of the Import .env sheet: the chosen file, the access the person
 /// granted to it, and the view model that talks to the helper.

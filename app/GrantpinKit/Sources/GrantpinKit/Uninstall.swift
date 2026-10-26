@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Which vault key `grantd keystore delete` removes.
+/// Which vault key `grantpin keystore delete` removes.
 public enum VaultKeyKind: Equatable, Sendable {
     /// The Keychain item of the weaker protection (`--fallback`).
     case fallback
@@ -11,7 +11,7 @@ public enum VaultKeyKind: Equatable, Sendable {
     var flag: String { self == .fallback ? "--fallback" : "--hardware" }
 }
 
-/// What `grantd keystore delete` reported.
+/// What `grantpin keystore delete` reported.
 public enum KeyDeletion: Equatable, Sendable {
     /// Exit 0.
     case deleted
@@ -31,7 +31,7 @@ public protocol KeychainItemRemoval: Sendable {
     func deleteKey(_ kind: VaultKeyKind) async -> KeyDeletion
 }
 
-/// `grantd keystore delete --fallback --yes` or `--hardware --yes`. The app
+/// `grantpin keystore delete --fallback --yes` or `--hardware --yes`. The app
 /// never passes `--force`: the service is stopped first, and a daemon that is
 /// still running is a refusal (exit 2) the sheet reports.
 public struct HelperKeystore: KeychainItemRemoval {
@@ -77,10 +77,10 @@ public enum DaemonState: Equatable, Sendable {
     /// proves nothing about whether the daemon still holds the vault.
     case unknown(String)
 
-    /// Only `GrantdError.notRunning` (socket absent or connection refused)
+    /// Only `GrantpinError.notRunning` (socket absent or connection refused)
     /// means the daemon is stopped. A daemon error is an answer.
     public static func classify(_ error: Error) -> DaemonState {
-        if let e = error as? GrantdError {
+        if let e = error as? GrantpinError {
             if e.isNotRunning { return .stopped }
             if case .daemon = e { return .answering }
             return .unknown(e.errorDescription ?? "unknown error")
@@ -103,7 +103,7 @@ public enum DaemonState: Equatable, Sendable {
 ///
 /// Order of operations: `service uninstall`; wait for the daemon to stop
 /// answering (up to 5 seconds); only then remove `vault.db`, `vault.db-wal`,
-/// `vault.db-shm` and a leftover `grantd.sock` in the vault folder, then the
+/// `vault.db-shm` and a leftover `grantpin.sock` in the vault folder, then the
 /// folder if it is empty. The vault is never deleted while the daemon may
 /// still hold it open. Deleting the vault therefore always includes stopping
 /// the service. The file operations use the default folders only.
@@ -143,7 +143,7 @@ public final class UninstallModel {
     @ObservationIgnored private let sleep: @Sendable (TimeInterval) async -> Void
     @ObservationIgnored private let unregisterLoginItem: @MainActor () -> Void
 
-    public static let vaultFiles = ["vault.db", "vault.db-wal", "vault.db-shm", "grantd.sock"]
+    public static let vaultFiles = ["vault.db", "vault.db-wal", "vault.db-shm", "grantpin.sock"]
     public static let logFiles = ["daemon.err.log", "daemon.out.log"]
 
     public static let stopLabel = "Stop and remove the background service"
@@ -153,14 +153,14 @@ public final class UninstallModel {
     public static let keyWarning =
         "Deleting the key makes the vault permanently unreadable, even if you keep the vault file."
     public static let deleteWarning =
-        "Deleting the vault permanently removes all secrets, grants and the audit log. grantd does not keep a copy and this can't be undone."
+        "Deleting the vault permanently removes all secrets, grants and the audit log. grantpin does not keep a copy and this can't be undone."
     public static let confirmationPrompt = "Type \"delete\" to confirm."
     public static let confirmationWord = "delete"
     public static let removeLabel = "Remove"
     public static let hardwareKeyNote =
         "The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. To remove it, tick \"Delete the hardware key\" when you uninstall."
     public static let tierUnknownNote =
-        "grantd did not answer, so it is not known how the vault key is protected and no key option is offered."
+        "grantpin did not answer, so it is not known how the vault key is protected and no key option is offered."
     public static let tierLockedNote =
         "The vault is locked, so it is not known how its key is protected and no key option is offered. Unlock the vault to see it."
     public static let unknownKeyNote =
@@ -169,7 +169,7 @@ public final class UninstallModel {
         "The Keychain item for weaker protection stays. It is useless without the vault file."
     public static let disconnectText = "To disconnect Claude Code, run:"
     public static let disconnectCommand = ConnectSnippets.removeCommand
-    public static let trashText = "To finish, drag grantd to the Trash."
+    public static let trashText = "To finish, drag grantpin to the Trash."
 
     public init(control: ServiceControl?, secrets: Int?, grants: Int?, keystoreTier: Tier?, isDevelopment: Bool,
                 vaultLocked: Bool = false,
@@ -265,12 +265,12 @@ public final class UninstallModel {
         var daemonStopped = false
         var daemonProblem: String?
         if problem == nil, deleteVault || willDeleteKey {
-            phase = .running("Waiting for grantd to stop…")
+            phase = .running("Waiting for grantpin to stop…")
             switch await waitForDaemonToStop() {
             case .stopped: daemonStopped = true
             case .stillRunning: break
             case .unknown(let why):
-                daemonProblem = "Could not tell whether grantd has stopped (\(DisplayText.sanitise(why, limit: 120))), so nothing was deleted."
+                daemonProblem = "Could not tell whether grantpin has stopped (\(DisplayText.sanitise(why, limit: 120))), so nothing was deleted."
             }
         }
         if let daemonProblem { problem = daemonProblem }
@@ -285,7 +285,7 @@ public final class UninstallModel {
                     done.append("The vault was deleted: secrets, grants and the audit log.")
                 }
             } else {
-                problem = "grantd is still running, so the vault was not deleted."
+                problem = "grantpin is still running, so the vault was not deleted."
             }
         }
 
@@ -340,7 +340,7 @@ public final class UninstallModel {
         var step = KeyStep()
         let capital = what.prefix(1).uppercased() + what.dropFirst()
         guard daemonStopped else {
-            step.problem = "grantd is still running, so the \(what) was not deleted."
+            step.problem = "grantpin is still running, so the \(what) was not deleted."
             return step
         }
         guard let keychain else {
@@ -355,7 +355,7 @@ public final class UninstallModel {
             step.gone = true
             step.notice = "\(capital) was not found, so nothing was deleted. It may have been removed already."
         case .daemonRunning:
-            step.problem = "grantd is still running, so the \(what) was not deleted."
+            step.problem = "grantpin is still running, so the \(what) was not deleted."
         case .failed(let detail):
             step.problem = "The \(what) could not be deleted." + (detail.map { " \($0)" } ?? "")
         }

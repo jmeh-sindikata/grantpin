@@ -1,5 +1,5 @@
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 /// The menu-bar popover (docs/UI-SPEC.md 3.1): the status line, the counts,
 /// the last three events and the way into the windows.
@@ -44,7 +44,7 @@ struct PopoverView: View {
             MenuRow(title: "Settings…", shortcut: "⌘,") { app.showSettings(.general) }
                 .keyboardShortcut(",")
             Divider().padding(.vertical, 6)
-            MenuRow(title: "Quit grantd", shortcut: "⌘Q") { NSApplication.shared.terminate(nil) }
+            MenuRow(title: "Quit grantpin", shortcut: "⌘Q") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q")
                 .help("Quits this app. The background service keeps running.")
         }
@@ -163,7 +163,7 @@ private struct StatusHeader: View {
     }
 }
 
-/// The status line's buttons. Start, Repair and Restart all run `grantd
+/// The status line's buttons. Start, Repair and Restart all run `grantpin
 /// service install --exe <this app> --path <PATH>`, the one way the app
 /// starts the daemon (docs/UI-SPEC.md 2.2). Set Up opens the Welcome window at
 /// the vault step, Review opens Grants, Open Logs Folder opens the folder.
@@ -203,13 +203,13 @@ private struct ActionButton: View {
 
     private var helpText: String {
         switch button {
-        case .startService: return "Installs and starts grantd's background service."
+        case .startService: return "Installs and starts grantpin's background service."
         case .repair: return "Points the background service at this app again."
-        case .restart: return "Restarts grantd's background service."
+        case .restart: return "Restarts grantpin's background service."
         case .createVault: return "Creates your vault and its key on this Mac."
         case .setUp: return "Opens the setup window."
         case .review: return "Opens the list of grants."
-        case .openLogs: return "Opens the folder with grantd's log files."
+        case .openLogs: return "Opens the folder with grantpin's log files."
         }
     }
 
@@ -228,7 +228,7 @@ private struct ActionButton: View {
     }
 }
 
-/// "Move grantd to your Applications folder first" with its button.
+/// "Move grantpin to your Applications folder first" with its button.
 private struct LocationNotice: View {
     let app: AppModel
     @State private var problem: String?

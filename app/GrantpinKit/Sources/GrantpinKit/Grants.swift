@@ -74,7 +74,7 @@ public struct GrantRow: Identifiable, Equatable, Sendable {
     /// The text of a tampered row.
     public var tamperedNote: String?
 
-    public static let tamperedText = "Failed verification. grantd ignores it. Remove it."
+    public static let tamperedText = "Failed verification. grantpin ignores it. Remove it."
     public static let soonThreshold: TimeInterval = 10 * 60
 
     public init(_ g: GrantInfo, now: Date) {
@@ -122,7 +122,7 @@ extension Confirmation {
     /// `Remove this grant?`, for a row that failed verification.
     public static let removeTampered = Confirmation(
         title: "Remove this grant?",
-        message: "grantd could not verify this grant, so it is ignored and never allows anything. Removing it clears the warning.",
+        message: "grantpin could not verify this grant, so it is ignored and never allows anything. Removing it clears the warning.",
         confirmLabel: "Remove")
 
     /// `Revoke all {n} grants?`
@@ -176,8 +176,8 @@ public final class GrantsViewModel {
     public var disabledReason: String? {
         switch connection {
         case .ready?: return nil
-        case nil: return "Checking grantd…"
-        case .notRunning?: return "grantd is not running. Start it from the menu bar item."
+        case nil: return "Checking grantpin…"
+        case .notRunning?: return "grantpin is not running. Start it from the menu bar item."
         case .locked?: return "Unlock your Mac to use grants."
         case .notInitialized?: return "There is no vault yet. Create one from the menu bar item."
         }
@@ -220,7 +220,7 @@ public final class GrantsViewModel {
             selection = selection.intersection(Set(list.map(\.id)))
             if banner?.refreshAdvised == true || bannerIsFromLoad { banner = nil; bannerIsFromLoad = false }
         } catch {
-            if let e = error as? GrantdError, e.isNotRunning || e.isVaultLocked || e.isVaultNotInitialized { return }
+            if let e = error as? GrantpinError, e.isNotRunning || e.isVaultLocked || e.isVaultNotInitialized { return }
             if error is CancellationError { return }
             banner = UserMessage.from(error)
             bannerIsFromLoad = true

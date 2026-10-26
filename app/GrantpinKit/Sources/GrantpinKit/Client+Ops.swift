@@ -92,7 +92,7 @@ extension Client {
         expires: Date? = nil, minTier: Tier? = nil, clear: Set<ClearField> = []
     ) async throws -> String {
         if let tags, tags.isEmpty {
-            throw GrantdError.invalidRequest("an empty tag list is not sent; use clear: [.tags]")
+            throw GrantpinError.invalidRequest("an empty tag list is not sent; use clear: [.tags]")
         }
         var r = Request(op: "update")
         r.name = name
@@ -143,7 +143,7 @@ extension Client {
     /// `grants` `add`: creates a **standing grant**.
     ///
     /// This does not create anything by itself. The daemon validates the
-    /// request, applies the folder's `.grantd.yml`, then shows its own
+    /// request, applies the folder's `.grantpin.yml`, then shows its own
     /// "Create a standing grant?" dialog and, after "Create standing grant",
     /// the Touch ID sheet. Nothing is stored before both succeed, and this
     /// call returns only when the human has answered, which may take minutes:

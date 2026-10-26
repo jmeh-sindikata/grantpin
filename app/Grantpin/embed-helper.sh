@@ -1,19 +1,19 @@
 #!/bin/sh
-# Xcode Run Script phase "Embed grantd helper" (docs/UI-SPEC.md 5.2).
+# Xcode Run Script phase "Embed grantpin helper" (docs/UI-SPEC.md 5.2).
 #
-# Builds Contents/Helpers/grantd-daemon.app inside the app being built from
-# ../bin/grantd (make helper) and ../build/bundle/helper-Info.plist. The
+# Builds Contents/Helpers/grantpin-daemon.app inside the app being built from
+# ../bin/grantpin (make helper) and ../build/bundle/helper-Info.plist. The
 # helper is NOT signed here: there is one signing path, make sign-bundle.
 #
 # Variables come from the build settings (make app passes them):
-#   DAEMON_BUNDLE_ID   bundle id of the helper, dev.grantd.app.daemon
+#   DAEMON_BUNDLE_ID   bundle id of the helper, dev.grantpin.app.daemon
 #   MARKETING_VERSION, CURRENT_PROJECT_VERSION   shown version and build number
 #   DAEMON_MIN_MACOS   LSMinimumSystemVersion of the helper, 14.0
 set -eu
 
-SRC_BIN="$SRCROOT/../bin/grantd"
+SRC_BIN="$SRCROOT/../bin/grantpin"
 TEMPLATE="$SRCROOT/../build/bundle/helper-Info.plist"
-HELPER="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/grantd-daemon.app"
+HELPER="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/grantpin-daemon.app"
 
 [ -x "$SRC_BIN" ] || { echo "error: $SRC_BIN missing: run make helper" >&2; exit 1; }
 [ -f "$TEMPLATE" ] || { echo "error: $TEMPLATE missing" >&2; exit 1; }
@@ -21,7 +21,7 @@ HELPER="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH/Helpers/grantd-daemon.app"
 
 rm -rf "$HELPER"
 mkdir -p "$HELPER/Contents/MacOS"
-cp "$SRC_BIN" "$HELPER/Contents/MacOS/grantd"
+cp "$SRC_BIN" "$HELPER/Contents/MacOS/grantpin"
 sed -e '/<!--/,/-->/d' \
     -e "s|@BUNDLE_ID@|$DAEMON_BUNDLE_ID|g" \
     -e "s|@VERSION@|$MARKETING_VERSION|g" \

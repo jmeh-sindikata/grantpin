@@ -16,9 +16,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "9C81DDEDC2A261600EED386B"
-               BuildableName = "Grantd.app"
-               BlueprintName = "Grantd"
-               ReferencedContainer = "container:Grantd.xcodeproj">
+               BuildableName = "Grantpin.app"
+               BlueprintName = "Grantpin"
+               ReferencedContainer = "container:Grantpin.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "9C81DDEDC2A261600EED386B"
-            BuildableName = "Grantd.app"
-            BlueprintName = "Grantd"
-            ReferencedContainer = "container:Grantd.xcodeproj">
+            BuildableName = "Grantpin.app"
+            BlueprintName = "Grantpin"
+            ReferencedContainer = "container:Grantpin.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -56,16 +56,16 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "9C81DDEDC2A261600EED386B"
-            BuildableName = "Grantd.app"
-            BlueprintName = "Grantd"
-            ReferencedContainer = "container:Grantd.xcodeproj">
+            BuildableName = "Grantpin.app"
+            BlueprintName = "Grantpin"
+            ReferencedContainer = "container:Grantpin.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <CommandLineArguments>
       </CommandLineArguments>
       <EnvironmentVariables>
          <EnvironmentVariable
-            key = "GRANTD_SOCKET"
+            key = "GRANTPIN_SOCKET"
             value = "/tmp/gd-dev/s.sock"
             isEnabled = "YES">
          </EnvironmentVariable>
@@ -82,9 +82,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "9C81DDEDC2A261600EED386B"
-            BuildableName = "Grantd.app"
-            BlueprintName = "Grantd"
-            ReferencedContainer = "container:Grantd.xcodeproj">
+            BuildableName = "Grantpin.app"
+            BlueprintName = "Grantpin"
+            ReferencedContainer = "container:Grantpin.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

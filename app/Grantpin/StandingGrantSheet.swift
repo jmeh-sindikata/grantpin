@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 /// The "New standing grant" form (docs/UI-SPEC.md 3.3).
 ///
@@ -180,7 +180,7 @@ struct StandingGrantSheet: View {
                     .autocorrectionDisabled()
             }
             if let m = form.ttlMessage { Hint(m, tint: .red) }
-            Hint("90 days at most. A .grantd.yml in the folder can lower that.", tint: .secondary)
+            Hint("90 days at most. A .grantpin.yml in the folder can lower that.", tint: .secondary)
             TextField("Run limit", text: $form.usesText, prompt: Text("Optional: stop after this many runs"))
                 .autocorrectionDisabled()
             if let m = form.usesMessage { Hint(m, tint: .red) }
@@ -217,7 +217,7 @@ struct StandingGrantSheet: View {
                 Button("Ask Me to Confirm…") { form.start() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!form.canSubmit)
-                    .help("grantd shows its own dialog next, then Touch ID.")
+                    .help("grantpin shows its own dialog next, then Touch ID.")
             }
         }
         .padding(12)

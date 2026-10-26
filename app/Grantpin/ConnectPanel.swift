@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 /// "Connect Claude Code" (docs/UI-SPEC.md 3.5): the exact `claude mcp add`
 /// command, the `.mcp.json` snippet, the test prompt, each with a Copy

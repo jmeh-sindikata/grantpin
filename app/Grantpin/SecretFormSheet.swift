@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 /// The Add, Edit and Replace sheet (docs/UI-SPEC.md 3.2).
 ///

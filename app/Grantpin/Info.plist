@@ -5,11 +5,11 @@
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleName</key>
-	<string>grantd</string>
+	<string>grantpin</string>
 	<key>CFBundleDisplayName</key>
-	<string>grantd</string>
+	<string>grantpin</string>
 	<key>CFBundleExecutable</key>
-	<string>grantd-app</string>
+	<string>grantpin-app</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleInfoDictionaryVersion</key>

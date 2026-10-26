@@ -213,7 +213,7 @@ public enum ValueIssue: Equatable, Sendable {
 
 extension Validators {
     /// The environment variable a secret becomes inside a command: the last
-    /// path segment, uppercased, `.` and `-` turned into `_` (README "grantd
+    /// path segment, uppercased, `.` and `-` turned into `_` (README "grantpin
     /// run"). When another secret ends in the same word the daemon uses the
     /// full name instead; the editor says so in a help text.
     public static func environmentVariable(for name: String) -> String {

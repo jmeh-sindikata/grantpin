@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 /// The Welcome window (docs/UI-SPEC.md 3.6). Each step shows as done when its
 /// condition already holds, so an existing install goes straight to Connect.
@@ -95,7 +95,7 @@ struct OnboardingWindow: View {
                 .font(.system(size: 44))
                 .foregroundStyle(Color.accentColor)
                 .accessibilityHidden(true)
-            Text("Welcome to grantd").font(.title.weight(.semibold))
+            Text("Welcome to grantpin").font(.title.weight(.semibold))
             ForEach(OnboardingModel.welcomeLines, id: \.self) { line in
                 Text(verbatim: line).fixedSize(horizontal: false, vertical: true)
             }

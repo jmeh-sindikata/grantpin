@@ -77,7 +77,7 @@ public enum AuditPairing {
         case ("allowed_new_grant", "standing"): return "Standing grant created"
         case ("allowed_new_grant", _): return "Allowed for a while (grant created)"
         case ("denied_user", _): return "You said no"
-        case ("refused_policy", _): return "Blocked by .grantd.yml"
+        case ("refused_policy", _): return "Blocked by .grantpin.yml"
         case ("refused_tier", _): return "Blocked: protection level"
         case ("error", _): return "Error"
         case ("completed", _): return "Finished"
@@ -202,7 +202,7 @@ public enum AuditPairing {
                               caller: DisplayText.sanitise(e.caller), secrets: e.secrets, result: result, summary: summary)
         }
         if isLifecycle(e) {
-            // The daemon records these with argv ["grantd", verb, name].
+            // The daemon records these with argv ["grantpin", verb, name].
             let name = e.argv.count >= 3 ? DisplayText.sanitise(e.argv[2]) : secretsText(e)
             return AuditEvent(id: e.id, rowIDs: [e.id], time: e.ts, kind: .change, title: title, command: name,
                               caller: DisplayText.sanitise(e.caller), secrets: e.secrets, result: .none,

@@ -63,7 +63,7 @@ public struct StatusLine: Equatable, Sendable {
     /// daemon's own text and is sanitised. `service` is what `service status`
     /// found while the daemon was down; `helperVersion` is the helper's
     /// `--version` (nil when unknown).
-    public static func from(_ state: ConnectionState?, lastError: GrantdError? = nil,
+    public static func from(_ state: ConnectionState?, lastError: GrantpinError? = nil,
                             service: ServiceDiagnosis? = nil, helperVersion: String? = nil) -> StatusLine {
         switch state {
         case nil:
@@ -71,7 +71,7 @@ public struct StatusLine: Equatable, Sendable {
         case .notRunning?:
             if case .socketPathTooLong? = lastError {
                 return StatusLine(level: .error, headline: "Daemon not running",
-                                  detail: "Your account name is too long for grantd's default socket path.", button: .startService)
+                                  detail: "Your account name is too long for grantpin's default socket path.", button: .startService)
             }
             if let service {
                 var line = StatusLine(level: .error, headline: service.headline, detail: service.detail)
@@ -84,25 +84,25 @@ public struct StatusLine: Equatable, Sendable {
                 return line
             }
             return StatusLine(level: .error, headline: "Daemon not running",
-                              detail: "grantd is not running in the background. Start it to use your secrets.", button: .startService)
+                              detail: "grantpin is not running in the background. Start it to use your secrets.", button: .startService)
         case .locked(let message)?:
-            var detail = "Unlock your Mac to use secrets. grantd keeps trying."
+            var detail = "Unlock your Mac to use secrets. grantpin keeps trying."
             if let message, !message.isEmpty { detail += " " + DisplayText.sanitise(message) }
             return StatusLine(level: .warning, headline: "Vault locked", detail: detail)
         case .notInitialized?:
             return StatusLine(level: .warning, headline: "No vault yet",
                               detail: "Create a vault to start storing secrets.", button: .setUp)
         case .ready(let s)?:
-            var line = StatusLine(level: .ok, headline: "grantd is running", secrets: s.secrets, activeGrants: s.activeGrants)
+            var line = StatusLine(level: .ok, headline: "grantpin is running", secrets: s.secrets, activeGrants: s.activeGrants)
             if s.protoV != 1 {
                 line.level = .warning
-                line.headline = "grantd is out of step"
+                line.headline = "grantpin is out of step"
                 line.detail = "This app and the background service are out of step."
                 line.button = .repair
             } else if let h = helperVersion, h != s.version {
                 line.level = .warning
-                line.headline = "grantd was updated"
-                line.detail = "grantd was updated. Restart the background service to finish."
+                line.headline = "grantpin was updated"
+                line.detail = "grantpin was updated. Restart the background service to finish."
                 line.button = .restart
             } else if s.tamperedGrants > 0 {
                 line.level = .warning
@@ -138,18 +138,18 @@ public struct MenuBarIcon: Equatable, Sendable {
     public static func from(_ state: ConnectionState?) -> MenuBarIcon {
         switch state {
         case nil:
-            return MenuBarIcon(symbol: "lock.shield", subdued: true, label: "grantd: checking")
+            return MenuBarIcon(symbol: "lock.shield", subdued: true, label: "grantpin: checking")
         case .notRunning?:
-            return MenuBarIcon(symbol: "lock.trianglebadge.exclamationmark", subdued: false, label: "grantd: not running")
+            return MenuBarIcon(symbol: "lock.trianglebadge.exclamationmark", subdued: false, label: "grantpin: not running")
         case .notInitialized?:
-            return MenuBarIcon(symbol: "lock.trianglebadge.exclamationmark", subdued: false, label: "grantd: no vault yet")
+            return MenuBarIcon(symbol: "lock.trianglebadge.exclamationmark", subdued: false, label: "grantpin: no vault yet")
         case .locked?:
-            return MenuBarIcon(symbol: "lock.shield", subdued: true, label: "grantd: vault locked")
+            return MenuBarIcon(symbol: "lock.shield", subdued: true, label: "grantpin: vault locked")
         case .ready(let s)?:
             if s.tamperedGrants > 0 {
-                return MenuBarIcon(symbol: "lock.trianglebadge.exclamationmark", subdued: false, label: "grantd: grants failed verification")
+                return MenuBarIcon(symbol: "lock.trianglebadge.exclamationmark", subdued: false, label: "grantpin: grants failed verification")
             }
-            return MenuBarIcon(symbol: "lock.shield.fill", subdued: false, label: "grantd")
+            return MenuBarIcon(symbol: "lock.shield.fill", subdued: false, label: "grantpin")
         }
     }
 }

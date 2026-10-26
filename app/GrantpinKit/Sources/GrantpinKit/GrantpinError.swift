@@ -102,7 +102,7 @@ public enum ErrorReason: Equatable, Hashable, Sendable {
 /// protocol's `error` category, `reason` and `message`; the other cases are
 /// failures on this side of the socket. `message` is display only: the daemon
 /// already redacted it, but it is still untrusted text (use `DisplayText`).
-public enum GrantdError: Error, Equatable, Sendable {
+public enum GrantpinError: Error, Equatable, Sendable {
     /// Nothing is listening on the socket (ENOENT or ECONNREFUSED).
     case notRunning
     /// The socket path is longer than a Unix socket address allows.
@@ -119,7 +119,7 @@ public enum GrantdError: Error, Equatable, Sendable {
     case timeout
     /// The process on the other end of the socket is not signed by this app's
     /// team, and the request carried a secret value. Nothing was sent.
-    case peerNotGrantd
+    case peerNotGrantpin
     /// A line that is not valid protocol JSON, or a result that does not decode.
     case malformedResponse(String)
     /// A socket-level failure, with the errno text.
@@ -156,19 +156,19 @@ public enum GrantdError: Error, Equatable, Sendable {
 }
 
 /// The name the spec uses (docs/UI-SPEC.md 2.7).
-public typealias DaemonError = GrantdError
+public typealias DaemonError = GrantpinError
 
-extension GrantdError: LocalizedError {
+extension GrantpinError: LocalizedError {
     public var errorDescription: String? {
         switch self {
-        case .notRunning: return "grantd is not running."
+        case .notRunning: return "grantpin is not running."
         case .socketPathTooLong(let n): return "The socket path is \(n) bytes, over the Unix socket limit."
         case .requestTooLarge: return "The request is too large."
         case .invalidRequest(let why): return "Not sent: \(why)"
-        case .peerNotGrantd: return PeerVerifier.mismatchMessage
-        case .noResponse: return "grantd closed the connection without answering."
-        case .timeout: return "grantd took too long to answer."
-        case .malformedResponse(let why): return "grantd printed something unexpected: \(why)"
+        case .peerNotGrantpin: return PeerVerifier.mismatchMessage
+        case .noResponse: return "grantpin closed the connection without answering."
+        case .timeout: return "grantpin took too long to answer."
+        case .malformedResponse(let why): return "grantpin printed something unexpected: \(why)"
         case .io(let why): return "Socket error: \(why)"
         case .daemon(let category, let reason, let message):
             let head = reason == .absent ? category.wire : "\(category.wire): \(reason.wire)"

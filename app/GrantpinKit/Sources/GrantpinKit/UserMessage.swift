@@ -42,30 +42,30 @@ public struct UserMessage: Equatable, Sendable {
     /// Maps any error a call can throw.
     public static func from(_ error: Error) -> UserMessage {
         if error is CancellationError { return UserMessage("The request was cancelled.", severity: .info) }
-        guard let e = error as? GrantdError else { return UserMessage("grantd could not finish this.") }
+        guard let e = error as? GrantpinError else { return UserMessage("grantpin could not finish this.") }
         return from(e)
     }
 
-    public static func from(_ error: GrantdError) -> UserMessage {
+    public static func from(_ error: GrantpinError) -> UserMessage {
         switch error {
         case .notRunning:
-            return UserMessage("grantd is not running.", detail: "Start it from the menu bar item.")
+            return UserMessage("grantpin is not running.", detail: "Start it from the menu bar item.")
         case .socketPathTooLong:
-            return UserMessage("Your account name is too long for grantd's default socket path.")
+            return UserMessage("Your account name is too long for grantpin's default socket path.")
         case .requestTooLarge:
             return UserMessage("That is too large to send.", detail: "A value can be 1 MiB at most.")
         case .invalidRequest(let why):
             return UserMessage("Not sent.", detail: DisplayText.sanitise(why))
-        case .peerNotGrantd:
+        case .peerNotGrantpin:
             return UserMessage(PeerVerifier.mismatchMessage)
         case .noResponse:
-            return UserMessage("grantd closed the connection without answering.")
+            return UserMessage("grantpin closed the connection without answering.")
         case .timeout:
-            return UserMessage("grantd took too long to answer.")
+            return UserMessage("grantpin took too long to answer.")
         case .malformedResponse:
-            return UserMessage("grantd printed something unexpected.")
+            return UserMessage("grantpin printed something unexpected.")
         case .io:
-            return UserMessage("The app could not talk to grantd.")
+            return UserMessage("The app could not talk to grantpin.")
         case .daemon(let category, let reason, let message):
             let detail = message.isEmpty ? nil : DisplayText.sanitise(message)
             return fromDaemon(category: category, reason: reason, detail: detail)
@@ -85,23 +85,23 @@ public struct UserMessage: Equatable, Sendable {
         case .userDenied:
             return UserMessage("You cancelled the confirmation.", severity: .info)
         case .approverUnavailable:
-            return UserMessage("grantd could not show the confirmation dialog. Make sure you are logged in at this Mac and have a device password, then try again.")
+            return UserMessage("grantpin could not show the confirmation dialog. Make sure you are logged in at this Mac and have a device password, then try again.")
         case .policyRefused:
-            return UserMessage("A .grantd.yml file in that folder does not allow this.", detail: detail)
+            return UserMessage("A .grantpin.yml file in that folder does not allow this.", detail: detail)
         case .tierUnmet:
             return UserMessage("This secret needs a stronger protection level than this vault provides.", detail: detail)
         case .secretExpired:
             return UserMessage("That secret has expired.", refreshAdvised: true)
         case .badRequest:
-            return UserMessage("grantd rejected the request:", detail: detail)
+            return UserMessage("grantpin rejected the request:", detail: detail)
         case .unsupportedVersion:
             return UserMessage("This app and the background service are out of step. Use Repair in Settings.", action: .repair)
         case .canceled:
             return UserMessage("The request was cancelled.", severity: .info)
         case .timeout:
-            return UserMessage("grantd took too long to answer.")
+            return UserMessage("grantpin took too long to answer.")
         case .internalError:
-            return UserMessage("grantd had an internal error. Details are in the log.", action: .openLogs)
+            return UserMessage("grantpin had an internal error. Details are in the log.", action: .openLogs)
         case .vaultLocked:
             return UserMessage("Unlock your Mac to use secrets.", severity: .warning)
         case .responseTooLarge:
@@ -110,11 +110,11 @@ public struct UserMessage: Equatable, Sendable {
             break
         }
         switch category {
-        case .denied: return UserMessage("grantd said no.", detail: detail)
-        case .refused: return UserMessage("grantd refused this.", detail: detail)
-        case .badRequest: return UserMessage("grantd rejected this request.", detail: detail)
+        case .denied: return UserMessage("grantpin said no.", detail: detail)
+        case .refused: return UserMessage("grantpin refused this.", detail: detail)
+        case .badRequest: return UserMessage("grantpin rejected this request.", detail: detail)
         case .notFound: return UserMessage("Not found.", detail: detail, refreshAdvised: true)
-        case .failed, .unknown: return UserMessage("grantd could not finish this.", detail: detail)
+        case .failed, .unknown: return UserMessage("grantpin could not finish this.", detail: detail)
         }
     }
 }

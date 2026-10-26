@@ -47,7 +47,7 @@ public struct Client: Sendable {
     /// Read-only requests are never checked.
     public let peerCheck: PeerCheck
 
-    public init(socketPath: String = SocketLocator.resolve().path, caller: String = "grantd-app",
+    public init(socketPath: String = SocketLocator.resolve().path, caller: String = "grantpin-app",
                 peerCheck: PeerCheck = .automatic) {
         self.socketPath = socketPath
         self.caller = caller
@@ -57,7 +57,7 @@ public struct Client: Sendable {
     // MARK: - Calls
 
     /// Sends `request` and returns the final response. Throws
-    /// `GrantdError.daemon` when the daemon answers `ok: false`, and
+    /// `GrantpinError.daemon` when the daemon answers `ok: false`, and
     /// `CancellationError` when the calling task is cancelled.
     public func call(_ request: Request, timeout: TimeInterval = Timeout.standard) async throws -> Response {
         var request = request
@@ -72,8 +72,8 @@ public struct Client: Sendable {
     /// path, once the call is over.
     ///
     /// Because the request carries a plaintext value, the peer's code is
-    /// checked first (`PeerVerifier`); a socket that is not answered by grantd
-    /// gets nothing and the call throws `GrantdError.peerNotGrantd`.
+    /// checked first (`PeerVerifier`); a socket that is not answered by grantpin
+    /// gets nothing and the call throws `GrantpinError.peerNotGrantpin`.
     func call(_ request: Request, value: inout Data, timeout: TimeInterval = Timeout.standard) async throws -> Response {
         defer { value.resetBytes(in: 0..<value.count) }
         var request = request
@@ -128,7 +128,7 @@ public struct Client: Sendable {
         }
     }
 
-    private static let queue = DispatchQueue(label: "dev.grantd.client", qos: .userInitiated, attributes: .concurrent)
+    private static let queue = DispatchQueue(label: "dev.grantpin.client", qos: .userInitiated, attributes: .concurrent)
 
     // MARK: - Transport
 
@@ -143,10 +143,10 @@ public struct Client: Sendable {
     static func connect(path: String, cancel: CancelFlag) throws -> Int32 {
         if cancel.isSet { throw CancellationError() }
         let pathBytes = Array(path.utf8)
-        guard pathBytes.count <= SocketLocator.maxBytes else { throw GrantdError.socketPathTooLong(pathBytes.count) }
+        guard pathBytes.count <= SocketLocator.maxBytes else { throw GrantpinError.socketPathTooLong(pathBytes.count) }
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { throw GrantdError.io(String(cString: strerror(errno))) }
+        guard fd >= 0 else { throw GrantpinError.io(String(cString: strerror(errno))) }
         do {
             var on: Int32 = 1
             setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
@@ -165,16 +165,16 @@ public struct Client: Sendable {
             }
             if connected != 0 {
                 switch errno {
-                case ENOENT, ECONNREFUSED: throw GrantdError.notRunning
+                case ENOENT, ECONNREFUSED: throw GrantpinError.notRunning
                 case EINPROGRESS, EAGAIN:
                     // A local socket normally connects at once; wait briefly if not.
                     try waitFor(fd, events: Int16(POLLOUT), deadline: Date().addingTimeInterval(Timeout.connect), cancel: cancel)
                     var err: Int32 = 0
                     var len = socklen_t(MemoryLayout<Int32>.size)
                     getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len)
-                    if err == ENOENT || err == ECONNREFUSED { throw GrantdError.notRunning }
-                    if err != 0 { throw GrantdError.io(String(cString: strerror(err))) }
-                default: throw GrantdError.io(String(cString: strerror(errno)))
+                    if err == ENOENT || err == ECONNREFUSED { throw GrantpinError.notRunning }
+                    if err != 0 { throw GrantpinError.io(String(cString: strerror(err))) }
+                default: throw GrantpinError.io(String(cString: strerror(errno)))
                 }
             }
             return fd
@@ -184,9 +184,9 @@ public struct Client: Sendable {
         }
     }
 
-    /// Throws `peerNotGrantd` unless the peer of `fd` passes `policy`.
+    /// Throws `peerNotGrantpin` unless the peer of `fd` passes `policy`.
     static func requirePeer(_ fd: Int32, _ policy: PeerCheck) throws {
-        if PeerVerifier.check(socket: fd, using: policy) == .mismatch { throw GrantdError.peerNotGrantd }
+        if PeerVerifier.check(socket: fd, using: policy) == .mismatch { throw GrantpinError.peerNotGrantpin }
     }
 
     /// One exchange on a fresh connection. Does not wipe `line`. With a
@@ -210,8 +210,8 @@ public struct Client: Sendable {
                     continue
                 }
                 if n < 0 && errno == EINTR { continue }
-                if n < 0 && (errno == EPIPE || errno == ECONNRESET) { throw GrantdError.noResponse }
-                throw GrantdError.io(String(cString: strerror(errno)))
+                if n < 0 && (errno == EPIPE || errno == ECONNRESET) { throw GrantpinError.noResponse }
+                throw GrantpinError.io(String(cString: strerror(errno)))
             }
         }
         // The request is out: zero the buffer now, before waiting for the answer.
@@ -231,17 +231,17 @@ public struct Client: Sendable {
             }
             scanned = buffer.count
             // A line, newline included, may be at most maxLineBytes.
-            if buffer.count >= maxLineBytes { throw GrantdError.malformedResponse("line too long") }
+            if buffer.count >= maxLineBytes { throw GrantpinError.malformedResponse("line too long") }
             let n = read(fd, &chunk, chunk.count)
             if n > 0 { buffer.append(chunk, count: n); continue }
-            if n == 0 { throw GrantdError.noResponse }
+            if n == 0 { throw GrantpinError.noResponse }
             if errno == EAGAIN || errno == EWOULDBLOCK {
                 try waitFor(fd, events: Int16(POLLIN), deadline: deadline, cancel: cancel)
                 continue
             }
             if errno == EINTR { continue }
-            if errno == ECONNRESET { throw GrantdError.noResponse }
-            throw GrantdError.io(String(cString: strerror(errno)))
+            if errno == ECONNRESET { throw GrantpinError.noResponse }
+            throw GrantpinError.io(String(cString: strerror(errno)))
         }
     }
 
@@ -251,11 +251,11 @@ public struct Client: Sendable {
         while true {
             if cancel.isSet { throw CancellationError() }
             let remaining = deadline.timeIntervalSinceNow
-            if remaining <= 0 { throw GrantdError.timeout }
+            if remaining <= 0 { throw GrantpinError.timeout }
             var p = pollfd(fd: fd, events: events, revents: 0)
             let r = poll(&p, 1, Int32(min(remaining, 0.1) * 1000) + 1)
             if r > 0 { return }
-            if r < 0 && errno != EINTR { throw GrantdError.io(String(cString: strerror(errno))) }
+            if r < 0 && errno != EINTR { throw GrantpinError.io(String(cString: strerror(errno))) }
         }
     }
 }

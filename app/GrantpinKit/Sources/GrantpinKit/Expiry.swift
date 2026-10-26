@@ -21,7 +21,7 @@ public enum ExpiryError: Error, Equatable, Sendable {
 }
 
 /// Parses the expiry texts the CLI accepts (`--expires 30d`), the same way
-/// (cmd/grantd/clihelp.go `parseDuration`): `Nd` days and `Nw` weeks with N at
+/// (cmd/grantpin/clihelp.go `parseDuration`): `Nd` days and `Nw` weeks with N at
 /// most 36500, otherwise a Go `time.ParseDuration` string (`12h`, `90m`,
 /// `1h30m`, `1.5h`, `2s`, `100ms`). Surrounding whitespace is ignored. Like
 /// the CLI, a duration of zero or less is rejected as "must be positive".
@@ -47,7 +47,7 @@ public enum ExpiryParser {
         return seconds
     }
 
-    /// `now` plus the duration: what `grantd set --expires` sends.
+    /// `now` plus the duration: what `grantpin set --expires` sends.
     public static func date(from text: String, now: Date = Date()) throws -> Date {
         now.addingTimeInterval(try parseDuration(text))
     }

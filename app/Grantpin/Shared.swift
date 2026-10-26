@@ -1,5 +1,5 @@
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 enum WindowID {
     static let secrets = "secrets"

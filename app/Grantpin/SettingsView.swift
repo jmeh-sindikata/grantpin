@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 /// The Settings window (docs/UI-SPEC.md 3.5): General, Connect, Security &
 /// data and Uninstall. Everything that changes the system asks first.
@@ -95,7 +95,7 @@ private struct GeneralSettings: View {
 
     private var loginSection: some View {
         Section("Startup") {
-            Toggle("Start grantd when I log in", isOn: Binding(
+            Toggle("Start grantpin when I log in", isOn: Binding(
                 get: { model.startAtLogin },
                 set: { model.setStartAtLogin($0) }))
                 .disabled(!model.loginItemAvailable)
@@ -110,7 +110,7 @@ private struct GeneralSettings: View {
 
     private var serviceSection: some View {
         Section("Background service") {
-            Toggle("Keep grantd running in the background", isOn: Binding(
+            Toggle("Keep grantpin running in the background", isOn: Binding(
                 get: { model.backgroundServiceOn },
                 set: { on in
                     if on { Task { await model.install() } } else { confirmingStop = true }
@@ -278,7 +278,7 @@ private struct UninstallSettings: View {
             Section {
                 Text("Removes the background service, and optionally your vault, the logs and the key that protects the vault. Nothing is removed until you choose it on the next screen.")
                     .fixedSize(horizontal: false, vertical: true)
-                Button("Uninstall grantd…") { sheet = makeModel() }
+                Button("Uninstall grantpin…") { sheet = makeModel() }
             }
             if let reason = app.settings.controlsDisabledReason {
                 Section { Hint(reason, tint: .secondary) }

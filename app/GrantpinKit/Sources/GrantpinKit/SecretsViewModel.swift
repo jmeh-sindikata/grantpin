@@ -69,8 +69,8 @@ public final class SecretsViewModel {
     public var disabledReason: String? {
         switch connection {
         case .ready?: return nil
-        case nil: return "Checking grantd…"
-        case .notRunning?: return "grantd is not running. Start it from the menu bar item."
+        case nil: return "Checking grantpin…"
+        case .notRunning?: return "grantpin is not running. Start it from the menu bar item."
         case .locked?: return "Unlock your Mac to use secrets."
         case .notInitialized?: return "There is no vault yet. Create one from the menu bar item."
         }
@@ -132,7 +132,7 @@ public final class SecretsViewModel {
     }
 
     private func handleLoadFailure(_ error: Error) {
-        if let e = error as? GrantdError, e.isNotRunning || e.isVaultLocked || e.isVaultNotInitialized { return }
+        if let e = error as? GrantpinError, e.isNotRunning || e.isVaultLocked || e.isVaultNotInitialized { return }
         if error is CancellationError { return }
         banner = UserMessage.from(error)
         bannerIsFromLoad = true

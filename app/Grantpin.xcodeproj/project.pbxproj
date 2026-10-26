@@ -7,8 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		3861D158F505B6C7F57F3141 /* GrantdKit in Frameworks */ = {isa = PBXBuildFile; productRef = 942135EB8A9FB7E7BD15EFA8 /* GrantdKit */; };
-		5C085FAC8FEB67B623B54642 /* GrantdApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B24A03269C1DC5E93C541E /* GrantdApp.swift */; };
+		3861D158F505B6C7F57F3141 /* GrantpinKit in Frameworks */ = {isa = PBXBuildFile; productRef = 942135EB8A9FB7E7BD15EFA8 /* GrantpinKit */; };
+		5C085FAC8FEB67B623B54642 /* GrantpinApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52B24A03269C1DC5E93C541E /* GrantpinApp.swift */; };
 		3B1BD0D3E3B196288B17828C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4109B21588439DAB04A5BA4C /* AppModel.swift */; };
 		12D5C364B5F02AA3ABD55AD2 /* PopoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84B9C36C92070CA4C8676037 /* PopoverView.swift */; };
 		DF2577C928CC5F1187DE36E4 /* SecretsWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37DC199D26979047FB01054D /* SecretsWindow.swift */; };
@@ -27,9 +27,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		02EECEE92C8D6E312059344F /* Grantd.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Grantd.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		07ECEF67C18251606441847E /* GrantdKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GrantdKit; path = GrantdKit; sourceTree = SOURCE_ROOT; };
-		52B24A03269C1DC5E93C541E /* GrantdApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrantdApp.swift; sourceTree = "<group>"; };
+		02EECEE92C8D6E312059344F /* Grantpin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Grantpin.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		07ECEF67C18251606441847E /* GrantpinKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = GrantpinKit; path = GrantpinKit; sourceTree = SOURCE_ROOT; };
+		52B24A03269C1DC5E93C541E /* GrantpinApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrantpinApp.swift; sourceTree = "<group>"; };
 		4109B21588439DAB04A5BA4C /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		84B9C36C92070CA4C8676037 /* PopoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverView.swift; sourceTree = "<group>"; };
 		37DC199D26979047FB01054D /* SecretsWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretsWindow.swift; sourceTree = "<group>"; };
@@ -52,7 +52,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3861D158F505B6C7F57F3141 /* GrantdKit in Frameworks */,
+				3861D158F505B6C7F57F3141 /* GrantpinKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -62,7 +62,7 @@
 		60DD8F1843CB9FCF777C3C0B = {
 			isa = PBXGroup;
 			children = (
-				DC62B163EC0CBE5AF426A2FE /* Grantd */,
+				DC62B163EC0CBE5AF426A2FE /* Grantpin */,
 				A01360F8FDCA5234BA31A17C /* Packages */,
 				C4948404802887E856D31B1C /* Products */,
 			);
@@ -71,7 +71,7 @@
 		A01360F8FDCA5234BA31A17C /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				07ECEF67C18251606441847E /* GrantdKit */,
+				07ECEF67C18251606441847E /* GrantpinKit */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -79,15 +79,15 @@
 		C4948404802887E856D31B1C /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				02EECEE92C8D6E312059344F /* Grantd.app */,
+				02EECEE92C8D6E312059344F /* Grantpin.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		DC62B163EC0CBE5AF426A2FE /* Grantd */ = {
+		DC62B163EC0CBE5AF426A2FE /* Grantpin */ = {
 			isa = PBXGroup;
 			children = (
-				52B24A03269C1DC5E93C541E /* GrantdApp.swift */,
+				52B24A03269C1DC5E93C541E /* GrantpinApp.swift */,
 				73E357C154DF24DB222A1F3D /* Shared.swift */,
 				4109B21588439DAB04A5BA4C /* AppModel.swift */,
 				84B9C36C92070CA4C8676037 /* PopoverView.swift */,
@@ -104,31 +104,31 @@
 				3C5CDC3A723274EC7827AF47 /* UninstallSheet.swift */,
 				6F95BDCB1329220F307BF1B4 /* OnboardingWindow.swift */,
 			);
-			path = Grantd;
+			path = Grantpin;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		9C81DDEDC2A261600EED386B /* Grantd */ = {
+		9C81DDEDC2A261600EED386B /* Grantpin */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 458A683EAA657537A53765CA /* Build configuration list for PBXNativeTarget "Grantd" */;
+			buildConfigurationList = 458A683EAA657537A53765CA /* Build configuration list for PBXNativeTarget "Grantpin" */;
 			buildPhases = (
 				DF3386C99873EC712D27AE4E /* Sources */,
 				91FC69D2EF6E3528B6E69971 /* Frameworks */,
 				A1B2C3D4E5F60718293A4B5E /* Resources */,
-				689EADE2CDF0C517A39E4555 /* Embed grantd helper */,
+				689EADE2CDF0C517A39E4555 /* Embed grantpin helper */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = Grantd;
+			name = Grantpin;
 			packageProductDependencies = (
-				942135EB8A9FB7E7BD15EFA8 /* GrantdKit */,
+				942135EB8A9FB7E7BD15EFA8 /* GrantpinKit */,
 			);
-			productName = Grantd;
-			productReference = 02EECEE92C8D6E312059344F /* Grantd.app */;
+			productName = Grantpin;
+			productReference = 02EECEE92C8D6E312059344F /* Grantpin.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -145,7 +145,7 @@
 					};
 				};
 			};
-			buildConfigurationList = BB8FD5AD7D517262F413C8D7 /* Build configuration list for PBXProject "Grantd" */;
+			buildConfigurationList = BB8FD5AD7D517262F413C8D7 /* Build configuration list for PBXProject "Grantpin" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -155,14 +155,14 @@
 			mainGroup = 60DD8F1843CB9FCF777C3C0B;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				886C146D85AF7323A0DE33DE /* XCLocalSwiftPackageReference "GrantdKit" */,
+				886C146D85AF7323A0DE33DE /* XCLocalSwiftPackageReference "GrantpinKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C4948404802887E856D31B1C /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				9C81DDEDC2A261600EED386B /* Grantd */,
+				9C81DDEDC2A261600EED386B /* Grantpin */,
 			);
 		};
 /* End PBXProject section */
@@ -180,7 +180,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		689EADE2CDF0C517A39E4555 /* Embed grantd helper */ = {
+		689EADE2CDF0C517A39E4555 /* Embed grantpin helper */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -188,20 +188,20 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$(SRCROOT)/../bin/grantd",
+				"$(SRCROOT)/../bin/grantpin",
 				"$(SRCROOT)/../build/bundle/helper-Info.plist",
-				"$(SRCROOT)/Grantd/embed-helper.sh",
+				"$(SRCROOT)/Grantpin/embed-helper.sh",
 			);
-			name = "Embed grantd helper";
+			name = "Embed grantpin helper";
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/grantd-daemon.app/Contents/MacOS/grantd",
-				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/grantd-daemon.app/Contents/Info.plist",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/grantpin-daemon.app/Contents/Info.plist",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"$SRCROOT/Grantd/embed-helper.sh\"";
+			shellScript = "\"$SRCROOT/Grantpin/embed-helper.sh\"";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -210,7 +210,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5C085FAC8FEB67B623B54642 /* GrantdApp.swift in Sources */,
+				5C085FAC8FEB67B623B54642 /* GrantpinApp.swift in Sources */,
 				2F224B478A9AD7293D5D0241 /* Shared.swift in Sources */,
 				3B1BD0D3E3B196288B17828C /* AppModel.swift in Sources */,
 				12D5C364B5F02AA3ABD55AD2 /* PopoverView.swift in Sources */,
@@ -265,7 +265,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
-				DAEMON_BUNDLE_ID = dev.grantd.app.daemon;
+				DAEMON_BUNDLE_ID = dev.grantpin.app.daemon;
 				DAEMON_MIN_MACOS = 14.0;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -302,13 +302,13 @@
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Grantd/Info.plist;
+				INFOPLIST_FILE = Grantpin/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.grantd.app;
-				PRODUCT_NAME = "grantd-app";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.grantpin.app;
+				PRODUCT_NAME = "grantpin-app";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -321,13 +321,13 @@
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = Grantd/Info.plist;
+				INFOPLIST_FILE = Grantpin/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.grantd.app;
-				PRODUCT_NAME = "grantd-app";
+				PRODUCT_BUNDLE_IDENTIFIER = dev.grantpin.app;
+				PRODUCT_NAME = "grantpin-app";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -367,7 +367,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
-				DAEMON_BUNDLE_ID = dev.grantd.app.daemon;
+				DAEMON_BUNDLE_ID = dev.grantpin.app.daemon;
 				DAEMON_MIN_MACOS = 14.0;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -406,7 +406,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		458A683EAA657537A53765CA /* Build configuration list for PBXNativeTarget "Grantd" */ = {
+		458A683EAA657537A53765CA /* Build configuration list for PBXNativeTarget "Grantpin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				3B67054C7FCAEF4EC6555A3A /* Debug */,
@@ -415,7 +415,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		BB8FD5AD7D517262F413C8D7 /* Build configuration list for PBXProject "Grantd" */ = {
+		BB8FD5AD7D517262F413C8D7 /* Build configuration list for PBXProject "Grantpin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				9C9414595282CEB6E05842E0 /* Debug */,
@@ -427,16 +427,16 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		886C146D85AF7323A0DE33DE /* XCLocalSwiftPackageReference "GrantdKit" */ = {
+		886C146D85AF7323A0DE33DE /* XCLocalSwiftPackageReference "GrantpinKit" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = GrantdKit;
+			relativePath = GrantpinKit;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		942135EB8A9FB7E7BD15EFA8 /* GrantdKit */ = {
+		942135EB8A9FB7E7BD15EFA8 /* GrantpinKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = GrantdKit;
+			productName = GrantpinKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

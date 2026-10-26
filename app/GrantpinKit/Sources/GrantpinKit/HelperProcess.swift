@@ -1,6 +1,6 @@
 import Foundation
 
-/// Runs one short-lived helper process (`grantd init`, `service install`,
+/// Runs one short-lived helper process (`grantpin init`, `service install`,
 /// `import`, or a login shell asked for its PATH) with a replaced
 /// environment, a timeout and capped output (docs/UI-SPEC.md 2.6).
 ///
@@ -19,7 +19,7 @@ enum HelperProcess {
     ///
     /// - Parameter standardInput: the descriptor to use as stdin; nil is
     ///   `/dev/null`. The caller keeps ownership and closes it.
-    /// - Throws: `GrantdError.io` if the process cannot be started.
+    /// - Throws: `GrantpinError.io` if the process cannot be started.
     static func run(executable: URL, arguments: [String], environment: [String: String],
                     standardInput: FileHandle?, timeout: TimeInterval,
                     outputCap: Int = ImportRunner.outputCap,
@@ -69,7 +69,7 @@ enum HelperProcess {
                     // The write ends are still ours; closing them ends the readers.
                     try? out.fileHandleForWriting.close()
                     try? err.fileHandleForWriting.close()
-                    cont.resume(throwing: GrantdError.io("cannot start the helper"))
+                    cont.resume(throwing: GrantpinError.io("cannot start the helper"))
                     return
                 }
                 state.launched()

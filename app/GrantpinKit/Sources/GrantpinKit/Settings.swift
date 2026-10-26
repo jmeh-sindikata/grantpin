@@ -71,10 +71,10 @@ public struct SecurityFacts: Equatable, Sendable {
 /// The paths the app shows and opens: the vault folder, the logs folder.
 public enum AppPaths {
     public static func vaultFolder(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
-        home.appendingPathComponent("Library/Application Support/grantd", isDirectory: true)
+        home.appendingPathComponent("Library/Application Support/grantpin", isDirectory: true)
     }
     public static func logsFolder(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
-        home.appendingPathComponent("Library/Logs/grantd", isDirectory: true)
+        home.appendingPathComponent("Library/Logs/grantpin", isDirectory: true)
     }
 }
 
@@ -112,9 +112,9 @@ public final class SettingsModel {
     @ObservationIgnored private let pathDetector: PathDetector
     @ObservationIgnored private let onChanged: @MainActor () async -> Void
 
-    public static let pathLabel = "Where grantd looks for commands"
-    public static let pathHelp = "Programs that agents run through grantd can only find commands in these folders."
-    public static let approvalNeeded = "Allow grantd in System Settings > General > Login Items"
+    public static let pathLabel = "Where grantpin looks for commands"
+    public static let pathHelp = "Programs that agents run through grantpin can only find commands in these folders."
+    public static let approvalNeeded = "Allow grantpin in System Settings > General > Login Items"
 
     public init(control: ServiceControl?, loginItem: LoginItemControl?, developmentSocket: String?, resolvedSocket: String,
                 location: AppLocation = .ok, pathDetector: PathDetector = PathDetector(),
@@ -184,7 +184,7 @@ public final class SettingsModel {
     /// The sentence beside the version row, or nil when all is well.
     public var versionNote: String? {
         if protocolMismatch { return "This app and the background service are out of step." }
-        if versionMismatch { return "grantd was updated. Restart the background service to finish." }
+        if versionMismatch { return "grantpin was updated. Restart the background service to finish." }
         return nil
     }
 
@@ -209,7 +209,7 @@ public final class SettingsModel {
 
     public static let stopConfirmation = Confirmation(
         title: "Stop the background service?",
-        message: "Agents will not be able to use grantd until you turn it back on. Your secrets and grants stay as they are.",
+        message: "Agents will not be able to use grantpin until you turn it back on. Your secrets and grants stay as they are.",
         confirmLabel: "Stop Service")
 
     /// After the person confirmed `stopConfirmation`.
@@ -276,7 +276,7 @@ public final class SettingsModel {
         do {
             if on { try loginItem.register() } else { try loginItem.unregister() }
         } catch {
-            loginError = on ? "grantd could not be added to the login items." : "grantd could not be removed from the login items."
+            loginError = on ? "grantpin could not be added to the login items." : "grantpin could not be removed from the login items."
         }
         loginStatus = loginItem.status
     }

@@ -1,6 +1,6 @@
 import AppKit
 import SwiftUI
-import GrantdKit
+import GrantpinKit
 
 /// The Secrets window (docs/UI-SPEC.md 3.2): a table of names with search,
 /// a detail inspector, and the Add, Import, Edit and Delete actions.
@@ -245,7 +245,7 @@ struct SecretsWindow: View {
         guard model.isEnabled, app.importRunner != nil else { return }
         let panel = NSOpenPanel()
         panel.title = "Import .env"
-        panel.message = "Choose a .env file. grantd reads the names; the values go straight to the vault."
+        panel.message = "Choose a .env file. grantpin reads the names; the values go straight to the vault."
         panel.prompt = "Choose"
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -423,7 +423,7 @@ private struct SecretDetail: View {
                 switch model.masked {
                 case .idle:
                     Button("Check last 4 characters") { Task { await model.checkLastCharacters(of: s.name) } }
-                        .help("Asks grantd for the end of the stored value, to tell two keys apart. The full value is never shown.")
+                        .help("Asks grantpin for the end of the stored value, to tell two keys apart. The full value is never shown.")
                 case .loading:
                     ProgressView().controlSize(.small)
                 case .value(let text):
@@ -434,7 +434,7 @@ private struct SecretDetail: View {
                     Text(verbatim: m.headline).foregroundStyle(.red)
                 }
             } footer: {
-                Text("grantd never shows a stored value. Use grantd show in a terminal if you need it.")
+                Text("grantpin never shows a stored value. Use grantpin show in a terminal if you need it.")
             }
         }
         .formStyle(.grouped)

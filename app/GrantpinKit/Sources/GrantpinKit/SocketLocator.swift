@@ -3,25 +3,25 @@ import Foundation
 /// Where the daemon's socket is (docs/UI-SPEC.md section 2.3).
 ///
 /// A Finder-launched app has none of the user's shell environment, and the
-/// launchd job defines only `PATH` and optionally `GRANTD_SOCKET`, so the rule
+/// launchd job defines only `PATH` and optionally `GRANTPIN_SOCKET`, so the rule
 /// order is:
 ///
-/// 1. `GRANTD_SOCKET` in the app's own environment (tests, the development
+/// 1. `GRANTPIN_SOCKET` in the app's own environment (tests, the development
 ///    scheme). When it decides the result, the app is in development mode.
-/// 2. `EnvironmentVariables.GRANTD_SOCKET` in
-///    `~/Library/LaunchAgents/dev.grantd.daemon.plist`, if the file exists and
+/// 2. `EnvironmentVariables.GRANTPIN_SOCKET` in
+///    `~/Library/LaunchAgents/dev.grantpin.daemon.plist`, if the file exists and
 ///    defines a non-empty absolute path. It is the only file the app reads
 ///    that it did not write; it is parsed with `PropertyListSerialization`
 ///    and nothing else in it is used.
-/// 3. `~/Library/Application Support/grantd/grantd.sock`.
+/// 3. `~/Library/Application Support/grantpin/grantpin.sock`.
 ///
 /// `XDG_RUNTIME_DIR` is never consulted.
 public enum SocketLocator {
     /// The environment variable that overrides the default.
-    public static let environmentKey = "GRANTD_SOCKET"
+    public static let environmentKey = "GRANTPIN_SOCKET"
 
     /// The LaunchAgent's label, and so its plist's file name.
-    public static let launchAgentLabel = "dev.grantd.daemon"
+    public static let launchAgentLabel = "dev.grantpin.daemon"
 
     /// The longest path a Unix socket address holds (`sun_path` is 104 bytes,
     /// including the terminating NUL).
@@ -37,7 +37,7 @@ public enum SocketLocator {
         public var path: String
         public var source: Source
 
-        /// True when `GRANTD_SOCKET` in the app's environment decided the
+        /// True when `GRANTPIN_SOCKET` in the app's environment decided the
         /// path: the app must not touch the real launchd job or vault.
         public var isDevelopment: Bool { source == .environment }
 
@@ -46,14 +46,14 @@ public enum SocketLocator {
         public var isTooLong: Bool { path.utf8.count > SocketLocator.maxBytes }
     }
 
-    /// `~/Library/LaunchAgents/dev.grantd.daemon.plist` under `home`.
+    /// `~/Library/LaunchAgents/dev.grantpin.daemon.plist` under `home`.
     public static func launchAgentPlistURL(home: URL) -> URL {
         home.appendingPathComponent("Library/LaunchAgents/\(launchAgentLabel).plist")
     }
 
     /// The default socket path under `home`.
     public static func defaultPath(home: URL) -> String {
-        home.appendingPathComponent("Library/Application Support/grantd/grantd.sock").path
+        home.appendingPathComponent("Library/Application Support/grantpin/grantpin.sock").path
     }
 
     /// Applies the rules in order. `plist` is read only when rule 1 does not
@@ -73,7 +73,7 @@ public enum SocketLocator {
         return Resolution(path: defaultPath(home: home), source: .defaultPath)
     }
 
-    /// `EnvironmentVariables.GRANTD_SOCKET` of the plist at `url`, if it is a
+    /// `EnvironmentVariables.GRANTPIN_SOCKET` of the plist at `url`, if it is a
     /// non-empty absolute path.
     static func socketFromPlist(at url: URL) -> String? {
         guard let data = try? Data(contentsOf: url),
