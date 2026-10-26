@@ -24,6 +24,18 @@ public enum StandingTTL: String, CaseIterable, Hashable, Sendable {
         }
     }
 
+    /// The lifetime a new form starts with when nothing usable is remembered.
+    public static let defaultPreset = StandingTTL.days30
+
+    /// The remembered lifetime from a stored string. The stored value sits in
+    /// `UserDefaults`, which any program running as the user can write, so
+    /// only one of the preset values counts; anything else (a custom
+    /// lifetime, an unknown or hostile string) is the default.
+    public static func remembered(_ stored: String?) -> StandingTTL {
+        guard let stored, let ttl = StandingTTL(rawValue: stored), ttl != .custom, ttl.seconds != nil else { return defaultPreset }
+        return ttl
+    }
+
     /// nil for `.custom`.
     public var seconds: Int? {
         switch self {

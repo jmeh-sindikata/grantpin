@@ -609,3 +609,20 @@ final class StandingGrantFormTests: XCTestCase {
         XCTAssertEqual(m.rows.map(\.id), ["n"])
     }
 }
+
+final class RememberedTTLTests: XCTestCase {
+    func testOnlyPresetsAreRemembered() {
+        for ttl in [StandingTTL.hour1, .day1, .days7, .days30, .days90] {
+            XCTAssertEqual(StandingTTL.remembered(ttl.rawValue), ttl)
+        }
+    }
+
+    func testAnythingElseFallsBackToTheDefault() {
+        XCTAssertEqual(StandingTTL.defaultPreset, .days30)
+        XCTAssertEqual(StandingTTL.remembered(nil), .days30)
+        XCTAssertEqual(StandingTTL.remembered(StandingTTL.custom.rawValue), .days30, "a custom lifetime is not remembered")
+        XCTAssertEqual(StandingTTL.remembered("days365"), .days30)
+        XCTAssertEqual(StandingTTL.remembered(""), .days30)
+        XCTAssertEqual(StandingTTL.remembered("7776000"), .days30)
+    }
+}

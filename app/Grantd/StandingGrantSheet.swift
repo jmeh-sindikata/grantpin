@@ -13,7 +13,8 @@ struct StandingGrantSheet: View {
     let onCreated: (String) -> Void
 
     static let ttlKey = "standingGrantTTL"
-    static let folderKey = "standingGrantFolder"
+    /// No longer written; removed from the defaults when a new form opens.
+    static let legacyFolderKey = "standingGrantFolder"
 
     @Environment(\.dismiss) private var dismiss
 

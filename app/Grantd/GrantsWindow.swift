@@ -31,8 +31,10 @@ struct GrantsWindow: View {
             .navigationSubtitle(subtitle)
             .sheet(item: $form) { f in
                 StandingGrantSheet(form: f) { message in
-                    UserDefaults.standard.set(f.ttl.rawValue, forKey: StandingGrantSheet.ttlKey)
-                    if let folder = f.folder { UserDefaults.standard.set(folder, forKey: StandingGrantSheet.folderKey) }
+                    // Only a preset lifetime is remembered. The folder never is:
+                    // UserDefaults is writable by any program running as the user,
+                    // and a folder prefilled from it would be a scope an agent chose.
+                    if f.ttl != .custom { UserDefaults.standard.set(f.ttl.rawValue, forKey: StandingGrantSheet.ttlKey) }
                     Task { await model.formDidCreate(message) }
                 }
             }
@@ -214,10 +216,10 @@ struct GrantsWindow: View {
     private func newGrant() {
         guard model.isEnabled else { return }
         let defaults = UserDefaults.standard
-        let ttl = defaults.string(forKey: StandingGrantSheet.ttlKey).flatMap(StandingTTL.init(rawValue:)) ?? .days30
-        let folder = defaults.string(forKey: StandingGrantSheet.folderKey)
-        // A custom lifetime is not remembered (its text is not kept); fall back to 30 days.
-        form = model.makeStandingForm(initialFolder: folder, initialTTL: ttl == .custom ? .days30 : ttl)
+        // An earlier version remembered the folder; forget it.
+        defaults.removeObject(forKey: StandingGrantSheet.legacyFolderKey)
+        let ttl = StandingTTL.remembered(defaults.string(forKey: StandingGrantSheet.ttlKey))
+        form = model.makeStandingForm(initialTTL: ttl)
     }
 
     private func requestRevoke(_ id: String) {
