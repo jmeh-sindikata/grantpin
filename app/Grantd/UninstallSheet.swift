@@ -51,6 +51,10 @@ struct UninstallSheet: View {
                 if model.offersHardwareKey {
                     Toggle(UninstallModel.hardwareKeyLabel, isOn: $model.deleteHardwareKey)
                 }
+                if model.tierUnknown {
+                    Text(verbatim: UninstallModel.tierUnknownNote)
+                        .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
             if model.needsTypedConfirmation {
                 Section {

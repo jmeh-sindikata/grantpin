@@ -67,6 +67,38 @@ public struct HelperKeystore: KeychainItemRemoval {
     }
 }
 
+/// Whether the daemon is gone, as far as the Uninstall sheet can tell.
+public enum DaemonState: Equatable, Sendable {
+    /// A `status` call got an answer (of any kind from the daemon).
+    case answering
+    /// Nothing listens on the socket: it is absent or refuses connections.
+    case stopped
+    /// The call failed some other way (a timeout, a reset connection). That
+    /// proves nothing about whether the daemon still holds the vault.
+    case unknown(String)
+
+    /// Only `GrantdError.notRunning` (socket absent or connection refused)
+    /// means the daemon is stopped. A daemon error is an answer.
+    public static func classify(_ error: Error) -> DaemonState {
+        if let e = error as? GrantdError {
+            if e.isNotRunning { return .stopped }
+            if case .daemon = e { return .answering }
+            return .unknown(e.errorDescription ?? "unknown error")
+        }
+        return .unknown("unknown error")
+    }
+
+    /// One `status` call.
+    public static func probe(_ client: Client) async -> DaemonState {
+        do {
+            _ = try await client.status()
+            return .answering
+        } catch {
+            return classify(error)
+        }
+    }
+}
+
 /// The Uninstall sheet (docs/UI-SPEC.md 3.5).
 ///
 /// Order of operations: `service uninstall`; wait for the daemon to stop
@@ -94,14 +126,16 @@ public final class UninstallModel {
 
     public let secrets: Int
     public let grants: Int
-    public let keystoreTier: Tier
+    /// The vault's protection, or nil when `status` did not answer: the key
+    /// options are then not offered (nothing says which key the vault uses).
+    public let keystoreTier: Tier?
     public let isDevelopment: Bool
 
     @ObservationIgnored private let control: ServiceControl?
     @ObservationIgnored private let vaultFolder: URL
     @ObservationIgnored private let logsFolder: URL
     @ObservationIgnored private let keychain: KeychainItemRemoval?
-    @ObservationIgnored private let isDaemonAnswering: @Sendable () async -> Bool
+    @ObservationIgnored private let daemonState: @Sendable () async -> DaemonState
     @ObservationIgnored private let sleep: @Sendable (TimeInterval) async -> Void
     @ObservationIgnored private let unregisterLoginItem: @MainActor () -> Void
 
@@ -121,16 +155,20 @@ public final class UninstallModel {
     public static let removeLabel = "Remove"
     public static let hardwareKeyNote =
         "The hardware key in your Keychain stays. It can't be exported and is useless without the vault file. To remove it, tick \"Delete the hardware key\" when you uninstall."
+    public static let tierUnknownNote =
+        "grantd did not answer, so it is not known how the vault key is protected and no key option is offered."
+    public static let unknownKeyNote =
+        "The vault's key may still be in your Keychain. It is useless without the vault file."
     public static let keychainItemNote =
         "The Keychain item for weaker protection stays. It is useless without the vault file."
     public static let disconnectText = "To disconnect Claude Code, run:"
     public static let disconnectCommand = ConnectSnippets.removeCommand
     public static let trashText = "To finish, drag grantd to the Trash."
 
-    public init(control: ServiceControl?, secrets: Int, grants: Int, keystoreTier: Tier, isDevelopment: Bool,
+    public init(control: ServiceControl?, secrets: Int, grants: Int, keystoreTier: Tier?, isDevelopment: Bool,
                 vaultFolder: URL = AppPaths.vaultFolder(), logsFolder: URL = AppPaths.logsFolder(),
                 keychain: KeychainItemRemoval? = nil,
-                isDaemonAnswering: @escaping @Sendable () async -> Bool,
+                daemonState: @escaping @Sendable () async -> DaemonState,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
                 unregisterLoginItem: @escaping @MainActor () -> Void = {}) {
         self.control = control
@@ -141,7 +179,7 @@ public final class UninstallModel {
         self.vaultFolder = vaultFolder
         self.logsFolder = logsFolder
         self.keychain = keychain
-        self.isDaemonAnswering = isDaemonAnswering
+        self.daemonState = daemonState
         self.sleep = sleep
         self.unregisterLoginItem = unregisterLoginItem
     }
@@ -153,9 +191,12 @@ public final class UninstallModel {
     }
 
     /// The Keychain checkbox appears only for a vault protected by the Keychain.
-    public var offersKeychainItem: Bool { keystoreTier.rank == 1 }
+    public var offersKeychainItem: Bool { keystoreTier?.rank == 1 }
     /// The hardware-key checkbox appears only for a hardware-protected vault.
-    public var offersHardwareKey: Bool { keystoreTier.rank == 2 }
+    public var offersHardwareKey: Bool { keystoreTier?.rank == 2 }
+
+    /// True when the key options are hidden because the tier is not known.
+    public var tierUnknown: Bool { keystoreTier == nil }
 
     /// A key that will be deleted (only one that is offered counts).
     public var willDeleteFallbackKey: Bool { deleteKeychainItem && offersKeychainItem }
@@ -211,10 +252,17 @@ public final class UninstallModel {
 
         // Neither the vault nor a key is touched while the daemon may hold them.
         var daemonStopped = false
+        var daemonProblem: String?
         if problem == nil, deleteVault || willDeleteKey {
             phase = .running("Waiting for grantd to stop…")
-            daemonStopped = await waitForDaemonToStop()
+            switch await waitForDaemonToStop() {
+            case .stopped: daemonStopped = true
+            case .stillRunning: break
+            case .unknown(let why):
+                daemonProblem = "Could not tell whether grantd has stopped (\(DisplayText.sanitise(why, limit: 120))), so nothing was deleted."
+            }
         }
+        if let daemonProblem { problem = daemonProblem }
 
         if problem == nil, deleteVault {
             if daemonStopped {
@@ -255,7 +303,9 @@ public final class UninstallModel {
 
         var remains = [String]()
         if vaultDeleted {
-            if keystoreTier.rank == 1 {
+            if keystoreTier == nil {
+                remains.append(Self.unknownKeyNote)
+            } else if keystoreTier?.rank == 1 {
                 if !fallbackGone { remains.append(Self.keychainItemNote) }
             } else if !hardwareGone {
                 remains.append(Self.hardwareKeyNote)
@@ -301,13 +351,29 @@ public final class UninstallModel {
         return step
     }
 
-    /// Up to 5 seconds for the daemon to stop answering.
-    func waitForDaemonToStop() async -> Bool {
+    public enum StopWait: Equatable, Sendable {
+        case stopped
+        /// Still answering after 5 seconds.
+        case stillRunning
+        /// The state could not be read; nothing is deleted on a guess.
+        case unknown(String)
+    }
+
+    /// Up to 5 seconds for the daemon to stop answering. Only "not running"
+    /// counts as stopped; a timeout or any other failure ends the wait.
+    func waitForDaemonToStop() async -> StopWait {
         for _ in 0..<50 {
-            if await !isDaemonAnswering() { return true }
-            await sleep(0.1)
+            switch await daemonState() {
+            case .stopped: return .stopped
+            case .unknown(let why): return .unknown(why)
+            case .answering: await sleep(0.1)
+            }
         }
-        return await !isDaemonAnswering()
+        switch await daemonState() {
+        case .stopped: return .stopped
+        case .unknown(let why): return .unknown(why)
+        case .answering: return .stillRunning
+        }
     }
 
     /// Removes the four known files, then the folder if it is empty. Returns

@@ -14,11 +14,18 @@ final class UninstallModelTests: XCTestCase {
         for f in ["daemon.err.log", "daemon.out.log"] { _ = try temp.file("Logs/grantd/\(f)") }
     }
 
-    func model(control: ServiceControl? = FakeServiceControl(), tier: Tier = .hardware, dev: Bool = false,
+    func model(control: ServiceControl? = FakeServiceControl(), tier: Tier? = .hardware, dev: Bool = false,
                answering: @escaping @Sendable () async -> Bool = { false }, keychain: FakeKeychain = FakeKeychain(),
                loginReset: @escaping @MainActor () -> Void = {}) -> UninstallModel {
+        state(control: control, tier: tier, dev: dev, state: { await answering() ? .answering : .stopped },
+              keychain: keychain, loginReset: loginReset)
+    }
+
+    func state(control: ServiceControl? = FakeServiceControl(), tier: Tier? = .hardware, dev: Bool = false,
+               state: @escaping @Sendable () async -> DaemonState, keychain: FakeKeychain = FakeKeychain(),
+               loginReset: @escaping @MainActor () -> Void = {}) -> UninstallModel {
         UninstallModel(control: control, secrets: 3, grants: 1, keystoreTier: tier, isDevelopment: dev,
-                       vaultFolder: vault, logsFolder: logs, keychain: keychain, isDaemonAnswering: answering,
+                       vaultFolder: vault, logsFolder: logs, keychain: keychain, daemonState: state,
                        sleep: { _ in }, unregisterLoginItem: loginReset)
     }
 
@@ -187,12 +194,12 @@ final class UninstallModelTests: XCTestCase {
         let polls = Counter()
         let m = model(answering: { polls.n += 1; return true })
         let stopped = await m.waitForDaemonToStop()
-        XCTAssertFalse(stopped)
+        XCTAssertEqual(stopped, .stillRunning)
         XCTAssertEqual(polls.n, 51, "50 polls 0.1 s apart is 5 s, plus the last look")
         let quick = Counter()
         let m2 = model(answering: { quick.n += 1; return quick.n < 3 })
         let ok = await m2.waitForDaemonToStop()
-        XCTAssertTrue(ok)
+        XCTAssertEqual(ok, .stopped)
         XCTAssertEqual(quick.n, 3)
     }
 
@@ -354,5 +361,83 @@ final class UninstallModelTests: XCTestCase {
         let missing = HelperKeystore(helper: URL(fileURLWithPath: "/nonexistent/grantd"))
         let c = await missing.deleteKey(.fallback)
         XCTAssertEqual(c, .failed(detail: nil))
+    }
+
+    // MARK: a status call that fails is not "stopped"
+
+    func testOnlyNotRunningMeansStopped() {
+        XCTAssertEqual(DaemonState.classify(GrantdError.notRunning), .stopped)
+        XCTAssertEqual(DaemonState.classify(GrantdError.timeout), .unknown("grantd took too long to answer."))
+        if case .unknown = DaemonState.classify(GrantdError.noResponse) {} else { XCTFail("a closed connection is not a stop") }
+        if case .unknown = DaemonState.classify(GrantdError.io("Permission denied")) {} else { XCTFail("an I/O error is not a stop") }
+        if case .unknown = DaemonState.classify(GrantdError.malformedResponse("x")) {} else { XCTFail() }
+        if case .unknown = DaemonState.classify(CancellationError()) {} else { XCTFail() }
+        XCTAssertEqual(DaemonState.classify(daemonError(.failed, .vaultLocked)), .answering, "an error response is an answer")
+    }
+
+    func testAnUnreachableSocketPathIsStoppedAndAnExistingFileIsNot() async throws {
+        let gone = await DaemonState.probe(Client(socketPath: temp.url.appendingPathComponent("no.sock").path))
+        XCTAssertEqual(gone, .stopped)
+        // A file where the socket should be: connect() fails with ECONNREFUSED/ENOTSOCK-like errors.
+        let file = try temp.file("not-a-socket")
+        let other = await DaemonState.probe(Client(socketPath: file.path))
+        XCTAssertNotEqual(other, .answering)
+    }
+
+    func testAStatusTimeoutKeepsTheVaultAndSaysSo() async {
+        let m = state(state: { .unknown("grantd took too long to answer.") })
+        m.deleteVault = true
+        m.deleteLogs = true
+        m.confirmationText = "delete"
+        await m.remove()
+        guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
+        XCTAssertEqual(r.problem, "Could not tell whether grantd has stopped (grantd took too long to answer.), so nothing was deleted.")
+        XCTAssertFalse(r.vaultDeleted)
+        XCTAssertTrue(exists(vault.appendingPathComponent("vault.db")))
+        XCTAssertTrue(exists(logs), "later steps do not run after a problem")
+    }
+
+    func testAnUnknownStateEndsTheWaitAtOnce() async {
+        final class Counter: @unchecked Sendable { var n = 0 }
+        let polls = Counter()
+        let m = state(state: { polls.n += 1; return polls.n < 3 ? .answering : .unknown("reset") })
+        let result = await m.waitForDaemonToStop()
+        XCTAssertEqual(result, .unknown("reset"))
+        XCTAssertEqual(polls.n, 3)
+    }
+
+    func testAKeyIsNotDeletedOnAnUnknownDaemonState() async {
+        let k = FakeKeychain()
+        let m = state(tier: .dialog, state: { .unknown("timeout") }, keychain: k)
+        m.deleteKeychainItem = true
+        m.confirmationText = "delete"
+        await m.remove()
+        XCTAssertEqual(k.calls.n, 0)
+        guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
+        XCTAssertNotNil(r.problem)
+    }
+
+    // MARK: no tier, no key options
+
+    func testWithoutAKnownTierNoKeyOptionIsOffered() async {
+        let k = FakeKeychain()
+        let m = model(tier: nil, keychain: k)
+        XCTAssertTrue(m.tierUnknown)
+        XCTAssertFalse(m.offersKeychainItem)
+        XCTAssertFalse(m.offersHardwareKey)
+        m.stopService = false
+        m.deleteKeychainItem = true
+        m.deleteHardwareKey = true
+        XCTAssertFalse(m.willDeleteKey)
+        XCTAssertFalse(m.canRemove, "ticks of options that are not offered do not count")
+        XCTAssertFalse(model(tier: .hardware).tierUnknown)
+        m.stopService = true
+        m.deleteVault = true
+        m.confirmationText = "delete"
+        await m.remove()
+        XCTAssertEqual(k.calls.n, 0)
+        guard case .finished(let r) = m.phase else { return XCTFail("\(m.phase)") }
+        XCTAssertTrue(r.vaultDeleted)
+        XCTAssertEqual(r.remains, [UninstallModel.unknownKeyNote], "it does not claim a hardware key that may not exist")
     }
 }

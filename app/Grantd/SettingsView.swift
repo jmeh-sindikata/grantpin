@@ -296,9 +296,9 @@ private struct UninstallSettings: View {
         let login = app.loginItem
         return UninstallModel(
             control: app.serviceControl, secrets: status?.secrets ?? 0, grants: (status?.activeGrants ?? 0) + (status?.tamperedGrants ?? 0),
-            keystoreTier: status?.keystoreTier ?? .hardware, isDevelopment: app.socket.isDevelopment,
+            keystoreTier: status?.keystoreTier, isDevelopment: app.socket.isDevelopment,
             keychain: app.serviceControl.map { HelperKeystore(helper: $0.helper) },
-            isDaemonAnswering: { (try? await client.status()) != nil },
+            daemonState: { await DaemonState.probe(client) },
             unregisterLoginItem: { try? login.unregister() })
     }
 }
