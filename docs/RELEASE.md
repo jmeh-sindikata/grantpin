@@ -159,12 +159,25 @@ host-only dry run (the architecture checks are then skipped).
 ## Version
 
 `VERSION` comes from `make VERSION=x`, else `git describe --tags --always --dirty`,
-else a `VERSION` file, else `dev` (see MANUAL-TEST-MACOS.md 2c). It names the DMG and
-is stamped as `CFBundleShortVersionString` (and the commit count as
-`CFBundleVersion`) in both Info.plists; `make bundle` fails if they disagree. A
-release is refused when the version ends in `-dirty` (`ALLOW_DIRTY=1` for a dry
-run). Tag first (`git tag v0.2.0`) for a readable DMG name. The tag is used
-verbatim (`v0.2.0`), and between tags `git describe` gives `v0.2.0-3-gabc123`.
+else a `VERSION` file, else `dev` (see MANUAL-TEST-MACOS.md 2c). It is what
+`grantd --version` and `grantd status` report, verbatim. A release is refused when
+the version ends in `-dirty` (`ALLOW_DIRTY=1` for a dry run).
+
+What lands in the bundle and the DMG name depends on whether `VERSION` looks like a
+version number, `vX.Y.Z` or `X.Y.Z`, optionally followed by git describe's
+`-N-gHASH` and `-dirty`:
+
+| `VERSION` | `CFBundleShortVersionString` | `CFBundleVersion` | DMG |
+| --- | --- | --- | --- |
+| `v0.2.0` (clean tag) | `0.2.0` | `0.2.0` | `grantd-0.2.0.dmg` |
+| `v0.2.0-3-gabc1234` (after a tag) | `0.2.0` | `0.2.0` | `grantd-v0.2.0-3-gabc1234.dmg` |
+| `b83ad79`, `dev` (no tag) | `b83ad79` | commit count | `grantd-b83ad79.dmg` |
+
+Both Info.plists (outer app and helper) get the same values, and `make bundle` fails
+if they disagree. `CFBundleVersion` is only `X.Y.Z`, not `X.Y.Z.N`: Apple allows at
+most three numeric components there, so the `-N` commit count is not appended.
+Tag first (`git tag v0.2.0`) for a numeric version and a clean DMG name. To see the
+computed values without a build: `make -pn VERSION=v0.2.0 | grep -E '^(BUNDLE_VERSION|BUNDLE_BUILD|DMG) '`.
 
 ## What to tell testers
 

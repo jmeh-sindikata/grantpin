@@ -19,6 +19,19 @@ VERSION_SRC := default
 endif
 LDFLAGS   := -X main.version=$(VERSION)
 
+# Bundle and DMG version. VERSION (git describe) is reported verbatim by
+# `grantd --version` and `grantd status`, but a tagged build must carry a plain
+# X.Y.Z in the Info.plists. VERSION_NUM is X.Y.Z when VERSION is vX.Y.Z or X.Y.Z,
+# optionally followed by git describe's -N-gHASH and -dirty suffixes; it is empty
+# for an untagged build (a bare hash, "dev"). When set: CFBundleShortVersionString
+# and CFBundleVersion are both X.Y.Z (Apple allows at most three numeric
+# components in CFBundleVersion, so the -N commit count is not appended). When
+# empty: the verbatim VERSION and the commit count, as before. DMG_VERSION is
+# X.Y.Z only for a clean tag, so the DMG is grantd-0.2.0.dmg; otherwise VERSION.
+VERSION_NUM    := $(shell printf '%s' '$(VERSION)' | sed -nE 's/^v?([0-9]+\.[0-9]+\.[0-9]+)(-[0-9]+-g[0-9a-f]+)?(-dirty)?$$/\1/p')
+DMG_VERSION    := $(shell printf '%s' '$(VERSION)' | sed -nE 's/^v?([0-9]+\.[0-9]+\.[0-9]+)$$/\1/p')
+BUNDLE_VERSION := $(or $(VERSION_NUM),$(VERSION))
+
 # Signed .app bundle (docs/UI-SPEC.md section 5; docs/MANUAL-TEST-MACOS.md 2c).
 # The app is two bundles: the outer grantd.app (SwiftUI menu-bar app, built by
 # xcodebuild from app/) and, inside it, Contents/Helpers/grantd-daemon.app
@@ -35,6 +48,7 @@ APP            := dist/grantd.app
 HELPER_APP     := $(APP)/Contents/Helpers/grantd-daemon.app
 APP_PRODUCT    := build/xcode/Build/Products/Release/grantd-app.app
 BUILD_NUMBER   ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
+BUNDLE_BUILD   := $(or $(VERSION_NUM),$(BUILD_NUMBER))
 # codesign timestamp option; use CODESIGN_TIMESTAMP=--timestamp=none offline.
 CODESIGN_TIMESTAMP ?= --timestamp
 # Go helper: cgo must target MIN_MACOS or the binary records the build
@@ -72,7 +86,7 @@ RELEASE_IDENTITY ?= Developer ID Application: S.A.P. SH.P.K. (MT2QHQX6PS)
 RELEASE_TEAM_ID  ?= MT2QHQX6PS
 NOTARY_PROFILE   ?= grantd-notary
 NOTARIZE_ZIP     := dist/grantd-notarize.zip
-DMG              := dist/grantd-$(VERSION).dmg
+DMG              := dist/grantd-$(or $(DMG_VERSION),$(VERSION)).dmg
 DMG_STAGE        := dist/dmg-stage
 
 .PHONY: build helper helper-universal app icons bundle sign-bundle sign-release notarize dmg release release-check verify-release app-test ci-app app-dev-daemon dist-src sign test vet lint cover dev-test tools-check ci clean
@@ -127,7 +141,7 @@ app: $(HELPER_DEP) ## Build dist/grantd.app (unsigned) with xcodebuild: SwiftUI 
 	rm -rf build/xcode/Build/Products
 	xcodebuild -project app/Grantd.xcodeproj -scheme Grantd -configuration Release \
 	  -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=NO ARCHS="$(APP_ARCHS)" \
-	  MACOSX_DEPLOYMENT_TARGET=$(MIN_MACOS) MARKETING_VERSION='$(VERSION)' CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) \
+	  MACOSX_DEPLOYMENT_TARGET=$(MIN_MACOS) MARKETING_VERSION='$(BUNDLE_VERSION)' CURRENT_PROJECT_VERSION=$(BUNDLE_BUILD) \
 	  PRODUCT_BUNDLE_IDENTIFIER=$(BUNDLE_ID) DAEMON_BUNDLE_ID=$(BUNDLE_ID).daemon DAEMON_MIN_MACOS=$(MIN_MACOS) \
 	  build
 	rm -rf $(APP)
@@ -135,7 +149,7 @@ app: $(HELPER_DEP) ## Build dist/grantd.app (unsigned) with xcodebuild: SwiftUI 
 	ditto $(APP_PRODUCT) $(APP)
 
 bundle: app ## Assemble and check dist/grantd.app (unsigned; macOS; see docs/MANUAL-TEST-MACOS.md 2c)
-	@echo "bundle version: $(VERSION) ($(VERSION_SRC))"
+	@echo "bundle version: $(VERSION) ($(VERSION_SRC)); CFBundleShortVersionString $(BUNDLE_VERSION), CFBundleVersion $(BUNDLE_BUILD)"
 	@test -x $(APP)/Contents/MacOS/grantd-app || { echo "make bundle: $(APP)/Contents/MacOS/grantd-app missing"; exit 1; }
 	@test -x $(HELPER_APP)/Contents/MacOS/grantd || { echo "make bundle: $(HELPER_APP)/Contents/MacOS/grantd missing"; exit 1; }
 	plutil -lint $(APP)/Contents/Info.plist $(HELPER_APP)/Contents/Info.plist
@@ -145,7 +159,7 @@ bundle: app ## Assemble and check dist/grantd.app (unsigned; macOS; see docs/MAN
 	done
 	@for p in $(APP)/Contents/Info.plist $(HELPER_APP)/Contents/Info.plist; do \
 	  v=$$(plutil -extract CFBundleShortVersionString raw -o - $$p); b=$$(plutil -extract CFBundleVersion raw -o - $$p); \
-	  [ "$$v" = "$(VERSION)" ] && [ "$$b" = "$(BUILD_NUMBER)" ] || { echo "make bundle: $$p has version '$$v' build '$$b', want '$(VERSION)' '$(BUILD_NUMBER)'" >&2; exit 1; }; \
+	  [ "$$v" = "$(BUNDLE_VERSION)" ] && [ "$$b" = "$(BUNDLE_BUILD)" ] || { echo "make bundle: $$p has version '$$v' build '$$b', want '$(BUNDLE_VERSION)' '$(BUNDLE_BUILD)'" >&2; exit 1; }; \
 	done
 	@minos=$$(otool -l $(HELPER_APP)/Contents/MacOS/grantd | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $$2; exit}'); \
 	[ "$$minos" = "$(MIN_MACOS)" ] || { echo "make bundle: helper binary minos is '$$minos', want $(MIN_MACOS)" >&2; exit 1; }
@@ -228,7 +242,7 @@ notarize: ## Notarize dist/grantd.app and staple the ticket (after sign-release)
 	codesign --verify --deep --strict --verbose=2 $(APP)
 	rm -f $(NOTARIZE_ZIP)
 
-dmg: ## Build, sign, notarize and staple dist/grantd-$(VERSION).dmg from the stapled app (after notarize)
+dmg: ## Build, sign, notarize and staple dist/grantd-<version>.dmg (X.Y.Z for a clean vX.Y.Z tag) from the stapled app (after notarize)
 	@case "$(VERSION)" in *[!A-Za-z0-9._-]*) echo "make dmg: VERSION '$(VERSION)' has characters that do not belong in a file name" >&2; exit 2;; esac
 	@case "$(VERSION)" in *-dirty) [ "$(ALLOW_DIRTY)" = 1 ] || { echo "make dmg: VERSION '$(VERSION)' is a dirty tree; commit first (ALLOW_DIRTY=1 for a dry run)" >&2; exit 2; };; esac
 	@xcrun stapler validate $(APP) >/dev/null 2>&1 || { echo "make dmg: $(APP) is not notarized and stapled; run make notarize first" >&2; exit 2; }

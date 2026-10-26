@@ -14,8 +14,10 @@
 
     @BUNDLE_ID@     the helper's bundle identifier: the app's (Makefile BUNDLE_ID,
                     default dev.grantd.app) plus ".daemon".
-    @VERSION@       Makefile VERSION (git describe), shown as the version.
-    @BUILD@         Makefile BUILD_NUMBER (git commit count), CFBundleVersion.
+    @VERSION@       Makefile BUNDLE_VERSION: X.Y.Z for a tagged build, else VERSION
+                    (git describe), shown as the version.
+    @BUILD@         Makefile BUNDLE_BUILD: X.Y.Z for a tagged build, else
+                    BUILD_NUMBER (git commit count), CFBundleVersion.
     @MIN_MACOS@     lowest macOS the helper supports: Makefile MIN_MACOS (14.0).
                     The Go binary must be built for it (make helper sets
                     -mmacosx-version-min), or it will not start on older macOS.
