@@ -357,7 +357,7 @@ func (h *brokerHolder) handle(ctx context.Context, req *proto.Request, w daemon.
 		r.Message = "vault is being opened; retry shortly"
 		_ = w.Finish(r)
 	case ctx.Err() != nil:
-		_ = w.Finish(daemon.Failure(proto.ErrFailed, ctxReason(ctx)))
+		_ = w.Finish(daemon.Failure(proto.ErrFailed, broker.CtxFailure(ctx)))
 	case errors.Is(err, errVaultMissing):
 		r := daemon.Failure(proto.ErrFailed, proto.ReasonVaultNotInitialized)
 		r.Message = "vault not initialized; run `grantd init`"
@@ -399,12 +399,4 @@ func (h *brokerHolder) statusFunc() daemon.StatusFunc {
 			st.VaultLocked, st.VaultLockedError = true, msg
 		}
 	}
-}
-
-// ctxReason maps a finished request context to the failure reason.
-func ctxReason(ctx context.Context) string {
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return proto.ReasonTimeout
-	}
-	return proto.ReasonCanceled
 }

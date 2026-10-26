@@ -147,7 +147,7 @@ func (b *Broker) handleGrantAdd(ctx context.Context, req *proto.Request, w daemo
 	dec, err := b.ask(ctx, areq)
 	switch {
 	case err != nil && ctx.Err() != nil:
-		refuse(audit.DecisionError, proto.ErrFailed, ctxFailure(ctx), "while waiting for approval")
+		refuse(audit.DecisionError, proto.ErrFailed, CtxFailure(ctx), "while waiting for approval")
 		return
 	case err != nil:
 		b.log.Warn("approver failed", "err", err.Error())

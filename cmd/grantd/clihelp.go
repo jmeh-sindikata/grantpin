@@ -167,9 +167,3 @@ func readValue(in io.Reader, prompt io.Writer, name string) ([]byte, error) {
 	v = []byte(strings.TrimSuffix(strings.TrimSuffix(string(v), "\n"), "\r"))
 	return v, nil
 }
-
-func zeroBytes(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
-}

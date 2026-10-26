@@ -131,7 +131,7 @@ func (v *Vault) resolveExact(ctx context.Context, names []string) (map[string][]
 	out := make(map[string][]byte, len(names))
 	fail := func(err error) (map[string][]byte, error) {
 		for _, b := range out {
-			zero(b)
+			Zero(b)
 		}
 		return nil, err
 	}
@@ -141,7 +141,7 @@ func (v *Vault) resolveExact(ctx context.Context, names []string) (map[string][]
 			return fail(err)
 		}
 		if m.Expired(now) {
-			zero(pt)
+			Zero(pt)
 			return fail(fmt.Errorf("%w: %s", ErrExpired, n))
 		}
 		out[n] = pt
@@ -176,7 +176,7 @@ func (v *Vault) checkExact(ctx context.Context, names []string, now time.Time) (
 		if err != nil {
 			return presence.TierNone, err
 		}
-		zero(pt)
+		Zero(pt)
 		if m.Expired(now) {
 			return presence.TierNone, fmt.Errorf("%w: %s", ErrExpired, n)
 		}

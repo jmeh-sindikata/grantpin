@@ -272,7 +272,7 @@ func (v *Vault) UpdateMeta(ctx context.Context, name string, p MetaPatch) error 
 			return fmt.Errorf("%w: %s", err, name)
 		}
 		ct, nonce, err = seal(v.key, name, newTier, pt)
-		zero(pt)
+		Zero(pt)
 		if err != nil {
 			return err
 		}
@@ -476,7 +476,7 @@ func (v *Vault) Masked(ctx context.Context, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer zero(pt)
+	defer Zero(pt)
 	return MaskedValue(pt), nil
 }
 

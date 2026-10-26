@@ -46,7 +46,7 @@ func newImportCmd() *cobra.Command {
 			}
 			defer func() {
 				for _, kv := range kvs {
-					zeroBytes(kv.Value)
+					vault.Zero(kv.Value)
 				}
 			}()
 			return importKVs(cmd, socket, kvs, mode, dry)

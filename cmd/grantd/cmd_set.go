@@ -9,6 +9,7 @@ import (
 
 	"github.com/jmeh-sindikata/grantd/internal/presence"
 	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
 func newSetCmd() *cobra.Command {
@@ -49,7 +50,7 @@ func newSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer zeroBytes(val)
+			defer vault.Zero(val)
 			if len(val) == 0 {
 				return errors.New("empty value; nothing stored")
 			}

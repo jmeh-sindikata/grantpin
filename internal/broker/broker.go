@@ -199,8 +199,10 @@ func okRaw(w daemon.ResponseWriter, raw json.RawMessage) {
 	_ = w.Finish(&proto.Response{OK: true, Result: raw})
 }
 
-// ctxFailure maps a done context to the response the caller should get.
-func ctxFailure(ctx context.Context) (reason string) {
+// CtxFailure maps a done context to the failure reason the caller should get:
+// timeout if its deadline passed, canceled otherwise. The daemon router uses it
+// too, so a request ends the same way wherever it is cut short.
+func CtxFailure(ctx context.Context) (reason string) {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return proto.ReasonTimeout
 	}
@@ -250,12 +252,6 @@ func labelOf(c string) (string, bool) {
 		}
 	}
 	return c, true
-}
-
-func zero(b []byte) {
-	for i := range b {
-		b[i] = 0
-	}
 }
 
 // tierMet reports whether both the approver and the keystore meet required.

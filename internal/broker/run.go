@@ -145,7 +145,7 @@ func (b *Broker) runLookupFailure(ctx context.Context, rc *runCtx, err error) {
 	case errors.Is(err, vault.ErrInvalidName):
 		rc.refuse(ctx, audit.DecisionError, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())
 	case ctx.Err() != nil:
-		rc.refuse(ctx, audit.DecisionError, proto.ErrFailed, ctxFailure(ctx), "")
+		rc.refuse(ctx, audit.DecisionError, proto.ErrFailed, CtxFailure(ctx), "")
 	default:
 		b.log.Error("vault lookup failed", "err", err.Error())
 		rc.refuse(ctx, audit.DecisionError, proto.ErrFailed, proto.ReasonInternal, "")
@@ -266,7 +266,7 @@ func (b *Broker) approveRun(ctx context.Context, rc *runCtx, req *proto.Request,
 	dec, err := b.ask(ctx, areq)
 	switch {
 	case err != nil && ctx.Err() != nil:
-		rc.refuse(ctx, audit.DecisionError, proto.ErrFailed, ctxFailure(ctx), "while waiting for approval")
+		rc.refuse(ctx, audit.DecisionError, proto.ErrFailed, CtxFailure(ctx), "while waiting for approval")
 		return "", ""
 	case err != nil:
 		b.log.Warn("approver failed", "err", err.Error())
@@ -342,7 +342,7 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 	}
 	defer func() {
 		for _, v := range values {
-			zero(v)
+			vault.Zero(v)
 		}
 	}()
 	// Plaintext as strings is required by runner.Spec; Go cannot zero these.
@@ -378,7 +378,7 @@ func (b *Broker) release(ctx context.Context, rc *runCtx, req *proto.Request, cw
 			rc.completeFailure(ctx, grantID, proto.ErrDenied, proto.ReasonNoGrant, "grant no longer usable")
 			return
 		case ctx.Err() != nil:
-			rc.completeFailure(ctx, grantID, proto.ErrFailed, ctxFailure(ctx), "")
+			rc.completeFailure(ctx, grantID, proto.ErrFailed, CtxFailure(ctx), "")
 			return
 		default:
 			b.log.Error("consuming grant use failed", "err", err.Error())

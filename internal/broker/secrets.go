@@ -89,7 +89,7 @@ func (b *Broker) vaultFail(ctx context.Context, w daemon.ResponseWriter, op stri
 	case errors.Is(err, vault.ErrInvalidName), errors.Is(err, vault.ErrInvalidTag), errors.Is(err, vault.ErrInvalidValue):
 		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, err.Error())
 	case ctx.Err() != nil:
-		fail(w, proto.ErrFailed, ctxFailure(ctx), "")
+		fail(w, proto.ErrFailed, CtxFailure(ctx), "")
 	default:
 		b.internal(w, op, err)
 	}
@@ -189,7 +189,7 @@ func (b *Broker) handleSet(ctx context.Context, req *proto.Request, w daemon.Res
 	}
 	val := []byte(req.Value)
 	err := b.d.Vault.Set(ctx, m, val, req.Overwrite)
-	zero(val)
+	vault.Zero(val)
 	if err != nil {
 		b.vaultFail(ctx, w, req.Op, err)
 		return
@@ -348,7 +348,7 @@ func (b *Broker) confirmLowerTier(ctx context.Context, req *proto.Request, w dae
 	})
 	switch {
 	case err != nil && ctx.Err() != nil:
-		refuse(audit.DecisionError, proto.ErrFailed, ctxFailure(ctx), "while waiting for approval")
+		refuse(audit.DecisionError, proto.ErrFailed, CtxFailure(ctx), "while waiting for approval")
 		return false, true
 	case err != nil:
 		b.log.Warn("approver failed", "err", err.Error())
@@ -416,7 +416,7 @@ func (b *Broker) handleShow(ctx context.Context, req *proto.Request, w daemon.Re
 	})
 	switch {
 	case err != nil && ctx.Err() != nil:
-		refuse(audit.DecisionError, proto.ErrFailed, ctxFailure(ctx), "while waiting for approval")
+		refuse(audit.DecisionError, proto.ErrFailed, CtxFailure(ctx), "while waiting for approval")
 		return
 	case err != nil:
 		b.log.Warn("approver failed", "err", err.Error())
@@ -444,7 +444,7 @@ func (b *Broker) handleShow(ctx context.Context, req *proto.Request, w daemon.Re
 	v := values[req.Name]
 	defer func() {
 		for _, pt := range values {
-			zero(pt)
+			vault.Zero(pt)
 		}
 	}()
 	id, err := b.recordStrict(ctx, entry)

@@ -160,7 +160,7 @@ func Init(ctx context.Context, path string, ks keystore.KeyStore, opts ...Option
 	ok := false
 	defer func() {
 		if !ok {
-			zero(key)
+			Zero(key)
 		}
 	}()
 
@@ -319,7 +319,7 @@ func Open(ctx context.Context, path string, ks keystore.KeyStore, opts ...Option
 		return nil, fmt.Errorf("vault: unwrap data key: %w", err)
 	}
 	if len(key) != dataKeySize {
-		zero(key)
+		Zero(key)
 		_ = db.Close()
 		return nil, errors.New("vault: unwrapped data key has the wrong length")
 	}
@@ -344,7 +344,7 @@ func (v *Vault) Close() error {
 		return nil
 	}
 	v.closed = true
-	zero(v.key)
+	Zero(v.key)
 	return v.db.Close()
 }
 
@@ -393,7 +393,10 @@ func (v *Vault) rlock() (func(), error) {
 	return v.mu.RUnlock, nil
 }
 
-func zero(b []byte) {
+// Zero overwrites b with zeros. It is the one wipe helper for plaintext secret
+// bytes (the broker and the CLI use it too); the compiler cannot elide it
+// because the slice is written through.
+func Zero(b []byte) {
 	for i := range b {
 		b[i] = 0
 	}
