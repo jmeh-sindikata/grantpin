@@ -132,15 +132,24 @@ enum Wire {
     /// The protocol's line limit, newline included (`proto.MaxLineBytes`).
     static let maxLineBytes = 4 << 20
 
+    // Built once: the audit list decodes up to 1,000 timestamps per poll.
+    // ISO8601DateFormatter is thread-safe.
+    private static let plainTime: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    private static let fractionalTime: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
     static let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.dateDecodingStrategy = .custom { decoder in
             let s = try decoder.singleValueContainer().decode(String.self)
-            let plain = ISO8601DateFormatter()
-            plain.formatOptions = [.withInternetDateTime]
-            let fractional = ISO8601DateFormatter()
-            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let d = fractional.date(from: s) ?? plain.date(from: s) { return d }
+            if let d = fractionalTime.date(from: s) ?? plainTime.date(from: s) { return d }
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "bad time \(s)"))
         }
         return d
