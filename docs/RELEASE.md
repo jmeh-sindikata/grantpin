@@ -62,11 +62,11 @@ make release PROFILE=/path/to/Developer_ID.provisionprofile
 | Step | Target | What it does |
 | --- | --- | --- |
 | 0 | `release-check` | PROFILE, identity, clean tree, notary credentials (a read-only `notarytool history`); no submission. |
-| 1 | `bundle` | Builds the Go helper for macOS 14 and `dist/grantd.app` (unsigned), and checks both Info.plists carry the version. |
-| 2 | `sign-release` | Embeds the profile and signs inside out with `--options runtime --timestamp`: helper `.app`, then outer `.app` (which also seals each bundle's main executable). No `--deep`. Then `build/release/verify-signing.sh` checks both bundles. |
+| 1 | `bundle` | Builds the Go helper for macOS 14 and `dist/grantd.app` (unsigned), both universal (`UNIVERSAL=1`, see "Universal build"), and checks both Info.plists carry the version and both executables are `x86_64 arm64`. |
+| 2 | `sign-release` | Embeds the profile and signs inside out with `--options runtime --timestamp`: helper `.app`, then outer `.app` (which also seals each bundle's main executable). No `--deep`. Then `build/release/verify-signing.sh` checks both bundles, including `lipo -archs` of both main executables. |
 | 3 | `notarize` | `ditto -c -k --keepParent` of the app, `notarytool submit --wait`, on failure prints `notarytool log`, then `stapler staple` and `stapler validate` the app. |
 | 4 | `dmg` | Stages `grantd.app` and an `Applications` symlink, `hdiutil create -volname grantd -format UDZO`, signs the DMG, notarizes it, staples it. |
-| 5 | `verify-release` | `spctl -a -vv -t install dist/grantd.app`, `spctl -a -vv -t exec dist/grantd.app`, `spctl -a -vv -t open --context context:primary-signature dist/grantd-<version>.dmg`, and `stapler validate` on both. Each must say `accepted` with `source=Notarized Developer ID`. |
+| 5 | `verify-release` | `spctl -a -vv -t install dist/grantd.app`, `spctl -a -vv -t exec dist/grantd.app`, `spctl -a -vv -t open --context context:primary-signature dist/grantd-<version>.dmg`, and `stapler validate` on both, plus `lipo -archs` of both executables. Each must say `accepted` with `source=Notarized Developer ID`. |
 
 Each step is also a target, so a failed release resumes where it stopped:
 
@@ -111,6 +111,34 @@ appears, in particular `get-task-allow` (notarization rejects it) or any
 Add an exception only when a signed build fails without it, with the failing
 evidence in the comment in `sign-bundle`.
 
+## Universal build (arm64 + x86_64)
+
+The release is one fat app that runs natively on Apple Silicon and Intel Macs.
+`make release`, `make sign-release` and `make verify-release` set `UNIVERSAL=1` by
+default; `make bundle UNIVERSAL=1` does the same for a bundle you build by hand.
+A plain `make build` and `make bundle` stay host-only and fast (about 11 s vs 33 s
+for a bundle on a warm cache). `UNIVERSAL=0` on the release targets is for a
+host-only dry run (the architecture checks are then skipped).
+
+- **Go helper** (`make helper-universal`): `cmd/grantd` is cgo (Objective-C for the
+  Secure Enclave and LocalAuthentication), so each slice is built with
+  `CGO_ENABLED=1 GOARCH=<arm64|amd64> CC="clang -arch <arm64|x86_64>"`, the SDK from
+  `xcrun --sdk macosx --show-sdk-path` as `SDKROOT`, and
+  `MACOSX_DEPLOYMENT_TARGET`/`-mmacosx-version-min` = `MIN_MACOS` (14.0). Xcode's
+  clang cross-compiles for both on either kind of Mac. The slices are merged
+  with `lipo -create` into `bin/grantd`, and each slice's `minos` is checked
+  before the merge.
+- **SwiftUI app**: `xcodebuild ... ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO`.
+- **Checks**: `build/release/check-archs.sh` (`lipo -archs` of `grantd-app` and
+  `grantd-daemon.app/Contents/MacOS/grantd` must be `x86_64 arm64`) runs at the end of
+  `make bundle UNIVERSAL=1`, inside `verify-signing.sh` and in `make verify-release`.
+- **Testing the Intel slice** on an Apple Silicon Mac needs Rosetta:
+  `arch -x86_64 dist/grantd.app/Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd --version`.
+  Rosetta does not exercise the hardware keystore: only a real Intel Mac with a T2
+  chip tests the Secure Enclave path on x86_64.
+- `lipo` output is a fat file, which `go build -o bin/grantd` refuses to overwrite;
+  `make build` and `make helper` delete `bin/grantd` first.
+
 ## Version
 
 `VERSION` comes from `make VERSION=x`, else `git describe --tags --always --dirty`,
@@ -123,9 +151,8 @@ verbatim (`v0.2.0`), and between tags `git describe` gives `v0.2.0-3-gabc123`.
 
 ## What to tell testers
 
-- The DMG is for Macs with macOS 14 or later, on the CPU type it was built on
-  (`make app` builds for the host architecture only: an Apple Silicon build does
-  not run on Intel Macs).
+- The DMG is for Macs with macOS 14 or later, Apple Silicon or Intel (the app and
+  the helper inside are universal, arm64 + x86_64).
 - Open the DMG and drag grantd to Applications. Eject the DMG.
 - Open grantd from Applications. There is no Dock icon: grantd lives in the menu
   bar. The first time, macOS may say it was downloaded from the Internet; choose

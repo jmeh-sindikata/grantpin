@@ -1,7 +1,7 @@
 #!/bin/sh
 # Post-signing checks for a release bundle (make sign-release).
 #
-#   usage: build/release/verify-signing.sh <app> <helper-app> <team-id>
+#   usage: build/release/verify-signing.sh <app> <helper-app> <team-id> [<archs>]
 #
 # Fails unless, for the outer app and the nested helper app:
 #  - the signature verifies (--deep --strict) and carries a secure timestamp,
@@ -11,12 +11,14 @@
 #    keychain-access-groups: no hardened-runtime exception (com.apple.security.cs.*),
 #    no get-task-allow, no sandbox,
 #  - both bundles embed the same provisioning profile,
+# and, when <archs> is given (make passes "x86_64 arm64" for a universal release),
+# unless both main executables have exactly those architectures (lipo -archs),
 # and unless the only Mach-O files in the app are the two main executables, so
 # a binary added later cannot ship unsigned by accident.
 set -eu
 
-[ $# -eq 3 ] || { echo "usage: $0 <app> <helper-app> <team-id>" >&2; exit 2; }
-app=$1 helper=$2 team=$3
+[ $# -eq 3 ] || [ $# -eq 4 ] || { echo "usage: $0 <app> <helper-app> <team-id> [<archs>]" >&2; exit 2; }
+app=$1 helper=$2 team=$3 archs=${4:-}
 
 fail() { echo "verify-signing: $*" >&2; exit 1; }
 
@@ -53,7 +55,12 @@ for b in "$app" "$helper"; do
   echo "verify-signing: $b: runtime, Developer ID $team, timestamped, entitlements: $keys"
 done
 
-# 3. One profile in both bundles.
+# 3. Architectures of the two main executables (universal release).
+if [ -n "$archs" ]; then
+  "$(dirname "$0")/check-archs.sh" "$archs" "$app_exe" "$helper_exe" || fail "architectures are not '$archs'"
+fi
+
+# 4. One profile in both bundles.
 cmp -s "$app/Contents/embedded.provisionprofile" "$helper/Contents/embedded.provisionprofile" \
   || fail "the two embedded.provisionprofile files differ or are missing"
 echo "verify-signing: ok"

@@ -41,6 +41,27 @@ CODESIGN_TIMESTAMP ?= --timestamp
 # machine's macOS as its minimum (minos) and will not start on older releases.
 HELPER_ENV     := CGO_ENABLED=1 CGO_CFLAGS=-mmacosx-version-min=$(MIN_MACOS) CGO_LDFLAGS=-mmacosx-version-min=$(MIN_MACOS)
 
+# Universal (arm64 + x86_64) bundle, so one DMG runs on Apple Silicon and Intel
+# Macs. UNIVERSAL=1 makes `make bundle` (and `make app`) build the Go helper for
+# both architectures and merge them with lipo (`make helper-universal`), and the
+# SwiftUI app for both with xcodebuild. It is off for a plain `make bundle`
+# (fast, host architecture only, for development) and on for the release path:
+# `make release`, `make sign-release` and `make verify-release` default it to 1
+# (RELEASE_UNIVERSAL; pass UNIVERSAL=0 for a deliberate host-only dry run).
+# Each Go slice is cross-built with CC="clang -arch <arch>" (Xcode's clang is a
+# cross compiler for both), the macOS SDK from xcrun, and MIN_MACOS as above.
+UNIVERSAL         ?=
+RELEASE_UNIVERSAL := $(if $(UNIVERSAL),$(UNIVERSAL),1)
+ifeq ($(UNIVERSAL),1)
+APP_ARCHS      := arm64 x86_64
+HELPER_DEP     := helper-universal
+EXPECT_ARCHS   := x86_64 arm64
+else
+APP_ARCHS      := $(shell uname -m)
+HELPER_DEP     := helper
+EXPECT_ARCHS   :=
+endif
+
 # Release (Developer ID, notarized DMG; docs/RELEASE.md). RELEASE_IDENTITY must
 # be a Developer ID Application certificate in the keychain; PROFILE (the
 # Developer ID provisioning profile) has no default on purpose, pass it.
@@ -54,10 +75,12 @@ NOTARIZE_ZIP     := dist/grantd-notarize.zip
 DMG              := dist/grantd-$(VERSION).dmg
 DMG_STAGE        := dist/dmg-stage
 
-.PHONY: build helper app icons bundle sign-bundle sign-release notarize dmg release release-check verify-release app-test ci-app app-dev-daemon dist-src sign test vet lint cover dev-test tools-check ci clean
+.PHONY: build helper helper-universal app icons bundle sign-bundle sign-release notarize dmg release release-check verify-release app-test ci-app app-dev-daemon dist-src sign test vet lint cover dev-test tools-check ci clean
 
 build: ## Build bin/grantd (production tags: no dev backends)
 	@echo "version: $(VERSION) ($(VERSION_SRC))"
+	@# go build refuses to overwrite a fat (lipo) bin/grantd left by helper-universal
+	@rm -f bin/grantd
 	$(GO) build -ldflags '$(LDFLAGS)' -o bin/grantd ./cmd/grantd
 
 dist-src: ## Export HEAD to dist/grantd-src.tar.gz with a VERSION file, so builds from the export carry the hash
@@ -76,16 +99,34 @@ sign: build ## Ad-hoc codesign bin/grantd with build/grantd.entitlements (macOS;
 helper: ## Build bin/grantd for macOS $(MIN_MACOS) (macOS only; asserts LC_BUILD_VERSION minos)
 	@[ "$$(uname -s)" = Darwin ] || { echo "make helper: macOS only" >&2; exit 2; }
 	@echo "version: $(VERSION) ($(VERSION_SRC)), minimum macOS $(MIN_MACOS)"
+	@rm -f bin/grantd
 	$(HELPER_ENV) $(GO) build -ldflags '$(LDFLAGS)' -o bin/grantd ./cmd/grantd
 	@minos=$$(otool -l bin/grantd | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $$2; exit}'); \
 	if [ "$$minos" != "$(MIN_MACOS)" ]; then echo "make helper: bin/grantd has minos '$$minos', want $(MIN_MACOS)" >&2; exit 1; fi; \
 	echo "bin/grantd: minos $$minos"
 
-app: helper ## Build dist/grantd.app (unsigned) with xcodebuild: SwiftUI app + nested Go helper (macOS, Xcode)
+helper-universal: ## Build a fat bin/grantd (arm64 + x86_64, cgo cross-built, lipo) for macOS $(MIN_MACOS)
+	@[ "$$(uname -s)" = Darwin ] || { echo "make helper-universal: macOS only" >&2; exit 2; }
+	@echo "version: $(VERSION) ($(VERSION_SRC)), minimum macOS $(MIN_MACOS), arm64 + x86_64"
+	@set -e; sdk=$$(xcrun --sdk macosx --show-sdk-path); mkdir -p bin; rm -f bin/grantd bin/grantd-arm64 bin/grantd-amd64; \
+	for pair in arm64:arm64 amd64:x86_64; do \
+	  goarch=$${pair%%:*}; carch=$${pair##*:}; \
+	  echo "go build GOARCH=$$goarch (clang -arch $$carch)"; \
+	  GOOS=darwin GOARCH=$$goarch CGO_ENABLED=1 SDKROOT=$$sdk MACOSX_DEPLOYMENT_TARGET=$(MIN_MACOS) \
+	    CC="clang -arch $$carch" CGO_CFLAGS=-mmacosx-version-min=$(MIN_MACOS) CGO_LDFLAGS=-mmacosx-version-min=$(MIN_MACOS) \
+	    $(GO) build -ldflags '$(LDFLAGS)' -o bin/grantd-$$goarch ./cmd/grantd; \
+	  minos=$$(otool -l bin/grantd-$$goarch | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $$2; exit}'); \
+	  [ "$$minos" = "$(MIN_MACOS)" ] || { echo "make helper-universal: bin/grantd-$$goarch has minos '$$minos', want $(MIN_MACOS)" >&2; exit 1; }; \
+	done; \
+	lipo -create -output bin/grantd bin/grantd-arm64 bin/grantd-amd64; \
+	rm -f bin/grantd-arm64 bin/grantd-amd64; \
+	echo "bin/grantd: $$(lipo -archs bin/grantd), minos $(MIN_MACOS) in each slice"
+
+app: $(HELPER_DEP) ## Build dist/grantd.app (unsigned) with xcodebuild: SwiftUI app + nested Go helper (macOS, Xcode); UNIVERSAL=1 for arm64 + x86_64
 	@command -v xcodebuild >/dev/null || { echo "make app: xcodebuild not found (install Xcode, then xcode-select it)" >&2; exit 2; }
 	rm -rf build/xcode/Build/Products
 	xcodebuild -project app/Grantd.xcodeproj -scheme Grantd -configuration Release \
-	  -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=NO ARCHS=$$(uname -m) \
+	  -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=NO ARCHS="$(APP_ARCHS)" \
 	  MACOSX_DEPLOYMENT_TARGET=$(MIN_MACOS) MARKETING_VERSION='$(VERSION)' CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) \
 	  PRODUCT_BUNDLE_IDENTIFIER=$(BUNDLE_ID) DAEMON_BUNDLE_ID=$(BUNDLE_ID).daemon DAEMON_MIN_MACOS=$(MIN_MACOS) \
 	  build
@@ -108,6 +149,7 @@ bundle: app ## Assemble and check dist/grantd.app (unsigned; macOS; see docs/MAN
 	done
 	@minos=$$(otool -l $(HELPER_APP)/Contents/MacOS/grantd | awk '/LC_BUILD_VERSION/{f=1} f&&/minos/{print $$2; exit}'); \
 	[ "$$minos" = "$(MIN_MACOS)" ] || { echo "make bundle: helper binary minos is '$$minos', want $(MIN_MACOS)" >&2; exit 1; }
+	@if [ -n "$(EXPECT_ARCHS)" ]; then build/release/check-archs.sh "$(EXPECT_ARCHS)" $(APP)/Contents/MacOS/grantd-app $(HELPER_APP)/Contents/MacOS/grantd; fi
 	@echo "built $(APP) (unsigned; run make sign-bundle to sign it, see docs/MANUAL-TEST-MACOS.md 2c)"
 
 sign-bundle: ## Sign dist/grantd.app inside-out: make sign-bundle IDENTITY="Developer ID Application: Name (TEAMID)" PROFILE=/path/x.provisionprofile TEAM_ID=TEAMID
@@ -172,7 +214,7 @@ sign-release: ## Developer ID, hardened-runtime signing of dist/grantd.app: make
 	@security find-identity -v -p codesigning | grep -qF '"$(RELEASE_IDENTITY)"' || { echo "make sign-release: identity '$(RELEASE_IDENTITY)' not found in the keychain (security find-identity -v -p codesigning)" >&2; exit 2; }
 	build/release/check-profile.sh "$(PROFILE)" $(RELEASE_TEAM_ID) $(BUNDLE_ID) $(KEYCHAIN_GROUP)
 	$(MAKE) sign-bundle IDENTITY="$(RELEASE_IDENTITY)" TEAM_ID=$(RELEASE_TEAM_ID) PROFILE="$(PROFILE)"
-	build/release/verify-signing.sh $(APP) $(HELPER_APP) $(RELEASE_TEAM_ID)
+	build/release/verify-signing.sh $(APP) $(HELPER_APP) $(RELEASE_TEAM_ID) $(if $(filter 1,$(RELEASE_UNIVERSAL)),"x86_64 arm64")
 
 notarize: ## Notarize dist/grantd.app and staple the ticket (after sign-release): make notarize [NOTARY_PROFILE=grantd-notary]
 	@command -v xcrun >/dev/null || { echo "make notarize: xcrun not found (install Xcode)" >&2; exit 2; }
@@ -215,6 +257,7 @@ release-check: ## Preflight for make release: PROFILE, identity, version, notary
 	@xcrun notarytool history --keychain-profile $(NOTARY_PROFILE) >/dev/null || { echo "make release: no working notarytool credentials in keychain profile '$(NOTARY_PROFILE)'; see docs/RELEASE.md (one-time notary setup)" >&2; exit 2; }
 
 verify-release: ## Gatekeeper assessment of dist/grantd.app and the DMG, the final check of make release
+	@if [ "$(RELEASE_UNIVERSAL)" = 1 ]; then build/release/check-archs.sh "x86_64 arm64" $(APP)/Contents/MacOS/grantd-app $(HELPER_APP)/Contents/MacOS/grantd; fi
 	xcrun stapler validate $(APP)
 	xcrun stapler validate $(DMG)
 	spctl -a -vv -t install $(APP)
@@ -222,13 +265,13 @@ verify-release: ## Gatekeeper assessment of dist/grantd.app and the DMG, the fin
 	spctl -a -vv -t open --context context:primary-signature $(DMG)
 	@echo "release verified: $(DMG)"
 
-release: ## Notarized, stapled DMG: make release PROFILE=/path/Developer_ID.provisionprofile (bundle, sign-release, notarize, dmg, verify)
+release: ## Notarized, stapled DMG: make release PROFILE=/path/Developer_ID.provisionprofile (universal bundle, sign-release, notarize, dmg, verify)
 	$(MAKE) release-check
-	$(MAKE) bundle
-	$(MAKE) sign-release
+	$(MAKE) bundle UNIVERSAL=$(RELEASE_UNIVERSAL)
+	$(MAKE) sign-release UNIVERSAL=$(RELEASE_UNIVERSAL)
 	$(MAKE) notarize
 	$(MAKE) dmg
-	$(MAKE) verify-release
+	$(MAKE) verify-release UNIVERSAL=$(RELEASE_UNIVERSAL)
 
 app-test: ## Swift unit tests for app/GrantdKit against the Go dev daemon (INSECURE test backends; no signing needed)
 	$(GO) build -tags $(DEV_TAG) -o build/grantd-dev ./cmd/grantd
