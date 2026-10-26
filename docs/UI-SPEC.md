@@ -219,7 +219,7 @@ The app spawns the helper only for `init`, `import`, `service install|uninstall|
 
 - `GrantdKit` (Swift package, no UI imports): `Client`, `Request`/`Response`/result models (`Codable`, snake_case keys, unknown fields ignored), `DaemonError` with `category`, `reason`, `message`, validators (name, tag, expiry, command prefix, TTL), audit pairing, text sanitiser, MCP snippet builder, socket resolver, `.env` report parser, helper runner.
 - App target: `AppModel` (`@Observable`, `@MainActor`) owning a `Monitor` (status/service polling) and per-screen models; views are thin. No third-party dependencies (Hardened Runtime and library validation stay on, section 4.5).
-- Windows: `MenuBarExtra(...).menuBarExtraStyle(.window)` for the popover; `Window("Secrets", id: "secrets")`, `Window("Grants", id: "grants")`, `Window("Activity", id: "audit")`, `Settings { }` (opened with `SettingsLink`), onboarding as a `Window("Welcome", id: "onboarding")`. Activation policy: start `.accessory`; switch to `.regular` and activate when any window opens; back to `.accessory` when the last closes. `LSMultipleInstancesProhibited` is true; a second launch activates the first and opens the Secrets window.
+- Windows: `MenuBarExtra(...).menuBarExtraStyle(.window)` for the popover; `Window("Secrets", id: "secrets")`, `Window("Grants", id: "grants")`, `Window("Activity", id: "audit")`, `Window("Settings", id: "settings")` (a `Settings { }` scene cannot be opened from a menu-bar app on macOS 14+; the popover row and Cmd-, call `requestWindow`), onboarding as a `Window("Welcome", id: "onboarding")`. Activation policy: start `.accessory`; switch to `.regular` and activate when any window opens; back to `.accessory` when the last closes. `LSMultipleInstancesProhibited` is true; a second launch activates the first and opens the Secrets window.
 - State persisted in `UserDefaults`: `onboardingDone`, window frames, last-used standing-grant TTL, "show activity in popover". **Never persisted:** anything typed into a value field, notes, or a pasted `.env` path's contents. No `@SceneStorage`. Windows are marked non-restorable.
 
 ### 2.8 Changes needed in the Go tree
@@ -284,7 +284,7 @@ The app is a client of the existing protocol, with these exceptions. Each is sma
    - otherwise green, "grantd is running", detail "{secrets} secrets · {active_grants} active grants".
 2. **Secrets quick list**: the 6 most recently updated names (from `list`), each with tier badge; click opens the Secrets window with that row selected. Footer buttons: "Add Secret…" (opens the add sheet), "All Secrets…".
 3. **Recent activity**: the last 3 logical events (from `audit list` with `limit` 12, collapsed by the pairing rules in 3.4); click opens Activity. Empty: "Nothing yet. When an agent asks to use a secret, it shows up here."
-4. **Footer**: "Grants ({n})…", "Activity…", `SettingsLink` "Settings…", "Quit grantd". The quit item's help text: "Quits this app. The background service keeps running."
+4. **Footer**: "Grants ({n})…", "Activity…", "Settings…", "Quit grantd". The quit item's help text: "Quits this app. The background service keeps running."
 
 **Protocol ops:** `status`, `list`, `audit` `list`. **Empty/error:** every section degrades independently; if `list` fails with `vault_not_initialized` the lists are hidden, not shown as errors.
 
@@ -439,7 +439,7 @@ Until G3 lands, the daemon's dialog ends with "Only continue if you just ran `gr
 
 ### 3.5 Settings
 
-A `Settings` scene with four tabs. Everything here that changes the system asks first.
+A `Window("Settings")` scene with four tabs. Everything here that changes the system asks first.
 
 **General**
 - **Start grantd when I log in** (toggle): `SMAppService.mainApp.register()` / `unregister()`. Reflects `SMAppService.mainApp.status`; if `.requiresApproval` it shows "Allow grantd in System Settings > General > Login Items" and a button that opens that pane (`SMAppService.openSystemSettingsLoginItems()`).

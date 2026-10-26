@@ -37,10 +37,17 @@ struct GrantdApp: App {
         }
         .windowResizability(.contentSize)
 
-        Settings {
+        // A Window scene, not `Settings { }`: `showSettingsWindow:` does not
+        // reach a Settings scene from a MenuBarExtra app on macOS 14 and later.
+        Window("Settings", id: WindowID.settings) {
             SettingsView(app: app)
         }
+        .windowResizability(.contentSize)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { app.showSettings(.general) }
+                    .keyboardShortcut(",", modifiers: .command)
+            }
             CommandGroup(after: .appInfo) {
                 Button("Uninstall grantd…") { app.showSettings(.uninstall) }
             }

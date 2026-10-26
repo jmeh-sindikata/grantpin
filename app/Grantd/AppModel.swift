@@ -199,12 +199,7 @@ final class AppModel {
     /// Opens Settings on a tab.
     func showSettings(_ tab: SettingsTab = .general) {
         settingsTab = tab
-        prepareToShowWindow()
-        Task {
-            // Give the activation policy a moment to take effect.
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        }
+        requestWindow(WindowID.settings)
     }
 
     /// A second launch of the app (`LSMultipleInstancesProhibited`) activates

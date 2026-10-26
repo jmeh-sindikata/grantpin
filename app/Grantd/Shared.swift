@@ -6,6 +6,7 @@ enum WindowID {
     static let activity = "activity"
     static let grants = "grants"
     static let onboarding = "onboarding"
+    static let settings = "settings"
 }
 
 /// The menu bar icon (docs/UI-SPEC.md 3.1): a template SF Symbol that follows

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import GrantdKit
 
-/// The Settings scene (docs/UI-SPEC.md 3.5): General, Connect, Security &
+/// The Settings window (docs/UI-SPEC.md 3.5): General, Connect, Security &
 /// data and Uninstall. Everything that changes the system asks first.
 struct SettingsView: View {
     let app: AppModel
