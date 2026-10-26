@@ -1,5 +1,7 @@
 # grantd — local secrets broker for AI coding agents
 
+> This is the original v0.1 design brief, kept for history. It is not kept up to date: the current documentation is in [docs/](docs/README.md).
+
 Handoff for the implementing agent. Read fully before writing code. Decisions below are made; don't reopen them unless you hit a hard blocker, and then say so explicitly rather than silently deviating.
 
 (Project name is a placeholder — rename freely, keep the structure.)
