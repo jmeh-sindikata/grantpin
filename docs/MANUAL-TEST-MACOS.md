@@ -209,6 +209,8 @@ Not run: a **Developer ID** identity and profile, notarisation, and the nested
 layout on any other Mac. The portal steps below are written from memory of the
 portal and marked "verify" where the exact wording or option may differ.
 
+Releasing to other Macs (hardened runtime, notarization, DMG) is [RELEASE.md](RELEASE.md).
+
 #### (a) App ID with Keychain Sharing
 
 1. In the developer portal (developer.apple.com, Account, Certificates,
