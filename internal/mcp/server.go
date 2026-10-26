@@ -37,7 +37,6 @@ const (
 	// DefaultCaller is used when the MCP client sent no usable name.
 	DefaultCaller = "mcp"
 
-	maxCallerLen  = 64
 	startPoll     = 50 * time.Millisecond
 	startCooldown = 30 * time.Second
 )
@@ -410,26 +409,16 @@ func callerFor(req *sdk.CallToolRequest) string {
 	return SanitizeCaller(name)
 }
 
-// SanitizeCaller lowercases name, replaces anything outside [a-z0-9_.-] with
-// '_', truncates to 64 bytes, and falls back to "mcp" when nothing is left.
+// SanitizeCaller turns the MCP client's name into the canonical caller label
+// (proto.CanonicalCaller: lowercased, separators folded to '-', at most 64
+// bytes), or "mcp" when nothing is left. It is the same normal form
+// `grants add --caller` stores, so a standing grant typed as "claude-code"
+// matches the client "Claude Code".
 func SanitizeCaller(name string) string {
-	name = strings.ToLower(strings.TrimSpace(name))
-	var b strings.Builder
-	for _, r := range name {
-		if b.Len() >= maxCallerLen {
-			break
-		}
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_', r == '.', r == '-':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('_')
-		}
+	if c := proto.CanonicalCaller(name); c != "" {
+		return c
 	}
-	if b.Len() == 0 {
-		return DefaultCaller
-	}
-	return b.String()
+	return DefaultCaller
 }
 
 // ---- capped output ----

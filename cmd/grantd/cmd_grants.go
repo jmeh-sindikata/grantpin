@@ -115,7 +115,9 @@ the listed secrets, are released without a prompt.
 
 Everything after -- (or after --cmd, which must then be the last flag) is the
 command prefix, so "php artisan" covers "php artisan migrate" but not "php x".
---caller has no default: say who the grant is for. --cwd defaults to the
+--caller has no default: say who the grant is for. It is stored lowercased
+with spaces and "_" folded to "-" (Claude Code, claude_code and claude-code are
+the same caller). --cwd defaults to the
 current directory. --uses N ends the grant after N releases.
 
 You approve it once, in a dialog that says "standing grant" and states the
@@ -135,6 +137,12 @@ the repo policy or the secret's presence tier refused it.`,
 			caller, _ := f.GetString("caller")
 			if strings.TrimSpace(caller) == "" {
 				return errors.New("--caller is required: name who the grant is for (e.g. claude-code)")
+			}
+			// Store the canonical label (the form the MCP shim sends), so
+			// "Claude Code", "claude-code" and "claude_code" are one caller.
+			canon := proto.CanonicalCaller(caller)
+			if canon == "" {
+				return errors.New("--caller must contain a letter or a digit (e.g. claude-code)")
 			}
 			secrets, _ := f.GetStringSlice("secrets")
 			var clean []string
@@ -174,7 +182,7 @@ the repo policy or the secret's presence tier refused it.`,
 			}
 			req := &proto.Request{
 				Op: proto.OpGrants, Action: proto.ActionAdd, Caller: "cli",
-				GrantCaller: strings.TrimSpace(caller), Cwd: cwd, Secrets: clean, Argv: args,
+				GrantCaller: canon, Cwd: cwd, Secrets: clean, Argv: args,
 				TTLS: int64(math.Ceil(ttl.Seconds())), Uses: uses,
 			}
 			fmt.Fprintln(cmd.ErrOrStderr(), "Waiting for you to confirm the standing grant in the dialog (then Touch ID)...")
@@ -188,6 +196,9 @@ the repo policy or the secret's presence tier refused it.`,
 			}
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "created standing grant %s\n", printable(g.ID))
+			if canon != strings.TrimSpace(caller) {
+				fmt.Fprintf(out, "  caller stored as %q (lowercase, separators folded to '-'; matching ignores case and -, _, space)\n", printable(g.Caller))
+			}
 			fmt.Fprintf(out, "  %s may run `%s ...` with %s in %s and below\n", printable(g.Caller),
 				printable(strings.Join(g.CmdPrefix, " ")), printable(strings.Join(g.Secrets, ",")), printable(g.CwdPrefix))
 			fmt.Fprintf(out, "  until %s (%s)", g.ExpiresAt.Local().Format("2006-01-02 15:04"), formatRemaining(time.Until(g.ExpiresAt)))
@@ -199,7 +210,7 @@ the repo policy or the secret's presence tier refused it.`,
 		},
 	}
 	c.Flags().SetInterspersed(false) // everything after the first non-flag (or --) is the command prefix
-	c.Flags().String("caller", "", "who the grant is for, e.g. claude-code (required, no default)")
+	c.Flags().String("caller", "", "who the grant is for, e.g. claude-code (required, no default); stored lowercased with spaces and _ folded to -")
 	c.Flags().StringSlice("secrets", nil, "secret names or globs the grant covers (comma-separated)")
 	c.Flags().String("ttl", "", "how long the grant lasts, e.g. 30d, 12h (required; at most 90d)")
 	c.Flags().String("cwd", "", "directory the grant covers, with its subfolders (default: current directory)")

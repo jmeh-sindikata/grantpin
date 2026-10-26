@@ -493,11 +493,12 @@ func TestRunCwdProblems(t *testing.T) {
 func TestCallerDerivation(t *testing.T) {
 	for in, want := range map[string]string{
 		"claude-code":            "claude-code",
-		"Claude Code":            "claude_code",
-		"Cursor/1.2 (beta)":      "cursor_1.2__beta_",
+		"Claude Code":            "claude-code",
+		"claude_code":            "claude-code",
+		"Cursor/1.2 (beta)":      "cursor-1.2-beta",
 		"":                       "mcp",
 		"   ":                    "mcp",
-		"é":                      "_",
+		"é":                      "mcp",
 		strings.Repeat("A", 100): strings.Repeat("a", 64),
 	} {
 		if got := SanitizeCaller(in); got != want {
@@ -513,7 +514,7 @@ func TestCallerDerivation(t *testing.T) {
 		call(t, cs, ToolExists, map[string]any{"name": "A"})
 	}
 	reqs := f.requests()
-	if len(reqs) != 2 || reqs[0].Caller != "my_client_" || reqs[1].Caller != "mcp" {
+	if len(reqs) != 2 || reqs[0].Caller != "my-client" || reqs[1].Caller != "mcp" {
 		t.Errorf("callers = %+v", reqs)
 	}
 	if got := callerFor(nil); got != "mcp" {

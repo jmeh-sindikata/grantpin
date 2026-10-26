@@ -30,7 +30,7 @@ Every field except `v` and `op` is optional on the wire (`omitempty`); which are
 |---|---|---|---|
 | `v` | int | all | Protocol version; must be `1`. |
 | `op` | string | all | `run`, `list`, `exists`, `masked`, `set`, `delete`, `update`, `show`, `grants`, `audit`, `status`. |
-| `caller` | string | all | Informational, **untrusted** label (`claude-code`, `cli`, ...). Used in the dialog, in grant matching and in the audit log. At most 64 bytes with no control or non-printing characters; otherwise `run` and `show` are rejected (`bad_request`). Defaults to `cli`. |
+| `caller` | string | all | Informational, **untrusted** label (`claude-code`, `cli`, ...). Used in the dialog, in grant matching and in the audit log. Grant matching compares the canonical form (lowercase; every run of characters other than `a-z`, `0-9` and `.` becomes one `-`), so `Claude Code`, `claude_code` and `claude-code` are the same caller. At most 64 bytes with no control or non-printing characters; otherwise `run` and `show` are rejected (`bad_request`). Defaults to `cli`. |
 | `cwd` | string | run, show | Absolute path. For `run` it must exist and be a directory; the daemon resolves symlinks and uses the real path. For `show` it is only displayed. |
 | `argv` | string[] | run | The command and arguments, executed directly (no shell). Non-empty, `argv[0]` non-empty, at most 4096 elements. |
 | `secrets` | string[] | run | Secret names or doublestar globs (`aws/*`, `aws/**`). Non-empty, no empty entries, at most 256. |
@@ -48,7 +48,7 @@ Every field except `v` and `op` is optional on the wire (`omitempty`); which are
 | `expiring_within_s` | int | list | Only secrets that expire within this many seconds (already-expired ones included). |
 | `action` | string | grants, audit | grants: `list` (default), `add`, `revoke`, `revoke_all`. audit: `list` (default), `verify`, `export`. Anything else: `bad_request`. |
 | `grant_id` | string | grants | The grant to revoke. |
-| `grant_caller` | string | grants add | The caller label the standing grant is for. Required, no default; same rules as `caller`. |
+| `grant_caller` | string | grants add | The caller label the standing grant is for. Required, no default; same rules as `caller`. The daemon stores (and shows in the dialog) the canonical form; the stored label is `caller` in the returned grant, and a label with no letter or digit is `bad_request`. |
 | `ttl_s` | int | grants add | Lifetime in seconds. Required, above zero, at most 90 days (or the nearest policy's `max_standing_grant_ttl`, if lower); above that: `bad_request`, never shortened. |
 | `uses` | int | grants add | End the grant after this many releases. Default 0: unlimited within `ttl_s`. |
 | `limit` | int | audit list | Rows to return, newest first. Default 100, at most 1000. |

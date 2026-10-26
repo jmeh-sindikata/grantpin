@@ -155,3 +155,25 @@ func TestFormatRemaining(t *testing.T) {
 		}
 	}
 }
+
+func TestCLIGrantsAddPrintsCanonicalCaller(t *testing.T) {
+	d := startTestDaemon(t, true)
+	dir, _ := filepath.EvalSymlinks(t.TempDir())
+	t.Chdir(dir)
+	mustCLI(t, secretValue, "set", "API_KEY")
+	out := mustCLI(t, "", "grants", "add", "--caller", "Claude Code", "--secrets", "API_KEY", "--ttl", "1h", "--", "true")
+	if !strings.Contains(out, `caller stored as "claude-code"`) || !strings.Contains(out, "claude-code may run") {
+		t.Errorf("output = %q", out)
+	}
+	if r := d.ap.lastReq(); r.Caller != "claude-code" {
+		t.Errorf("approval caller = %q", r.Caller)
+	}
+	// Spelled canonically already: no note.
+	out = mustCLI(t, "", "grants", "add", "--caller", "claude-code", "--secrets", "API_KEY", "--ttl", "1h", "--", "false")
+	if strings.Contains(out, "caller stored as") {
+		t.Errorf("unexpected note: %q", out)
+	}
+	if _, _, err := cli(t, "", "grants", "add", "--caller", "!!", "--secrets", "API_KEY", "--ttl", "1h", "--", "true"); err == nil {
+		t.Error("caller without letters or digits accepted")
+	}
+}

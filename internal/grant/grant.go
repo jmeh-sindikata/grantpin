@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantd/internal/proto"
 	"github.com/jmeh-sindikata/grantd/internal/vault"
 )
 
@@ -130,7 +131,7 @@ func argvCovered(prefix, argv []string) bool {
 // matches applies every rule except uses_remaining bookkeeping. q.Cwd must
 // already be cleaned and absolute.
 func (g Grant) matches(q Query, cleanCwd string) bool {
-	return g.Caller == q.Caller &&
+	return proto.SameCaller(g.Caller, q.Caller) &&
 		!g.expiredAt(q.Now) &&
 		(g.UsesRemaining == nil || *g.UsesRemaining > 0) &&
 		cwdCovered(g.CwdPrefix, cleanCwd) &&

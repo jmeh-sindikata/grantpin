@@ -1101,3 +1101,45 @@ func TestMigrateAddsKindAndKeepsGenuineRows(t *testing.T) {
 	}
 	mustAdd(t, s, base()) // and the table is writable with the new column
 }
+
+// Spellings of one caller ("Claude Code", "claude-code", "claude_code") match
+// the same grant, whichever spelling the row was stored under.
+func TestMatchCallerIsCanonical(t *testing.T) {
+	spellings := []string{"claude-code", "Claude Code", "claude_code", "  CLAUDE--code "}
+	for _, stored := range spellings {
+		s := newStore(t)
+		g := base()
+		g.Caller = stored
+		want := mustAdd(t, s, g)
+		for _, asked := range spellings {
+			q := query()
+			q.Caller = asked
+			got, err := s.Match(context.Background(), q)
+			if err != nil || got.ID != want.ID {
+				t.Errorf("grant for %q, request from %q: %v %v", stored, asked, got, err)
+			}
+		}
+		for _, other := range []string{"claude", "claude-code-2", "claude.code", ""} {
+			q := query()
+			q.Caller = other
+			if _, err := s.Match(context.Background(), q); !errors.Is(err, ErrNoMatch) {
+				t.Errorf("grant for %q matched caller %q", stored, other)
+			}
+		}
+	}
+
+	// Labels with no canonical form only match themselves.
+	s := newStore(t)
+	g := base()
+	g.Caller = "???"
+	mustAdd(t, s, g)
+	q := query()
+	q.Caller = "!!!"
+	if _, err := s.Match(context.Background(), q); !errors.Is(err, ErrNoMatch) {
+		t.Errorf("punctuation-only callers matched each other: %v", err)
+	}
+	q.Caller = "???"
+	if _, err := s.Match(context.Background(), q); err != nil {
+		t.Errorf("identical label did not match: %v", err)
+	}
+}

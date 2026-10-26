@@ -441,3 +441,31 @@ func TestSpanText(t *testing.T) {
 		}
 	}
 }
+
+// `grants add` stores the canonical caller label, shows it in the dialog, and
+// the grant then matches every spelling of that caller.
+func TestGrantAddCanonicalisesCaller(t *testing.T) {
+	e := newEnv(t)
+	req := e.add([]string{"API_KEY"}, 30*day, "sh", "-c")
+	req.GrantCaller = "Claude Code"
+	w := e.do(req)
+	wantOK(t, w)
+	if info := decode[proto.GrantInfo](t, w); info.Caller != "claude-code" {
+		t.Fatalf("stored caller = %q", info.Caller)
+	}
+	if r := e.ap.last(); r.Caller != "claude-code" {
+		t.Errorf("dialog caller = %q", r.Caller)
+	}
+	for _, caller := range []string{"claude-code", "claude_code", "Claude Code"} {
+		run := e.run([]string{"API_KEY"}, "sh", "-c", "exit 0")
+		run.Caller = caller
+		wantOK(t, e.do(run))
+	}
+	if e.ap.calls() != 1 {
+		t.Errorf("approver asked %d times, want 1 (the add itself)", e.ap.calls())
+	}
+
+	req = e.add([]string{"API_KEY"}, day, "true")
+	req.GrantCaller = "?!"
+	wantFail(t, e.do(req), proto.ErrBadRequest, proto.ReasonBadRequest)
+}

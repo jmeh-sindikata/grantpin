@@ -357,7 +357,9 @@ func (s *Store) Purge(ctx context.Context) (int64, error) {
 // Match returns the oldest stored grant satisfying q, or ErrNoMatch.
 //
 // A grant matches iff all of:
-//   - caller is equal (informational, not trusted);
+//   - caller is the same caller (proto.SameCaller: equal after normalising case
+//     and separators; informational, not trusted). The caller is compared in Go,
+//     not in SQL, so rows stored in any spelling keep matching;
 //   - q.Cwd is absolute and, after filepath.Clean, equals CwdPrefix or lies
 //     below it (lexical only: ".." is collapsed by Clean, symlinks are NOT
 //     resolved; "/a/foo" is not under "/a/f");
@@ -380,8 +382,8 @@ func (s *Store) Match(ctx context.Context, q Query) (*Grant, error) {
 
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+cols+` FROM grants
-		 WHERE caller = ? AND expires_at > ? AND (uses_remaining IS NULL OR uses_remaining > 0)
-		 ORDER BY created_at, id`, q.Caller, nowNs)
+		 WHERE expires_at > ? AND (uses_remaining IS NULL OR uses_remaining > 0)
+		 ORDER BY created_at, id`, nowNs)
 	if err != nil {
 		return nil, fmt.Errorf("grant: match: %w", err)
 	}

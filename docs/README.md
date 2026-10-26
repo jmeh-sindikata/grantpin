@@ -467,7 +467,9 @@ the listed secrets, are released without a prompt.
 
 Everything after -- (or after --cmd, which must then be the last flag) is the
 command prefix, so "php artisan" covers "php artisan migrate" but not "php x".
---caller has no default: say who the grant is for. --cwd defaults to the
+--caller has no default: say who the grant is for. It is stored lowercased
+with spaces and "_" folded to "-" (Claude Code, claude_code and claude-code are
+the same caller). --cwd defaults to the
 current directory. --uses N ends the grant after N releases.
 
 You approve it once, in a dialog that says "standing grant" and states the
@@ -486,7 +488,7 @@ Usage:
   grantd grants add --caller NAME --secrets A,b/* --ttl 30d [--cwd DIR] [--uses N] -- cmd args... [flags]
 
 Flags:
-      --caller string     who the grant is for, e.g. claude-code (required, no default)
+      --caller string     who the grant is for, e.g. claude-code (required, no default); stored lowercased with spaces and _ folded to -
       --cmd               the rest of the line is the command prefix (same as --)
       --cwd string        directory the grant covers, with its subfolders (default: current directory)
   -h, --help              help for add
@@ -767,7 +769,7 @@ There is deliberately no tool that returns a value, and no `show`, `set`, `delet
 
 - **Errors.** A daemon refusal (`denied`, `refused`, `not_found`, ...) comes back as an MCP tool error (`isError: true`) with text such as `denied: user_denied`, never as a protocol error.
 - **Output.** `stdout` and `stderr` are already redacted by the daemon and are each capped at 1 MiB with a truncation marker.
-- **Caller.** The `caller` sent to the daemon is the MCP client's name from the `initialize` handshake, lowercased, with anything outside `[a-z0-9_.-]` replaced by `_`, at most 64 characters, `mcp` if empty. It is self-reported and not authenticated.
+- **Caller.** The `caller` sent to the daemon is the MCP client's name from the `initialize` handshake, in its canonical form (lowercased; every run of characters other than `a-z`, `0-9` and `.` becomes one `-`, so `Claude Code` is `claude-code`; at most 64 characters), `mcp` if that leaves nothing. It is self-reported and not authenticated.
 - **Working directory.** `cwd` defaults to the shim's own working directory (Claude Code normally starts MCP servers in the project directory; if yours does not, the agent must pass `cwd`). A relative `cwd` is rejected.
 - **Blocking.** A `secret_run` call blocks while a prompt is on screen. The daemon allows up to ten minutes (the approval grace) on top of the command timeout.
 - **Daemon auto-start.** If nothing is listening, the shim spawns `grantd daemon --socket <path>` once (detached, own session, stdio on `/dev/null`) and waits up to 5 seconds for the socket, then retries; after a failed attempt it does not try again for 30 seconds. The spawned daemon gets a minimal environment: `HOME`, `USER`, `LOGNAME`, `PATH`, `TMPDIR`, `LANG`, `XDG_RUNTIME_DIR`, `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `DBUS_SESSION_BUS_ADDRESS`. In particular `GRANTD_HOME` is **not** forwarded and the daemon's output goes nowhere. If you use a non-default `GRANTD_HOME`, run the daemon yourself. Prefer `grantd service install`.
@@ -851,7 +853,7 @@ A grant is what lets a release happen without a prompt. There are two kinds: the
 
 A request matches a grant when **all** of these hold:
 
-- the `caller` string is identical (it is a label the client supplies; it is not authenticated);
+- the `caller` is the same after normalising (lowercase, and runs of anything other than letters, digits and `.` folded to one `-`, so `Claude Code`, `claude_code` and `claude-code` are one caller; it is a label the client supplies; it is not authenticated). Rows stored in any older spelling keep matching;
 - the request's `cwd`, after symlink resolution, equals the grant's directory or is inside it (lexical prefix on path components: `/a/foo` is not under `/a/f`);
 - every requested secret is covered: a literal name by an equal entry or by a glob entry that matches it; a requested glob only by a grant entry with the identical text;
 - `argv` starts with the grant's command prefix, element for element;
@@ -871,7 +873,7 @@ grantd grants add --caller claude-code --secrets DB_URL,aws/* --ttl 30d -- php a
 grantd grants add --caller claude-code --secrets API_KEY --ttl 12h --cwd ~/projects/demo --uses 20 -- ./deploy.sh
 ```
 
-A standing grant is a grant that **you** create, up front, for a long time, instead of answering a prompt later. `--caller` is required (no default): you state who it is for. `--secrets` takes names and globs; everything after `--` (or after `--cmd`) is the command prefix, so `php artisan` also covers `php artisan migrate`; `--cwd` defaults to the current directory and covers its subfolders; `--uses N` ends the grant after N releases. The daemon validates it like a run (the directory must exist, the secrets must exist and not be expired, and a `.grantd.yml` that does not allow those secrets and that command refuses it with `policy_refused`).
+A standing grant is a grant that **you** create, up front, for a long time, instead of answering a prompt later. `--caller` is required (no default): you state who it is for. The label is stored in its canonical form (lowercase, spaces and `_` folded to `-`) and printed back, so `--caller "Claude Code"` and `--caller claude-code` are the same grant, and the MCP client "Claude Code" matches it. `--secrets` takes names and globs; everything after `--` (or after `--cmd`) is the command prefix, so `php artisan` also covers `php artisan migrate`; `--cwd` defaults to the current directory and covers its subfolders; `--uses N` ends the grant after N releases. The daemon validates it like a run (the directory must exist, the secrets must exist and not be expired, and a `.grantd.yml` that does not allow those secrets and that command refuses it with `policy_refused`).
 
 The ceilings: `--ttl` may be at most **90 days**, and at most the policy's `max_standing_grant_ttl` if the nearest `.grantd.yml` sets one. Above the ceiling the request is refused with `bad_request` and a message naming the limit; it is never shortened. The policy's `max_grant_ttl` is not involved.
 

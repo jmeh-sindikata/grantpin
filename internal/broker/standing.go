@@ -67,6 +67,14 @@ func (b *Broker) handleGrantAdd(ctx context.Context, req *proto.Request, w daemo
 		badRequest(msg)
 		return
 	}
+	// The grant is stored (and shown in the dialog) under the canonical caller
+	// label, the same form the MCP shim sends, so that "Claude Code",
+	// "claude-code" and "claude_code" all address the same grant.
+	storedCaller := proto.CanonicalCaller(label)
+	if storedCaller == "" {
+		badRequest("grant_caller must contain a letter or a digit")
+		return
+	}
 	rc.entry.Cwd = cwd
 	if slices.Contains(req.Argv, "") {
 		badRequest("the command prefix must not contain empty elements")
@@ -125,7 +133,7 @@ func (b *Broker) handleGrantAdd(ctx context.Context, req *proto.Request, w daemo
 	// 5. The human.
 	areq := approve.ApprovalRequest{
 		Kind:           approve.KindStandingGrant,
-		Caller:         label,
+		Caller:         storedCaller,
 		Cwd:            cwd,
 		Argv:           slices.Clone(req.Argv),
 		Secrets:        slices.Clone(req.Secrets),
