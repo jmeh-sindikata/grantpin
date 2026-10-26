@@ -299,7 +299,7 @@ Flags:
 
 ### `grantd set`
 
-Goes through the daemon (so the daemon must be running). Fails with `secret_exists` unless `--overwrite`. `--expires 30d` accepts Go durations plus `Nd` and `Nw`. The value is limited to 1 MiB and must not be empty. **Not presence-gated.**
+Goes through the daemon (so the daemon must be running). Fails with `secret_exists` unless `--overwrite`. `--expires 30d` accepts Go durations plus `Nd` and `Nw`. The value is limited to 1 MiB and must not be empty. `--url`, `--notes` and tags may not contain control characters (newlines and tabs included) or Unicode bidirectional overrides: the daemon refuses them, and `list`, `grants` and `audit` replace any such character in what they print with `?`. **Not presence-gated.**
 
 ```
 Store a secret. The value is read from stdin when it is not a terminal (`printf %s "$V" | grantd set NAME`; one trailing newline is stripped), otherwise from a hidden prompt. It is never accepted as an argument.

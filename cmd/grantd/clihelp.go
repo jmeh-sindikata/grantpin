@@ -90,7 +90,7 @@ func failureError(resp *proto.Response) error {
 		msg += " (" + resp.Reason + ")"
 	}
 	if resp.Message != "" {
-		msg += ": " + resp.Message
+		msg += ": " + printable(resp.Message)
 	}
 	return &exitError{code: code, msg: msg}
 }

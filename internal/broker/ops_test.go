@@ -819,3 +819,55 @@ func TestUpdateLoweringNotFoundAndCancelled(t *testing.T) {
 		t.Errorf("cancelled update changed the tier: %+v", got)
 	}
 }
+
+// url, notes and tags are shown on a terminal by `grantd list`: characters that
+// drive a terminal or reorder text are refused at the daemon.
+func TestSetAndUpdateRejectTerminalControlsInMetadata(t *testing.T) {
+	e := newEnv(t)
+	wantOK(t, e.do(&proto.Request{Op: proto.OpSet, Name: "aws/key", Value: "AKIA-0123456789-WXYZ", URL: "https://ok.example", Notes: "fine"}))
+	before := listInfo(t, e, "aws/key")
+	rows := e.auditCount()
+
+	bad := []string{
+		"a\x1b[2Jb", "a\x1b]0;title\x07", "a\nb", "a\rb", "a\tb", "a\x00b", "a\x7fb", "a\u009bb",
+		"a‮b", "a‪b", "a‫b", "a‬b", "a‭b", "a⁦b", "a⁧b", "a⁨b", "a⁩b",
+	}
+	for _, s := range bad {
+		for field, mk := range map[string]func(op string) *proto.Request{
+			"url": func(op string) *proto.Request {
+				return &proto.Request{Op: op, Name: "aws/key", Value: "v-0123456789-ABCD", URL: s}
+			},
+			"notes": func(op string) *proto.Request {
+				return &proto.Request{Op: op, Name: "aws/key", Value: "v-0123456789-ABCD", Notes: s}
+			},
+			"tags": func(op string) *proto.Request {
+				return &proto.Request{Op: op, Name: "aws/key", Value: "v-0123456789-ABCD", Tags: []string{s}}
+			},
+		} {
+			set := mk(proto.OpSet)
+			set.Overwrite = true
+			wantFail(t, e.do(set), proto.ErrBadRequest, proto.ReasonBadRequest)
+			upd := mk(proto.OpUpdate)
+			upd.Value = ""
+			wantFail(t, e.do(upd), proto.ErrBadRequest, proto.ReasonBadRequest)
+			_ = field
+		}
+	}
+	// Nothing changed and nothing was audited.
+	after := listInfo(t, e, "aws/key")
+	if after.URL != before.URL || after.Notes != before.Notes || !after.UpdatedAt.Equal(before.UpdatedAt) {
+		t.Errorf("metadata changed: %+v -> %+v", before, after)
+	}
+	if e.auditCount() != rows {
+		t.Error("rejected requests were audited as successes")
+	}
+	w := e.do(&proto.Request{Op: proto.OpUpdate, Name: "aws/key", URL: "a\x1bb"})
+	if !strings.Contains(w.final.Message, "url") {
+		t.Errorf("message does not name the field: %q", w.final.Message)
+	}
+
+	// Ordinary text, including non-ASCII and characters next to the banned ranges, is fine.
+	for _, s := range []string{"https://例え.jp/path?q=1&r=%1B", "naïve — café ✓ 😀", "a b⁥c⁪d"} {
+		wantOK(t, e.do(&proto.Request{Op: proto.OpUpdate, Name: "aws/key", URL: s, Notes: s}))
+	}
+}

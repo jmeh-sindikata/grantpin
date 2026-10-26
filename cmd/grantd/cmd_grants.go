@@ -31,15 +31,15 @@ func newGrantsCmd() *cobra.Command {
 		for _, g := range gs {
 			if g.Tampered {
 				// The row's content is untrusted; show only that it exists.
-				fmt.Fprintf(tw, "%s\t-\t-\t-\t-\t-\tTAMPERED: failed authentication, ignored (revoke it)\n", g.ID)
+				fmt.Fprintf(tw, "%s\t-\t-\t-\t-\t-\tTAMPERED: failed authentication, ignored (revoke it)\n", printable(g.ID))
 				continue
 			}
 			kind := "-"
 			if g.Standing {
 				kind = "standing"
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", g.ID, g.Caller, g.CwdPrefix,
-				strings.Join(g.Secrets, ","), strings.Join(g.CmdPrefix, " "), kind,
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", printable(g.ID), printable(g.Caller), printable(g.CwdPrefix),
+				printable(strings.Join(g.Secrets, ",")), printable(strings.Join(g.CmdPrefix, " ")), kind,
 				formatRemaining(time.Until(g.ExpiresAt)))
 		}
 		return tw.Flush()
@@ -187,9 +187,9 @@ the repo policy or the secret's presence tier refused it.`,
 				return err
 			}
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "created standing grant %s\n", g.ID)
-			fmt.Fprintf(out, "  %s may run `%s ...` with %s in %s and below\n", g.Caller,
-				strings.Join(g.CmdPrefix, " "), strings.Join(g.Secrets, ","), g.CwdPrefix)
+			fmt.Fprintf(out, "created standing grant %s\n", printable(g.ID))
+			fmt.Fprintf(out, "  %s may run `%s ...` with %s in %s and below\n", printable(g.Caller),
+				printable(strings.Join(g.CmdPrefix, " ")), printable(strings.Join(g.Secrets, ",")), printable(g.CwdPrefix))
 			fmt.Fprintf(out, "  until %s (%s)", g.ExpiresAt.Local().Format("2006-01-02 15:04"), formatRemaining(time.Until(g.ExpiresAt)))
 			if g.UsesRemaining != nil {
 				fmt.Fprintf(out, ", %d use(s)", *g.UsesRemaining)

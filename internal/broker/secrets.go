@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"grantd/internal/approve"
@@ -29,6 +30,43 @@ func nameFail(w daemon.ResponseWriter, name string) bool {
 		return true
 	}
 	return false
+}
+
+// unsafeText reports whether s holds a character that can drive a terminal or
+// disguise text when it is printed: a C0 control (including tab and newline),
+// DEL, a C1 control (CSI is 0x9B on some terminals), or a Unicode bidirectional
+// override or isolate (U+202A to U+202E, U+2066 to U+2069).
+func unsafeText(s string) bool {
+	for _, r := range s {
+		switch {
+		case r < 0x20, r == 0x7f, r >= 0x80 && r < 0xa0:
+			return true
+		case r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
+			return true
+		}
+	}
+	return false
+}
+
+// metaTextFail rejects a set or update whose url, notes or tags contain
+// characters that unsafeText names. They are free-form metadata stored in
+// the clear and shown by `grantd list`, the app and MCP clients, so an agent
+// that can send them must not be able to put escape sequences in front of the
+// human. It reports whether it answered.
+func metaTextFail(w daemon.ResponseWriter, req *proto.Request) bool {
+	field := ""
+	switch {
+	case unsafeText(req.URL):
+		field = "url"
+	case unsafeText(req.Notes):
+		field = "notes"
+	case slices.ContainsFunc(req.Tags, unsafeText):
+		field = "tags"
+	default:
+		return false
+	}
+	fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, field+" must not contain control characters or bidirectional overrides")
+	return true
 }
 
 // vaultFail maps a vault error to a response.
@@ -126,6 +164,8 @@ func (b *Broker) handleSet(ctx context.Context, req *proto.Request, w daemon.Res
 	case len(req.Notes) > maxNotesBytes:
 		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, fmt.Sprintf("notes too long (max %d bytes)", maxNotesBytes))
 		return
+	case metaTextFail(w, req):
+		return
 	case req.MinTier != nil && !req.MinTier.Valid():
 		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, "invalid min_tier")
 		return
@@ -199,6 +239,8 @@ func (b *Broker) handleUpdate(ctx context.Context, req *proto.Request, w daemon.
 		return
 	case len(req.Notes) > maxNotesBytes:
 		bad(fmt.Sprintf("notes too long (max %d bytes)", maxNotesBytes))
+		return
+	case metaTextFail(w, req):
 		return
 	case req.MinTier != nil && !req.MinTier.Valid():
 		bad("invalid min_tier")

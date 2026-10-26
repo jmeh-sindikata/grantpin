@@ -117,7 +117,7 @@ func runRemote(parent context.Context, socket string, req *proto.Request, stdout
 		return failureError(resp)
 	}
 	if resp.Message != "" {
-		fmt.Fprintln(stderr, "grantd:", resp.Message)
+		fmt.Fprintln(stderr, "grantd:", printable(resp.Message))
 	}
 	if resp.ExitCode == nil {
 		return errors.New("daemon response carried no exit code")

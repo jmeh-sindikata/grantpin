@@ -140,8 +140,12 @@ func decodeAuditList(resp *proto.Response) (proto.AuditListResult, error) {
 	return r, err
 }
 
-// printable replaces control characters, so a row written by an untrusted
-// request cannot drive the terminal that lists it.
+// printable replaces control characters and Unicode bidirectional overrides
+// with '?' (a tab with a space), so a value written by an untrusted request
+// (an audit row, a secret's url, a grant's command) cannot drive the terminal
+// that lists it or reorder what is displayed. Every field of the daemon's
+// replies that the CLI prints and that a client could have chosen goes
+// through it.
 func printable(s string) string {
 	return strings.Map(func(r rune) rune {
 		switch {
@@ -149,6 +153,8 @@ func printable(s string) string {
 			return ' ' // a tab would start a new table column
 		case r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0):
 			return '?'
+		case r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
+			return '?' // LRE, RLE, PDF, LRO, RLO; LRI, RLI, FSI, PDI
 		}
 		return r
 	}, s)
