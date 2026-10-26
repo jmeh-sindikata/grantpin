@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
 	"github.com/jmeh-sindikata/grantd/internal/proto"
 	"github.com/jmeh-sindikata/grantd/internal/service"
 )
@@ -117,5 +118,52 @@ func TestServiceInstallDaemonStatusAndWarning(t *testing.T) {
 	out, _, err = runService(t, &fakeMgr{st: service.Status{Label: "l", Installed: true}}, nil, "install", "--socket", "/s.sock")
 	if err != nil || !strings.Contains(out, "WARNING:   daemon status: refused") {
 		t.Errorf("status err: %q %v", out, err)
+	}
+}
+
+func TestServiceInstallRecordsNonDefaultSocket(t *testing.T) {
+	platform, err := daemon.PlatformSocketPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Default socket: the plist stays minimal.
+	t.Setenv("GRANTD_SOCKET", "")
+	t.Setenv("XDG_RUNTIME_DIR", "")
+	m := &fakeMgr{st: service.Status{Label: "l", Installed: true}}
+	out, _, err := runService(t, m, nil, "install")
+	if err != nil || m.opts.Socket != "" || strings.Contains(out, "GRANTD_SOCKET") {
+		t.Errorf("default: socket=%q out=%q err=%v", m.opts.Socket, out, err)
+	}
+
+	// $GRANTD_SOCKET differing from the default is recorded and printed.
+	t.Setenv("GRANTD_SOCKET", "/tmp/gd.sock")
+	m = &fakeMgr{st: service.Status{Label: "l", Installed: true}}
+	out, _, err = runService(t, m, nil, "install")
+	if err != nil || m.opts.Socket != "/tmp/gd.sock" || !strings.Contains(out, "/tmp/gd.sock") || !strings.Contains(out, platform) {
+		t.Errorf("env: socket=%q out=%q err=%v", m.opts.Socket, out, err)
+	}
+
+	// $XDG_RUNTIME_DIR likewise.
+	t.Setenv("GRANTD_SOCKET", "")
+	t.Setenv("XDG_RUNTIME_DIR", "/run/user/1")
+	m = &fakeMgr{st: service.Status{Label: "l", Installed: true}}
+	if _, _, err = runService(t, m, nil, "install"); err != nil || m.opts.Socket != "/run/user/1/grantd.sock" {
+		t.Errorf("xdg: socket=%q err=%v", m.opts.Socket, err)
+	}
+
+	// An env socket equal to the default is not recorded.
+	t.Setenv("XDG_RUNTIME_DIR", "")
+	t.Setenv("GRANTD_SOCKET", platform)
+	m = &fakeMgr{st: service.Status{Label: "l", Installed: true}}
+	if _, _, err = runService(t, m, nil, "install"); err != nil || m.opts.Socket != "" {
+		t.Errorf("equal: socket=%q err=%v", m.opts.Socket, err)
+	}
+
+	// An explicit --socket wins and is not second-guessed.
+	t.Setenv("GRANTD_SOCKET", "/tmp/other.sock")
+	m = &fakeMgr{st: service.Status{Label: "l", Installed: true}}
+	if _, _, err = runService(t, m, nil, "install", "--socket", "/s.sock"); err != nil || m.opts.Socket != "/s.sock" {
+		t.Errorf("flag: socket=%q err=%v", m.opts.Socket, err)
 	}
 }

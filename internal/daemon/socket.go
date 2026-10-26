@@ -31,6 +31,14 @@ func DefaultSocketPath() (string, error) {
 	if d := os.Getenv("XDG_RUNTIME_DIR"); d != "" {
 		return filepath.Join(d, socketName), nil
 	}
+	return PlatformSocketPath()
+}
+
+// PlatformSocketPath is the socket path with no environment override: the
+// per-platform default of DefaultSocketPath (steps 3 and 4). It is where a
+// daemon started by launchd, which exports neither GRANTD_SOCKET nor
+// XDG_RUNTIME_DIR, listens unless its plist says otherwise.
+func PlatformSocketPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("daemon: locate socket: %w", err)

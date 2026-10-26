@@ -83,7 +83,7 @@ grantd service install        # writes ~/Library/LaunchAgents/dev.grantd.daemon.
 grantd service status
 ```
 
-The service is a per-user LaunchAgent (never root) that runs `grantd daemon`, restarts it if it exits with an error, and logs to `~/Library/Logs/grantd/`. It starts at login in your GUI session, not at boot, because the prompts need a desktop session and the Secure Enclave key is only usable while the Mac is unlocked. `service install` refuses a binary under a temporary directory; install `grantd` to a permanent location first. To remove it: `grantd service uninstall`.
+The service is a per-user LaunchAgent (never root) that runs `grantd daemon`, restarts it if it exits with an error, and logs to `~/Library/Logs/grantd/`. It starts at login in your GUI session, not at boot, because the prompts need a desktop session and the Secure Enclave key is only usable while the Mac is unlocked. `service install` refuses a binary under a temporary directory; install `grantd` to a permanent location first. To remove it: `grantd service uninstall`. If you use a non-default socket (`GRANTD_SOCKET` or `XDG_RUNTIME_DIR` set in the shell you install from), `service install` records it in the plist; set the same variable wherever else you run `grantd`.
 
 If you would rather not install a service, run `grantd daemon` in a spare terminal, or let `grantd mcp` start the daemon for you the first time it is needed (see [MCP server](#mcp-server)).
 
@@ -645,7 +645,7 @@ Use "grantd service [command] --help" for more information about a command.
 
 ### `grantd service install`
 
-Writes `~/Library/LaunchAgents/dev.grantd.daemon.plist` and bootstraps it into your GUI session. Idempotent: run it again after moving or rebuilding the binary, or after changing your `PATH`. The job runs `<exe> daemon`. It records `PATH` in the plist (only absolute entries, in order, without duplicates; by default the `PATH` of the shell running `install`, or the value of `--path`) and `GRANTD_SOCKET` if you pass `--socket`; those are the only variables the plist defines, and commands started by `grantd run` inherit them from the daemon.
+Writes `~/Library/LaunchAgents/dev.grantd.daemon.plist` and bootstraps it into your GUI session. Idempotent: run it again after moving or rebuilding the binary, or after changing your `PATH`. The job runs `<exe> daemon`. It records `PATH` in the plist (only absolute entries, in order, without duplicates; by default the `PATH` of the shell running `install`, or the value of `--path`) and `GRANTD_SOCKET` if you pass `--socket` or, without the flag, if the socket your shell resolves (`$GRANTD_SOCKET`, else `$XDG_RUNTIME_DIR/grantd.sock`) is not the platform default (the install prints it); the launchd job sees neither of those variables, so this is what keeps the daemon, the readiness check and your CLI on the same socket. Those are the only variables the plist defines, and commands started by `grantd run` inherit them from the daemon.
 
 ```
 Install and start the service
@@ -658,7 +658,7 @@ Flags:
   -h, --help             help for install
       --log-dir string   directory for daemon logs (default: ~/Library/Logs/grantd)
       --path string      PATH the daemon (and the commands it runs) get (default: PATH of this shell)
-      --socket string    socket path to export to the daemon as GRANTD_SOCKET
+      --socket string    socket path to export to the daemon as GRANTD_SOCKET (default: your $GRANTD_SOCKET / $XDG_RUNTIME_DIR socket, recorded only if it differs from the platform default)
 ```
 
 ### `grantd service uninstall`

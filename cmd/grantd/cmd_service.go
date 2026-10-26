@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantd/internal/daemon"
 	"github.com/jmeh-sindikata/grantd/internal/service"
 )
 
@@ -40,6 +41,24 @@ func newServiceCmd() *cobra.Command {
 				return err
 			}
 			w := cmd.OutOrStdout()
+			// The launchd daemon sees neither this shell's GRANTD_SOCKET nor
+			// its XDG_RUNTIME_DIR. If the socket this shell would use is not
+			// the platform default, record it in the plist so the daemon, the
+			// readiness check and the CLI all agree.
+			if opts.Socket == "" {
+				resolved, err := resolveSocket("")
+				if err != nil {
+					return err
+				}
+				platform, err := daemon.PlatformSocketPath()
+				if err != nil {
+					return err
+				}
+				if resolved != platform {
+					opts.Socket = resolved
+					fmt.Fprintf(w, "socket:    %s (recorded as GRANTD_SOCKET in the service; differs from the default %s)\n", resolved, platform)
+				}
+			}
 			notReady := m.Install(cmd.Context(), opts)
 			if notReady != nil && !errors.Is(notReady, service.ErrNotReady) {
 				return notReady
@@ -70,7 +89,7 @@ func newServiceCmd() *cobra.Command {
 		},
 	}
 	install.Flags().StringVar(&opts.Exe, "exe", "", "grantd binary or .app bundle the service runs; a menu-bar grantd.app resolves to its Helpers/grantd-daemon.app binary (default: this executable)")
-	install.Flags().StringVar(&opts.Socket, "socket", "", "socket path to export to the daemon as GRANTD_SOCKET")
+	install.Flags().StringVar(&opts.Socket, "socket", "", "socket path to export to the daemon as GRANTD_SOCKET (default: your $GRANTD_SOCKET / $XDG_RUNTIME_DIR socket, recorded only if it differs from the platform default)")
 	install.Flags().StringVar(&opts.Path, "path", "", "PATH the daemon (and the commands it runs) get (default: PATH of this shell)")
 	install.Flags().StringVar(&opts.LogDir, "log-dir", "", "directory for daemon logs (default: ~/Library/Logs/grantd)")
 
