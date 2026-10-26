@@ -7,12 +7,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/client"
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
-	"github.com/jmeh-sindikata/grantd/internal/service"
+	"github.com/jmeh-sindikata/grantpin/internal/client"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/service"
 )
 
-// Exit codes for `grantd service status`.
+// Exit codes for `grantpin service status`.
 const exitServiceNotInstalled = 3
 
 // Seams for tests: the real manager talks to launchd, and status exits the
@@ -41,7 +41,7 @@ func newServiceCmd() *cobra.Command {
 				return err
 			}
 			w := cmd.OutOrStdout()
-			// The launchd daemon sees neither this shell's GRANTD_SOCKET nor
+			// The launchd daemon sees neither this shell's GRANTPIN_SOCKET nor
 			// its XDG_RUNTIME_DIR. If the socket this shell would use is not
 			// the platform default, record it in the plist so the daemon, the
 			// readiness check and the CLI all agree.
@@ -56,7 +56,7 @@ func newServiceCmd() *cobra.Command {
 				}
 				if resolved != platform {
 					opts.Socket = resolved
-					fmt.Fprintf(w, "socket:    %s (recorded as GRANTD_SOCKET in the service; differs from the default %s)\n", resolved, platform)
+					fmt.Fprintf(w, "socket:    %s (recorded as GRANTPIN_SOCKET in the service; differs from the default %s)\n", resolved, platform)
 				}
 			}
 			notReady := m.Install(cmd.Context(), opts)
@@ -88,10 +88,10 @@ func newServiceCmd() *cobra.Command {
 			return nil
 		},
 	}
-	install.Flags().StringVar(&opts.Exe, "exe", "", "grantd binary or .app bundle the service runs; a menu-bar grantd.app resolves to its Helpers/grantd-daemon.app binary (default: this executable)")
-	install.Flags().StringVar(&opts.Socket, "socket", "", "socket path to export to the daemon as GRANTD_SOCKET (default: your $GRANTD_SOCKET / $XDG_RUNTIME_DIR socket, recorded only if it differs from the platform default)")
+	install.Flags().StringVar(&opts.Exe, "exe", "", "grantpin binary or .app bundle the service runs; a menu-bar grantpin.app resolves to its Helpers/grantpin-daemon.app binary (default: this executable)")
+	install.Flags().StringVar(&opts.Socket, "socket", "", "socket path to export to the daemon as GRANTPIN_SOCKET (default: your $GRANTPIN_SOCKET / $XDG_RUNTIME_DIR socket, recorded only if it differs from the platform default)")
 	install.Flags().StringVar(&opts.Path, "path", "", "PATH the daemon (and the commands it runs) get (default: PATH of this shell)")
-	install.Flags().StringVar(&opts.LogDir, "log-dir", "", "directory for daemon logs (default: ~/Library/Logs/grantd)")
+	install.Flags().StringVar(&opts.LogDir, "log-dir", "", "directory for daemon logs (default: ~/Library/Logs/grantpin)")
 
 	uninstall := &cobra.Command{
 		Use:   "uninstall",
@@ -159,6 +159,6 @@ func printServiceStatus(cmd *cobra.Command, st service.Status) {
 		fmt.Fprintf(w, "exe:       %s\n", st.ExePath)
 	}
 	if st.ExeMissing {
-		fmt.Fprintf(w, "warning:   executable no longer exists; re-run `grantd service install`\n")
+		fmt.Fprintf(w, "warning:   executable no longer exists; re-run `grantpin service install`\n")
 	}
 }

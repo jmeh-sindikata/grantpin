@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 	// ("Allow for N"). The dialog offers min(policy max_grant_ttl, this), or 1h
 	// without a policy, and FromDecision callers cap at it.
 	MaxDialogGrantTTL = 24 * time.Hour
-	// MaxStandingGrantTTL is the longest standing grant (`grantd grants add`),
+	// MaxStandingGrantTTL is the longest standing grant (`grantpin grants add`),
 	// whatever the policy says. A policy may lower it with
 	// max_standing_grant_ttl; it cannot raise it.
 	MaxStandingGrantTTL = 90 * 24 * time.Hour
@@ -59,7 +59,7 @@ type Grant struct {
 	UsesRemaining *int // nil = unlimited within TTL
 
 	// Standing marks a grant the human created deliberately with
-	// `grantd grants add` (stored as kind "standing", covered by the row MAC),
+	// `grantpin grants add` (stored as kind "standing", covered by the row MAC),
 	// as opposed to one created by the "Allow for N" button. It changes nothing
 	// about matching; it exists so listings can tell them apart.
 	Standing bool

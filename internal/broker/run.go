@@ -10,14 +10,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/audit"
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
-	"github.com/jmeh-sindikata/grantd/internal/grant"
-	"github.com/jmeh-sindikata/grantd/internal/policy"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
-	"github.com/jmeh-sindikata/grantd/internal/runner"
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/audit"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/grant"
+	"github.com/jmeh-sindikata/grantpin/internal/policy"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/runner"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 // killGrace is the SIGTERM->SIGKILL delay. It is shorter than the daemon's
@@ -196,7 +196,7 @@ func validateRun(req *proto.Request, callerOK bool) (cwd, msg string) {
 // hasControl reports whether any string contains a byte below 0x20 other than
 // a tab (or, with allowNL, a newline or carriage return, which multi-line
 // `sh -c` scripts legitimately carry). Such bytes could forge lines in the
-// audit listing and logs; the approval prompt and `grantd audit` sanitise what
+// audit listing and logs; the approval prompt and `grantpin audit` sanitise what
 // they print, and the daemon log no longer contains argv.
 func hasControl(allowNL bool, ss ...string) bool {
 	for _, s := range ss {

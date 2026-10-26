@@ -11,14 +11,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
 )
 
 func newDaemonCmd() *cobra.Command {
 	var socket string
 	cmd := &cobra.Command{
 		Use:   "daemon",
-		Short: "Run the grantd daemon in the foreground",
+		Short: "Run the grantpin daemon in the foreground",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			path, err := resolveSocket(socket)
@@ -30,7 +30,7 @@ func newDaemonCmd() *cobra.Command {
 			return runDaemon(ctx, path, slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), nil)))
 		},
 	}
-	cmd.Flags().StringVar(&socket, "socket", "", "socket path (default: $GRANTD_SOCKET or the platform default)")
+	cmd.Flags().StringVar(&socket, "socket", "", "socket path (default: $GRANTPIN_SOCKET or the platform default)")
 	return cmd
 }
 

@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 // Defaults for Config zero values.

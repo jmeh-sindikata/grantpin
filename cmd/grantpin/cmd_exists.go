@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 // secretExists asks the daemon whether name is stored. There is deliberately no
-// `grantd exists` verb (not in §8); import uses this to detect conflicts.
+// `grantpin exists` verb (not in §8); import uses this to detect conflicts.
 func secretExists(ctx context.Context, socketFlag, name string) (bool, error) {
 	resp, err := simpleCall(ctx, socketFlag, &proto.Request{Op: proto.OpExists, Name: name})
 	if err != nil {

@@ -16,8 +16,8 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/jmeh-sindikata/grantd/internal/client"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/client"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 // Tool names. These are fixed by HANDOFF §9; do not add to this list.
@@ -43,7 +43,7 @@ const (
 
 // NotRunningMessage is the tool error text when the daemon cannot be reached
 // and auto-start did not help.
-const NotRunningMessage = "grantd daemon is not running; run `grantd daemon` or `grantd service install`"
+const NotRunningMessage = "grantpin daemon is not running; run `grantpin daemon` or `grantpin service install`"
 
 // Starter launches the daemon (detached) so the shim can retry. It must return
 // promptly; the shim polls the socket afterwards. Tests inject a fake.
@@ -100,8 +100,8 @@ func New(cfg Config) (*Server, error) {
 	if s.log == nil {
 		s.log = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
-	s.srv = sdk.NewServer(&sdk.Implementation{Name: "grantd", Version: cfg.Version}, &sdk.ServerOptions{
-		Instructions: "grantd runs commands with secrets injected after a human approves; no tool here ever returns a secret value. " +
+	s.srv = sdk.NewServer(&sdk.Implementation{Name: "grantpin", Version: cfg.Version}, &sdk.ServerOptions{
+		Instructions: "grantpin runs commands with secrets injected after a human approves; no tool here ever returns a secret value. " +
 			"Use secret_list to discover names, secret_run to run a command with secrets in its environment.",
 	})
 	s.register()
@@ -207,7 +207,7 @@ func (s *Server) handleList(ctx context.Context, req *sdk.CallToolRequest, _ lis
 	var infos []proto.SecretInfo
 	if len(resp.Result) > 0 {
 		if err := json.Unmarshal(resp.Result, &infos); err != nil {
-			return nil, listOutput{}, errors.New("grantd: malformed list result from daemon")
+			return nil, listOutput{}, errors.New("grantpin: malformed list result from daemon")
 		}
 	}
 	out := listOutput{Secrets: make([]SecretEntry, 0, len(infos))}
@@ -231,7 +231,7 @@ func (s *Server) handleExists(ctx context.Context, req *sdk.CallToolRequest, in 
 	}
 	var r proto.ExistsResult
 	if err := json.Unmarshal(resp.Result, &r); err != nil {
-		return nil, existsOutput{}, errors.New("grantd: malformed exists result from daemon")
+		return nil, existsOutput{}, errors.New("grantpin: malformed exists result from daemon")
 	}
 	return nil, existsOutput{Exists: r.Exists}, nil
 }
@@ -246,7 +246,7 @@ func (s *Server) handleMasked(ctx context.Context, req *sdk.CallToolRequest, in 
 	}
 	var r proto.MaskedResult
 	if err := json.Unmarshal(resp.Result, &r); err != nil {
-		return nil, maskedOutput{}, errors.New("grantd: malformed masked result from daemon")
+		return nil, maskedOutput{}, errors.New("grantpin: malformed masked result from daemon")
 	}
 	return nil, maskedOutput{Masked: r.Masked}, nil
 }
@@ -306,7 +306,7 @@ func (s *Server) handleRun(ctx context.Context, req *sdk.CallToolRequest, in run
 		return nil, runOutput{}, err
 	}
 	if resp.ExitCode == nil {
-		return nil, runOutput{}, errors.New("grantd: daemon returned no exit code")
+		return nil, runOutput{}, errors.New("grantpin: daemon returned no exit code")
 	}
 	return nil, runOutput{
 		ExitCode: *resp.ExitCode,
@@ -338,7 +338,7 @@ func (s *Server) do(ctx context.Context, req *sdk.CallToolRequest, pr *proto.Req
 	}
 	if err != nil {
 		s.log.Warn("daemon call failed", "op", pr.Op, "err", err)
-		return nil, fmt.Errorf("grantd: %w", err)
+		return nil, fmt.Errorf("grantpin: %w", err)
 	}
 	if rerr := client.ResponseError(resp); rerr != nil {
 		s.log.Info("daemon refused", "op", pr.Op, "error", resp.Error, "reason", resp.Reason)
@@ -423,7 +423,7 @@ func SanitizeCaller(name string) string {
 
 // ---- capped output ----
 
-const truncMarker = "\n[grantd mcp: output truncated at %d bytes]\n"
+const truncMarker = "\n[grantpin mcp: output truncated at %d bytes]\n"
 
 type capped struct {
 	max       int

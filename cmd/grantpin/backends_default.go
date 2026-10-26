@@ -1,4 +1,4 @@
-//go:build !grantd_dev && !(darwin && cgo)
+//go:build !grantpin_dev && !(darwin && cgo)
 
 package main
 
@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/keystore"
 )
 
 // openKeyStore has no production backend on this platform/build: macOS needs

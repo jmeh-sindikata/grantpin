@@ -12,7 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 func newGrantsCmd() *cobra.Command {
@@ -111,7 +111,7 @@ func newGrantsAddCmd(socket *string) *cobra.Command {
 command starting with the given prefix, in --cwd or below it, asking only for
 the listed secrets, are released without a prompt.
 
-  grantd grants add --caller claude-code --secrets DB_URL,aws/* --ttl 30d -- php artisan
+  grantpin grants add --caller claude-code --secrets DB_URL,aws/* --ttl 30d -- php artisan
 
 Everything after -- (or after --cmd, which must then be the last flag) is the
 command prefix, so "php artisan" covers "php artisan migrate" but not "php x".
@@ -124,7 +124,7 @@ You approve it once, in a dialog that says "standing grant" and states the
 duration, followed by Touch ID. The repo policy's max_grant_ttl limits only
 the "Allow for N" button of a normal prompt, not this. A standing grant lasts
 at most 90 days, or less if the policy sets max_standing_grant_ttl; a longer
---ttl is refused, not shortened. Revoke it with "grantd grants revoke ID".
+--ttl is refused, not shortened. Revoke it with "grantpin grants revoke ID".
 
 Any program that can reach the daemon socket can send this request, so only
 approve a standing-grant dialog that you started yourself.

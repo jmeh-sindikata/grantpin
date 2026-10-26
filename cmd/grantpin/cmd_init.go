@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 func newInitCmd() *cobra.Command {

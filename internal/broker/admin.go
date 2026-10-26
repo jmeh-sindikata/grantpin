@@ -7,10 +7,10 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/jmeh-sindikata/grantd/internal/audit"
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
-	"github.com/jmeh-sindikata/grantd/internal/grant"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/audit"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/grant"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 func (b *Broker) handleGrants(ctx context.Context, req *proto.Request, w daemon.ResponseWriter) {
@@ -80,7 +80,7 @@ func (b *Broker) revokeEntry(req *proto.Request, verb, grantID string) audit.Ent
 	if !ok {
 		caller = "(invalid)"
 	}
-	argv := []string{"grantd", "grants", "revoke"}
+	argv := []string{"grantpin", "grants", "revoke"}
 	if req.Action == proto.ActionRevokeAll {
 		argv = append(argv, "--all")
 	}

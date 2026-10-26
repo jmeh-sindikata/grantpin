@@ -10,7 +10,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
 )
 
 const (
@@ -144,7 +144,7 @@ func dialogArgv(cmd []string) (argv, note string) {
 
 // ReleaseText is the body of the release (and show) dialog:
 //
-//	An agent is asking grantd to release secrets:
+//	An agent is asking grantpin to release secrets:
 //
 //	<caller> wants to run `<argv>` with <secrets> in <cwd>[ (no policy)]
 //
@@ -168,7 +168,7 @@ func ReleaseText(req approve.ApprovalRequest, ttl time.Duration) string {
 		cwd = "unknown directory"
 	}
 	argv, note := dialogArgv(req.Argv)
-	text := "An agent is asking grantd to release secrets:\n\n" + caller + " wants to run `" + argv +
+	text := "An agent is asking grantpin to release secrets:\n\n" + caller + " wants to run `" + argv +
 		"` with " + renderSecrets(req.Secrets, req.Expanded) + " in " + cwd
 	if !req.PolicyPresent {
 		text += " (no policy)"

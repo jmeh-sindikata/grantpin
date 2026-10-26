@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/audit"
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
-	"github.com/jmeh-sindikata/grantd/internal/grant"
-	"github.com/jmeh-sindikata/grantd/internal/policy"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/audit"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/grant"
+	"github.com/jmeh-sindikata/grantpin/internal/policy"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 // ReasonStanding is the audit reason of the allowed_new_grant row written when
@@ -23,7 +23,7 @@ const ReasonStanding = "standing"
 
 // handleGrantAdd creates a standing grant: `grants` with action "add".
 //
-// A standing grant is created by the human on purpose (`grantd grants add`),
+// A standing grant is created by the human on purpose (`grantpin grants add`),
 // but the daemon cannot tell who sent the request: any socket client, an agent
 // included, can. So the request is validated like a run, refused if the repo
 // policy forbids what it names, and then goes to the approver as

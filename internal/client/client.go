@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 // ErrNotRunning means nothing is listening on the daemon socket (it does not
 // exist or refuses connections). The CLI prints a hint; the MCP shim may
 // choose to start the daemon and retry. Test with errors.Is.
-var ErrNotRunning = errors.New("grantd daemon is not running")
+var ErrNotRunning = errors.New("grantpin daemon is not running")
 
 // ErrUsed is returned by Do on a Client that already carried a request.
 var ErrUsed = errors.New("client: connection already used (one request per connection)")

@@ -1,4 +1,4 @@
-// Package policy loads and evaluates per-repo .grantd.yml files. Policy only
+// Package policy loads and evaluates per-repo .grantpin.yml files. Policy only
 // restricts what a repo may request; it never grants access by itself.
 //
 // # Grant lifetimes: two different keys
@@ -10,7 +10,7 @@
 // approval dialog, which an agent can trigger at any time. The dialog offers
 // min(max_grant_ttl, 24h), and a grant created from it never exceeds that. It
 // is deliberately NOT applied to standing grants: those are created by the
-// human, on purpose, with `grantd grants add`, usually for days or weeks, in
+// human, on purpose, with `grantpin grants add`, usually for days or weeks, in
 // front of a dialog that states the duration and a Touch ID prompt. The dialog
 // cap exists for agent-triggered prompts. Applying it (its default is 1h)
 // would make every standing grant fail unless each repo opted in.

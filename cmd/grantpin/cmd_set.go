@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/presence"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 func newSetCmd() *cobra.Command {
@@ -18,7 +18,7 @@ func newSetCmd() *cobra.Command {
 		Use:   "set NAME",
 		Short: "Store a secret (value from stdin or hidden prompt)",
 		Long: "Store a secret. The value is read from stdin when it is not a terminal " +
-			"(`printf %s \"$V\" | grantd set NAME`; one trailing newline is stripped), " +
+			"(`printf %s \"$V\" | grantpin set NAME`; one trailing newline is stripped), " +
 			"otherwise from a hidden prompt. It is never accepted as an argument.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

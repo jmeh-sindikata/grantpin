@@ -32,9 +32,9 @@ const (
 // Keychain identifiers. Exported so the manual-test doc and tooling agree.
 const (
 	// KeyTag is the application tag of the Secure Enclave key.
-	KeyTag = "dev.grantd.vault-kek"
+	KeyTag = "dev.grantpin.vault-kek"
 	// KeychainService / KeychainAccount identify the fallback KEK item.
-	KeychainService = "dev.grantd"
+	KeychainService = "dev.grantpin"
 	KeychainAccount = "vault-kek"
 )
 

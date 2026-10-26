@@ -15,11 +15,11 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/jmeh-sindikata/grantd/internal/client"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/client"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
-// Exit codes (sysexits.h flavoured). A command run through `grantd run` exits
+// Exit codes (sysexits.h flavoured). A command run through `grantpin run` exits
 // with the child's own code, so these can collide with a child that happens to
 // exit 77, 78 or 69; scripts that care should look at stderr.
 const (
@@ -54,7 +54,7 @@ func exitCodeOf(err error) int {
 
 // addSocketFlag adds the --socket flag shared by every daemon-talking verb.
 func addSocketFlag(c *cobra.Command, dst *string) {
-	c.Flags().StringVar(dst, "socket", "", "socket path (default: $GRANTD_SOCKET or the platform default)")
+	c.Flags().StringVar(dst, "socket", "", "socket path (default: $GRANTPIN_SOCKET or the platform default)")
 }
 
 // callDaemon sends req and returns the final response. A daemon that is not
@@ -68,7 +68,7 @@ func callDaemon(ctx context.Context, socketFlag string, req *proto.Request, onSt
 	}
 	resp, err := client.Call(ctx, path, req, onStream)
 	if errors.Is(err, client.ErrNotRunning) {
-		return nil, path, fmt.Errorf("%w (socket %s); start it with `grantd daemon`", client.ErrNotRunning, path)
+		return nil, path, fmt.Errorf("%w (socket %s); start it with `grantpin daemon`", client.ErrNotRunning, path)
 	}
 	return resp, path, err
 }

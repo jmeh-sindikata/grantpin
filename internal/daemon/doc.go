@@ -1,4 +1,4 @@
-// Package daemon implements the grantd socket server and request router.
+// Package daemon implements the grantpin socket server and request router.
 //
 // The daemon runs as the invoking user (never root), accepts newline-delimited
 // JSON requests (see package proto) on a Unix domain socket, verifies the peer

@@ -16,11 +16,11 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 	"gopkg.in/yaml.v3"
 
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 // FileName is the per-repo policy file name.
-const FileName = ".grantd.yml"
+const FileName = ".grantpin.yml"
 
 // DefaultMaxGrantTTL is the grant TTL cap used when the policy file does not
 // set max_grant_ttl. DECISION (conservative): absent means 1h, not "no cap".
@@ -46,7 +46,7 @@ var (
 type SecretNotAllowedError struct{ Secret string }
 
 func (e *SecretNotAllowedError) Error() string {
-	return fmt.Sprintf("policy: secret %q is not allowed by .grantd.yml", e.Secret)
+	return fmt.Sprintf("policy: secret %q is not allowed by .grantpin.yml", e.Secret)
 }
 
 // Is makes errors.Is(err, ErrSecretNotAllowed) true.
@@ -56,7 +56,7 @@ func (e *SecretNotAllowedError) Is(target error) bool { return target == ErrSecr
 type CommandNotAllowedError struct{ Argv []string }
 
 func (e *CommandNotAllowedError) Error() string {
-	return fmt.Sprintf("policy: command %q is not allowed by .grantd.yml", e.Argv)
+	return fmt.Sprintf("policy: command %q is not allowed by .grantpin.yml", e.Argv)
 }
 
 // Is makes errors.Is(err, ErrCommandNotAllowed) true.
@@ -75,7 +75,7 @@ func (e *InsecurePolicyError) Error() string {
 // Is makes errors.Is(err, ErrInsecurePolicy) true.
 func (e *InsecurePolicyError) Is(target error) bool { return target == ErrInsecurePolicy }
 
-// Policy is a parsed .grantd.yml (§6). Policy restricts; it never grants.
+// Policy is a parsed .grantpin.yml (§6). Policy restricts; it never grants.
 // Load always returns a non-nil *Policy on success; when no file exists
 // Present() is false and Check permits everything (the daemon must then force
 // an explicit approval). A nil *Policy behaves like an absent one.
@@ -105,7 +105,7 @@ type file struct {
 var currentUID = os.Getuid
 
 // Load walks from cwd (which must be absolute) up to the filesystem root and
-// parses the first .grantd.yml found. It returns an absent Policy (Present()
+// parses the first .grantpin.yml found. It returns an absent Policy (Present()
 // false, nil error) when none exists. Any problem with a file that does exist
 // (unreadable, insecure, malformed) is an error: Load never walks past a
 // broken policy to a looser one.
@@ -277,7 +277,7 @@ func (p *Policy) MaxGrantTTL() time.Duration {
 }
 
 // MaxStandingGrantTTL is the policy's optional cap on standing grants (the
-// ones the human creates with `grantd grants add`). ok is false when there is
+// ones the human creates with `grantpin grants add`). ok is false when there is
 // no policy or it does not declare max_standing_grant_ttl; the caller then
 // applies only its own global ceiling. The value can only lower that ceiling,
 // never raise it.

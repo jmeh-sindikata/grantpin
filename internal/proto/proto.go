@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 // Version is the wire protocol version carried in Request.V.
@@ -63,7 +63,7 @@ const (
 	ReasonUserDenied          = "user_denied"           // (denied) human pressed Deny
 	ReasonNoGrant             = "no_grant"              // (denied) no matching grant and approver cannot prompt
 	ReasonApproverUnavailable = "approver_unavailable"  // (denied) prompt could not be shown
-	ReasonPolicyRefused       = "policy_refused"        // (refused) .grantd.yml forbids secret/command
+	ReasonPolicyRefused       = "policy_refused"        // (refused) .grantpin.yml forbids secret/command
 	ReasonTierUnmet           = "tier_unmet"            // (refused) backend tier below secret min_tier; never downgraded
 	ReasonPeerRejected        = "peer_rejected"         // (refused) peer UID != daemon UID
 	ReasonNotTTY              = "not_tty"               // (refused) show requires an interactive TTY

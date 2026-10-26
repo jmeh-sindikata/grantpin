@@ -1,5 +1,5 @@
 // Package service installs, removes and inspects the per-user background
-// service that runs "grantd daemon". Only macOS (launchd) is implemented; on
+// service that runs "grantpin daemon". Only macOS (launchd) is implemented; on
 // other platforms New returns ErrUnsupported.
 //
 // The service always runs as the logged-in user (a LaunchAgent in the gui
@@ -16,32 +16,32 @@ import (
 	"time"
 )
 
-// Label is the launchd label of the grantd agent.
-const Label = "dev.grantd.daemon"
+// Label is the launchd label of the grantpin agent.
+const Label = "dev.grantpin.daemon"
 
 // ErrUnsupported is returned by New on platforms without a service backend.
 var ErrUnsupported = errors.New("service: not supported on this platform")
 
 // Options configure Install.
 type Options struct {
-	// Exe is the grantd binary to run. Empty means the current executable.
+	// Exe is the grantpin binary to run. Empty means the current executable.
 	// It is resolved through symlinks and must be absolute, executable and
 	// not inside a temporary directory. It may also name a macOS app bundle
 	// (a directory ending in ".app"); the service then runs the bundle's
 	// daemon binary, which is what the bundle's signature and provisioning
 	// profile apply to: for the menu-bar app that is
-	// Contents/Helpers/grantd-daemon.app/Contents/MacOS/grantd (never the
+	// Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin (never the
 	// app's own UI executable), for a plain bundle Contents/MacOS/<CFBundleExecutable>.
 	Exe string
-	// Socket, if set, is exported to the daemon as GRANTD_SOCKET. Must be
+	// Socket, if set, is exported to the daemon as GRANTPIN_SOCKET. Must be
 	// absolute.
 	Socket string
 	// LogDir receives daemon.out.log and daemon.err.log. Empty means the
-	// platform default (~/Library/Logs/grantd on macOS).
+	// platform default (~/Library/Logs/grantpin on macOS).
 	LogDir string
 	// Path is the PATH recorded in the service definition. Empty means the
 	// PATH of the process running Install. Only absolute entries are kept.
-	// PATH is the only variable besides GRANTD_SOCKET the service defines.
+	// PATH is the only variable besides GRANTPIN_SOCKET the service defines.
 	Path string
 	// ReadyTimeout bounds how long Install waits for the daemon socket to
 	// accept connections after launchd started it. Zero means
@@ -134,18 +134,18 @@ func resolveExe(exe string) (string, error) {
 }
 
 // helperBundle is the nested bundle inside the menu-bar app that holds the Go
-// daemon binary (Contents/Helpers/grantd-daemon.app). uiExecutable is the
+// daemon binary (Contents/Helpers/grantpin-daemon.app). uiExecutable is the
 // outer app's own main executable, the SwiftUI app, which must never be what
 // the service runs.
 const (
-	helperBundle = "grantd-daemon.app"
-	uiExecutable = "grantd-app"
+	helperBundle = "grantpin-daemon.app"
+	uiExecutable = "grantpin-app"
 )
 
 // bundleExe returns the daemon binary of the app bundle at dir.
 //
 // For the menu-bar app layout, where dir contains
-// Contents/Helpers/grantd-daemon.app, that is the helper's
+// Contents/Helpers/grantpin-daemon.app, that is the helper's
 // Contents/MacOS/<CFBundleExecutable>: the outer bundle's own executable is the
 // UI and is never returned. For a plain bundle (the helper bundle itself, or
 // the older single-bundle layout) it is dir's Contents/MacOS/<CFBundleExecutable>.
@@ -173,17 +173,17 @@ func bundleExe(dir string) (string, error) {
 		return "", err
 	}
 	if name == uiExecutable {
-		return "", fmt.Errorf("service: %s is the grantd menu-bar app and has no %s inside; refusing to run the UI as the daemon", dir, helperBundle)
+		return "", fmt.Errorf("service: %s is the grantpin menu-bar app and has no %s inside; refusing to run the UI as the daemon", dir, helperBundle)
 	}
 	return exe, nil
 }
 
 // plainBundleExe returns the inner binary of the app bundle at dir,
-// Contents/MacOS/<CFBundleExecutable> (default "grantd"), and that name. The
+// Contents/MacOS/<CFBundleExecutable> (default "grantpin"), and that name. The
 // name must be a plain file name so a crafted Info.plist cannot point outside
 // the bundle.
 func plainBundleExe(dir string) (exe, name string, err error) {
-	name = "grantd"
+	name = "grantpin"
 	if data, err := os.ReadFile(filepath.Join(dir, "Contents", "Info.plist")); err == nil {
 		if m, perr := parsePlist(data); perr == nil {
 			if n, _ := m["CFBundleExecutable"].(string); n != "" {
@@ -206,7 +206,7 @@ func plainBundleExe(dir string) (exe, name string, err error) {
 }
 
 // refuseUIExecutable rejects a path that is the menu-bar app's own main
-// executable (<x>.app/Contents/MacOS/grantd-app), which would otherwise be
+// executable (<x>.app/Contents/MacOS/grantpin-app), which would otherwise be
 // accepted as "an executable file" and installed as the daemon.
 func refuseUIExecutable(real string) error {
 	if filepath.Base(real) != uiExecutable {
@@ -218,8 +218,8 @@ func refuseUIExecutable(real string) error {
 	if filepath.Base(macos) != "MacOS" || filepath.Base(contents) != "Contents" || !strings.HasSuffix(app, ".app") {
 		return nil
 	}
-	return fmt.Errorf("service: %s is the grantd menu-bar app, not the daemon; use %s or the app bundle itself",
-		real, filepath.Join(app, "Contents", "Helpers", helperBundle, "Contents", "MacOS", "grantd"))
+	return fmt.Errorf("service: %s is the grantpin menu-bar app, not the daemon; use %s or the app bundle itself",
+		real, filepath.Join(app, "Contents", "Helpers", helperBundle, "Contents", "MacOS", "grantpin"))
 }
 
 // checkExe refuses binaries that are unsuitable for a long-lived service: not
@@ -236,7 +236,7 @@ func checkExe(exe string, tempRoots []string) error {
 	}
 	for _, root := range tempRoots {
 		if root != "" && within(exe, root) {
-			return fmt.Errorf("service: refusing to install %s: it is under temporary directory %s; install grantd to a permanent location (or pass --exe)", exe, root)
+			return fmt.Errorf("service: refusing to install %s: it is under temporary directory %s; install grantpin to a permanent location (or pass --exe)", exe, root)
 		}
 	}
 	return nil

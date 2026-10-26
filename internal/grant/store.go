@@ -210,7 +210,7 @@ func (s *Store) scan(r scanner, now time.Time) (Grant, error) {
 
 func (s *Store) reportTampered(id string) {
 	if _, seen := s.warned.LoadOrStore(id, struct{}{}); !seen {
-		s.log.Warn("grant row failed authentication; ignoring it (the vault file was modified outside grantd)", "grant_id", id)
+		s.log.Warn("grant row failed authentication; ignoring it (the vault file was modified outside grantpin)", "grant_id", id)
 	}
 }
 

@@ -13,7 +13,7 @@ import (
 
 // socketEnv mirrors daemon.SocketEnv (kept literal so this package has no
 // dependency on the daemon package).
-const socketEnv = "GRANTD_SOCKET"
+const socketEnv = "GRANTPIN_SOCKET"
 
 type plistSpec struct {
 	Label  string
@@ -58,9 +58,9 @@ var plistTmpl = template.Must(template.New("plist").Funcs(template.FuncMap{"x": 
 	<key>StandardErrorPath</key>
 	<string>{{x .ErrLog}}</string>
 {{- if or .Socket .Path}}
-	<!-- PATH is recorded from the shell that ran "grantd service install" (or
+	<!-- PATH is recorded from the shell that ran "grantpin service install" (or
 	     taken from its path flag): launchd's own default lacks Homebrew and
-	     friends, and the commands "grantd run" starts inherit the daemon's
+	     friends, and the commands "grantpin run" starts inherit the daemon's
 	     environment by design. Nothing else from that shell is copied. -->
 	<key>EnvironmentVariables</key>
 	<dict>

@@ -1,4 +1,4 @@
-module github.com/jmeh-sindikata/grantd
+module github.com/jmeh-sindikata/grantpin
 
 go 1.27.3
 

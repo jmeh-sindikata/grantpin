@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 func newAuditCmd() *cobra.Command {
@@ -54,14 +54,14 @@ func newAuditCmd() *cobra.Command {
 			return err
 		}
 		if page.Skipped > 0 {
-			fmt.Fprintf(cmd.ErrOrStderr(), "grantd: %d entries were too large to show and are left out\n", page.Skipped)
+			fmt.Fprintf(cmd.ErrOrStderr(), "grantpin: %d entries were too large to show and are left out\n", page.Skipped)
 		}
 		if page.Truncated {
 			next := ""
 			if page.NextBeforeID != "" {
 				next = "; the next page starts with `--before " + page.NextBeforeID + "`"
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "grantd: only %d entries fit in one reply%s\n", len(es), next)
+			fmt.Fprintf(cmd.ErrOrStderr(), "grantpin: only %d entries fit in one reply%s\n", len(es), next)
 		}
 		return nil
 	}

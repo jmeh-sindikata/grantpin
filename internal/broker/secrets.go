@@ -7,12 +7,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/audit"
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/audit"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 func infoOf(m vault.Meta) proto.SecretInfo {
@@ -58,7 +58,7 @@ func unsafeRunes(s string, allowLayout bool) bool {
 // metaTextFail rejects a set or update whose url, notes or tags contain
 // characters that unsafeText names (notes: unsafeNotes, which lets line feeds
 // and tabs through). They are free-form metadata stored in
-// the clear and shown by `grantd list`, the app and MCP clients, so an agent
+// the clear and shown by `grantpin list`, the app and MCP clients, so an agent
 // that can send them must not be able to put escape sequences in front of the
 // human. It reports whether it answered.
 func metaTextFail(w daemon.ResponseWriter, req *proto.Request) bool {
@@ -150,7 +150,7 @@ func (b *Broker) lifecycleEntry(req *proto.Request, verb string) audit.Entry {
 	// cwd is not validated for these ops (show only displays it): cap it.
 	return audit.Entry{
 		TS: b.now(), Caller: caller, Cwd: audit.CapString(req.Cwd, audit.MaxCwd),
-		Argv: []string{"grantd", verb, req.Name}, Secrets: []string{req.Name},
+		Argv: []string{"grantpin", verb, req.Name}, Secrets: []string{req.Name},
 		Decision: audit.DecisionAllowedOnce, Reason: verb,
 	}
 }
@@ -343,7 +343,7 @@ func (b *Broker) confirmLowerTier(ctx context.Context, req *proto.Request, w dae
 	}
 	dec, err := b.ask(ctx, approve.ApprovalRequest{
 		Kind:   approve.KindLowerTier,
-		Caller: entry.Caller, Argv: []string{"grantd", "update", req.Name},
+		Caller: entry.Caller, Argv: []string{"grantpin", "update", req.Name},
 		Secrets: []string{req.Name}, Expanded: []string{req.Name},
 		FromTier: cur.MinTier, ToTier: to,
 	})
@@ -412,7 +412,7 @@ func (b *Broker) handleShow(ctx context.Context, req *proto.Request, w daemon.Re
 
 	dec, err := b.ask(ctx, approve.ApprovalRequest{
 		Kind:   approve.KindShow,
-		Caller: caller, Cwd: req.Cwd, Argv: []string{"grantd", "show", req.Name},
+		Caller: caller, Cwd: req.Cwd, Argv: []string{"grantpin", "show", req.Name},
 		Secrets: []string{req.Name}, Expanded: []string{req.Name},
 	})
 	switch {

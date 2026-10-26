@@ -3,7 +3,7 @@
 //
 // Platform implementations live in subpackages (darwin today; windows and linux
 // slot in later without touching core). The dev subpackage is a TierNone test
-// backend compiled only under the grantd_dev build tag.
+// backend compiled only under the grantpin_dev build tag.
 //
 // # Kinds of request
 //
@@ -16,7 +16,7 @@
 //   - KindShow: reveal one value in the human's terminal. Reveal once; never a
 //     duration.
 //   - KindStandingGrant: a long-lived grant the human requested with
-//     `grantd grants add`. A single button that creates exactly the grant
+//     `grantpin grants add`. A single button that creates exactly the grant
 //     shown, for exactly RequestedTTL. Never offered as a choice by a release
 //     prompt.
 //   - KindLowerTier: lower a secret's minimum protection level (`update` with

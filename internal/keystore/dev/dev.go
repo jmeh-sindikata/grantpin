@@ -1,4 +1,4 @@
-//go:build grantd_dev
+//go:build grantpin_dev
 
 package dev
 
@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/jmeh-sindikata/grantd/internal/keystore"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/keystore"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 // Enabled reports whether the dev backend is compiled in. True in this build.
@@ -21,7 +21,7 @@ const Enabled = true
 // insecureKey is a CONSTANT, PUBLIC key. Anyone can unwrap anything wrapped by
 // this store. It exists only so core logic is testable headless.
 // DO NOT USE FOR REAL SECRETS.
-var insecureKey = []byte("grantd-dev-INSECURE-test-only-32") // 32 bytes -> AES-256
+var insecureKey = []byte("grantpin-dev-INSECURE-testonly-0") // 32 bytes -> AES-256
 
 // Store is an INSECURE, TierNone keystore for tests. Wrapped blobs are
 // AES-256-GCM(nonce || ciphertext) under a hard-coded key.
@@ -31,7 +31,7 @@ type Store struct {
 
 var _ keystore.KeyStore = (*Store)(nil)
 
-// New returns the insecure dev keystore. It exists only under the grantd_dev
+// New returns the insecure dev keystore. It exists only under the grantpin_dev
 // build tag, so calling it from a normal build fails to compile.
 func New() *Store {
 	block, err := aes.NewCipher(insecureKey)
@@ -49,7 +49,7 @@ var _ keystore.Deleter = (*Store)(nil)
 
 // DeleteFallbackKEK and DeleteSecureEnclaveKey: the dev keystore keeps its key
 // in the source, so there is never any key material to delete and both report
-// keystore.ErrNoKeyMaterial. They let the `grantd keystore delete` plumbing be
+// keystore.ErrNoKeyMaterial. They let the `grantpin keystore delete` plumbing be
 // tested without touching a Keychain.
 func (s *Store) DeleteFallbackKEK(context.Context) error { return keystore.ErrNoKeyMaterial }
 
@@ -57,7 +57,7 @@ func (s *Store) DeleteFallbackKEK(context.Context) error { return keystore.ErrNo
 func (s *Store) DeleteSecureEnclaveKey(context.Context) error { return keystore.ErrNoKeyMaterial }
 
 // Open is the build-agnostic constructor for backend selection code; under
-// grantd_dev it returns the dev store.
+// grantpin_dev it returns the dev store.
 func Open() (keystore.KeyStore, error) { return New(), nil }
 
 // Wrap encrypts dataKey under the constant key.

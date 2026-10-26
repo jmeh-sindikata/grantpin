@@ -11,14 +11,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/audit"
-	"github.com/jmeh-sindikata/grantd/internal/broker"
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
-	"github.com/jmeh-sindikata/grantd/internal/grant"
-	"github.com/jmeh-sindikata/grantd/internal/keystore"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
-	"github.com/jmeh-sindikata/grantd/internal/vault"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/audit"
+	"github.com/jmeh-sindikata/grantpin/internal/broker"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/grant"
+	"github.com/jmeh-sindikata/grantpin/internal/keystore"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 // backends are the platform seams the daemon runs on.
@@ -27,7 +27,7 @@ type backends struct {
 	ap approve.Approver
 }
 
-// backendConfig carries the options of `grantd init` that configure the
+// backendConfig carries the options of `grantpin init` that configure the
 // keystore. The daemon needs none: the macOS keystore opens a wrapped key by
 // the mode recorded in the blob itself.
 type backendConfig struct {
@@ -37,7 +37,7 @@ type backendConfig struct {
 	KeychainFallback bool
 }
 
-// addInitFlags adds the keystore flags of `grantd init` to c.
+// addInitFlags adds the keystore flags of `grantpin init` to c.
 func addInitFlags(c *cobra.Command, cfg *backendConfig) {
 	c.Flags().BoolVar(&cfg.KeychainFallback, "keychain-fallback", false,
 		"macOS: if the Secure Enclave is unavailable, protect the vault key with a Keychain item (dialog tier, weaker) instead of failing; recorded in the vault, so later commands need no flag")
@@ -57,12 +57,12 @@ var openBackends = func() (backends, error) {
 	return backends{ks: ks, ap: ap}, nil
 }
 
-// errVaultMissing means the vault file does not exist yet (`grantd init` has
+// errVaultMissing means the vault file does not exist yet (`grantpin init` has
 // not run).
 var errVaultMissing = errors.New("vault not initialized")
 
 // brokerHolder lazily opens the vault and builds the broker, so that a daemon
-// started before `grantd init` picks the vault up as soon as it exists,
+// started before `grantpin init` picks the vault up as soon as it exists,
 // without a restart.
 type brokerHolder struct {
 	be     backends
@@ -360,7 +360,7 @@ func (h *brokerHolder) handle(ctx context.Context, req *proto.Request, w daemon.
 		_ = w.Finish(daemon.Failure(proto.ErrFailed, broker.CtxFailure(ctx)))
 	case errors.Is(err, errVaultMissing):
 		r := daemon.Failure(proto.ErrFailed, proto.ReasonVaultNotInitialized)
-		r.Message = "vault not initialized; run `grantd init`"
+		r.Message = "vault not initialized; run `grantpin init`"
 		_ = w.Finish(r)
 	case err != nil:
 		// The cause (wrong keystore, bad permissions, ...) goes to the log.

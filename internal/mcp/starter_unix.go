@@ -17,7 +17,7 @@ import (
 //
 // The child gets a minimal, allow-listed environment (locating HOME and PATH
 // only). Nothing from the shim's environment that could carry secrets or
-// configuration, notably GRANTD_*, is forwarded.
+// configuration, notably GRANTPIN_*, is forwarded.
 func ExecStarter(socketPath string) Starter {
 	return func(ctx context.Context) error {
 		exe, err := os.Executable()

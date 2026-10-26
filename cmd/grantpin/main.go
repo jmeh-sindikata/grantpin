@@ -12,9 +12,9 @@ var version = "dev"
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
-		Use:           "grantd",
+		Use:           "grantpin",
 		Short:         "Local secrets broker for AI coding agents",
-		Long:          "grantd lets agents run commands that need secrets without ever receiving a plaintext secret, and without any release happening unapproved by a human.",
+		Long:          "grantpin lets agents run commands that need secrets without ever receiving a plaintext secret, and without any release happening unapproved by a human.",
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -43,7 +43,7 @@ func newRootCmd() *cobra.Command {
 func main() {
 	if err := newRootCmd().Execute(); err != nil {
 		if err.Error() != "" { // an empty message relays a child's exit status
-			fmt.Fprintln(os.Stderr, "grantd:", err)
+			fmt.Fprintln(os.Stderr, "grantpin:", err)
 		}
 		os.Exit(exitCodeOf(err))
 	}

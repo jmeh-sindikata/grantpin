@@ -19,7 +19,7 @@
 //
 // A grant is either a dialog grant (kind "", created by the "Allow for N"
 // button, at most MaxDialogGrantTTL) or a standing grant (kind "standing",
-// created by the human with `grantd grants add`, at most MaxStandingGrantTTL).
+// created by the human with `grantpin grants add`, at most MaxStandingGrantTTL).
 // Matching treats them alike; the kind exists so listings can tell them apart.
 // It is a column covered by the MAC, so a row cannot be relabelled; rows
 // without a kind keep the original encoding and verify as before.

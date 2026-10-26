@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 // Approver asks the human whether a secret release may proceed.
@@ -36,7 +36,7 @@ const (
 	// offers Reveal once and never a duration; any TTL in the answer is ignored.
 	KindShow
 	// KindStandingGrant asks the human to create a long-lived grant the human
-	// themselves requested (`grantd grants add`). The prompt says "standing
+	// themselves requested (`grantpin grants add`). The prompt says "standing
 	// grant" and states RequestedTTL; the only way to allow is the single
 	// button that creates exactly that grant.
 	KindStandingGrant
@@ -84,7 +84,7 @@ type ApprovalRequest struct {
 	// glob. Approvers should show both when they differ, so the human sees
 	// which secrets "aws/*" really covers.
 	Expanded []string
-	// PolicyPresent is false when no .grantd.yml was found; the prompt must then
+	// PolicyPresent is false when no .grantpin.yml was found; the prompt must then
 	// say "no policy".
 	PolicyPresent bool
 	// GrantCmdPrefix and GrantCwdPrefix are exactly what an "Allow for N"

@@ -134,7 +134,7 @@ int gd_se_create(const char *tag, void **key, gd_err *e) {
 	int b = 256;
 	bits = CFNumberCreate(NULL, kCFNumberIntType, &b);
 	tagData = cfdata_copy(tag);
-	label = cfstr("grantd vault key-encryption key");
+	label = cfstr("grantpin vault key-encryption key");
 
 	priv = newdict();
 	CFDictionarySetValue(priv, kSecAttrIsPermanent, kCFBooleanTrue);

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
 )
 
 // Option configures New.

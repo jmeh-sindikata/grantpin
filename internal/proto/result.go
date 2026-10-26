@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 // Op-specific payloads carried in Response.Result. Owners of each op may extend
@@ -61,7 +61,7 @@ type GrantInfo struct {
 	// "Allow for N".
 	Standing bool `json:"standing,omitempty"`
 	// Tampered: the stored row failed authentication (the vault file was edited
-	// outside grantd). It never matches; the other fields are untrusted.
+	// outside grantpin). It never matches; the other fields are untrusted.
 	Tampered bool `json:"tampered,omitempty"`
 }
 
@@ -113,7 +113,7 @@ type AuditVerifyResult struct {
 
 // StatusResult is the OpStatus result.
 type StatusResult struct {
-	Version          string                `json:"version"` // grantd build version
+	Version          string                `json:"version"` // grantpin build version
 	ProtoV           int                   `json:"proto_v"`
 	PID              int                   `json:"pid"`
 	StartedAt        time.Time             `json:"started_at"`

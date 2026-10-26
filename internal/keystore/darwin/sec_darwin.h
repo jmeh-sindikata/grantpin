@@ -1,7 +1,7 @@
 //go:build darwin && cgo
 
-#ifndef GRANTD_SEC_DARWIN_H
-#define GRANTD_SEC_DARWIN_H
+#ifndef GRANTPIN_SEC_DARWIN_H
+#define GRANTPIN_SEC_DARWIN_H
 
 #include <stddef.h>
 #include <stdint.h>

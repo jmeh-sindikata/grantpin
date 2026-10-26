@@ -1,14 +1,14 @@
-//go:build !grantd_dev && darwin && cgo
+//go:build !grantpin_dev && darwin && cgo
 
 package main
 
 import (
 	"fmt"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	approvedarwin "github.com/jmeh-sindikata/grantd/internal/approve/darwin"
-	"github.com/jmeh-sindikata/grantd/internal/keystore"
-	keystoredarwin "github.com/jmeh-sindikata/grantd/internal/keystore/darwin"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	approvedarwin "github.com/jmeh-sindikata/grantpin/internal/approve/darwin"
+	"github.com/jmeh-sindikata/grantpin/internal/keystore"
+	keystoredarwin "github.com/jmeh-sindikata/grantpin/internal/keystore/darwin"
 )
 
 // Constructors, replaceable in tests so they can check the wiring without

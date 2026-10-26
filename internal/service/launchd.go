@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/client"
-	"github.com/jmeh-sindikata/grantd/internal/daemon"
+	"github.com/jmeh-sindikata/grantpin/internal/client"
+	"github.com/jmeh-sindikata/grantpin/internal/daemon"
 )
 
 // Result is the outcome of one launchctl invocation.
@@ -64,7 +64,7 @@ func (l *launchd) plistPath() string {
 	return filepath.Join(l.home, "Library", "LaunchAgents", Label+".plist")
 }
 func (l *launchd) defaultLogDir() string {
-	return filepath.Join(l.home, "Library", "Logs", "grantd")
+	return filepath.Join(l.home, "Library", "Logs", "grantpin")
 }
 
 // loaded reports whether launchd currently knows the job, returning the raw
@@ -209,7 +209,7 @@ func writePlist(path string, data []byte) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("service: create %s: %w", dir, err)
 	}
-	f, err := os.CreateTemp(dir, ".grantd-plist-*")
+	f, err := os.CreateTemp(dir, ".grantpin-plist-*")
 	if err != nil {
 		return fmt.Errorf("service: write plist: %w", err)
 	}

@@ -17,8 +17,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 // invalidateGrace bounds how long Ask waits for LocalAuthentication to unwind

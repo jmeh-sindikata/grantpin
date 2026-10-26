@@ -10,7 +10,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/mcp"
+	"github.com/jmeh-sindikata/grantpin/internal/mcp"
 )
 
 func newMCPCmd() *cobra.Command {
@@ -34,7 +34,7 @@ func newMCPCmd() *cobra.Command {
 			return runMCP(ctx, path, logger, &sdk.StdioTransport{})
 		},
 	}
-	cmd.Flags().StringVar(&socket, "socket", "", "socket path (default: $GRANTD_SOCKET or the platform default)")
+	cmd.Flags().StringVar(&socket, "socket", "", "socket path (default: $GRANTPIN_SOCKET or the platform default)")
 	return cmd
 }
 

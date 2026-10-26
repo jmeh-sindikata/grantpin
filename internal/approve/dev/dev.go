@@ -1,4 +1,4 @@
-//go:build grantd_dev
+//go:build grantpin_dev
 
 package dev
 
@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 // Enabled reports whether the dev backend is compiled in. True in this build.
@@ -41,12 +41,12 @@ type Approver struct {
 var _ approve.Approver = (*Approver)(nil)
 
 // New returns a dev approver that auto-allows (allow=true) or auto-denies, as
-// allow-once. It exists only under the grantd_dev build tag, so calling it from
+// allow-once. It exists only under the grantpin_dev build tag, so calling it from
 // a normal build fails to compile.
 func New(allow bool) *Approver { return &Approver{Allow: allow} }
 
 // Open is the build-agnostic constructor for backend selection code; under
-// grantd_dev it returns an auto-DENY approver (the conservative default).
+// grantpin_dev it returns an auto-DENY approver (the conservative default).
 func Open() (approve.Approver, error) { return New(false), nil }
 
 // SetAllow changes the auto-answer safely while other goroutines call Ask.

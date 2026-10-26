@@ -14,7 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 func newRunCmd() *cobra.Command {
@@ -28,7 +28,7 @@ streamed back with every injected value replaced by [REDACTED:NAME].
 Exit status: the command's own exit status; 124 on timeout; 77 when the
 request was denied; 78 when it was refused (policy, presence tier); 69 when the
 daemon is not running; 128+N when interrupted by signal N. Interrupting
-grantd (SIGINT/SIGTERM) closes the connection, which makes the daemon stop the
+grantpin (SIGINT/SIGTERM) closes the connection, which makes the daemon stop the
 command.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -117,7 +117,7 @@ func runRemote(parent context.Context, socket string, req *proto.Request, stdout
 		return failureError(resp)
 	}
 	if resp.Message != "" {
-		fmt.Fprintln(stderr, "grantd:", printable(resp.Message))
+		fmt.Fprintln(stderr, "grantpin:", printable(resp.Message))
 	}
 	if resp.ExitCode == nil {
 		return errors.New("daemon response carried no exit code")

@@ -8,11 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/client"
-	"github.com/jmeh-sindikata/grantd/internal/keystore"
+	"github.com/jmeh-sindikata/grantpin/internal/client"
+	"github.com/jmeh-sindikata/grantpin/internal/keystore"
 )
 
-// Exit codes of `grantd keystore delete` (besides 0 and 1).
+// Exit codes of `grantpin keystore delete` (besides 0 and 1).
 const (
 	exitKeystoreRefused = 2 // not confirmed, or the daemon is still running
 	exitKeystoreMissing = 3 // there was no such key material
@@ -57,7 +57,7 @@ func newKeystoreCmd() *cobra.Command {
 
 // keystoreDeleteWarning goes to stderr before anything is deleted, and with a
 // refusal.
-const keystoreDeleteWarning = "grantd: this deletes the key that protects the vault: the vault, and every secret in it, becomes permanently unreadable"
+const keystoreDeleteWarning = "grantpin: this deletes the key that protects the vault: the vault, and every secret in it, becomes permanently unreadable"
 
 func newKeystoreDeleteCmd() *cobra.Command {
 	var socket string
@@ -86,7 +86,7 @@ Exit status: 0 deleted; 3 there was no such key material; 2 refused (no --yes, o
 			stderr := cmd.ErrOrStderr()
 			fmt.Fprintln(stderr, keystoreDeleteWarning)
 			if !yes {
-				fmt.Fprintln(stderr, "grantd: refusing without --yes")
+				fmt.Fprintln(stderr, "grantpin: refusing without --yes")
 				return &exitError{code: exitKeystoreRefused}
 			}
 			if !force {
@@ -95,7 +95,7 @@ Exit status: 0 deleted; 3 there was no such key material; 2 refused (no --yes, o
 					return err
 				}
 				if daemonAnswering(cmd.Context(), path) {
-					fmt.Fprintf(stderr, "grantd: the daemon is running (socket %s); stop it first, or pass --force\n", path)
+					fmt.Fprintf(stderr, "grantpin: the daemon is running (socket %s); stop it first, or pass --force\n", path)
 					return &exitError{code: exitKeystoreRefused}
 				}
 			}

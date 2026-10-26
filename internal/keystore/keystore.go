@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 // KeyStore wraps and unwraps the vault data key using OS-protected storage.
@@ -50,7 +50,7 @@ var ErrNoKeyMaterial = errors.New("keystore: no such key material")
 // Deleter is implemented by key stores that can destroy the key material that
 // protects a vault. After either call succeeds the vault that used that
 // material can never be opened again: this exists for uninstalling, behind an
-// explicit confirmation (`grantd keystore delete`). Each method returns
+// explicit confirmation (`grantpin keystore delete`). Each method returns
 // ErrNoKeyMaterial, and changes nothing, when there was nothing to delete.
 type Deleter interface {
 	// DeleteFallbackKEK removes the Keychain item that holds the key-encryption

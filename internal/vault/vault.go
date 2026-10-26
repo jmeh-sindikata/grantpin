@@ -20,8 +20,8 @@ import (
 
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
 
-	"github.com/jmeh-sindikata/grantd/internal/keystore"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/keystore"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 // SchemaVersion is the on-disk vault format version written by Init.
@@ -32,7 +32,7 @@ const dataKeySize = 32
 // Sentinel errors. None of them (nor any other error from this package) ever
 // contains a secret value.
 var (
-	ErrNotInitialized     = errors.New("vault: not initialized (run `grantd init`)")
+	ErrNotInitialized     = errors.New("vault: not initialized (run `grantpin init`)")
 	ErrAlreadyInitialized = errors.New("vault: already initialized")
 	ErrClosed             = errors.New("vault: closed")
 	ErrNotFound           = errors.New("vault: secret not found")

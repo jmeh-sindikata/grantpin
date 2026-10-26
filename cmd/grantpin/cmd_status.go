@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/client"
+	"github.com/jmeh-sindikata/grantpin/internal/client"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -23,7 +23,7 @@ func newStatusCmd() *cobra.Command {
 			}
 			st, err := client.Status(cmd.Context(), path)
 			if errors.Is(err, client.ErrNotRunning) {
-				return fmt.Errorf("%w (socket %s); start it with `grantd daemon`", client.ErrNotRunning, path)
+				return fmt.Errorf("%w (socket %s); start it with `grantpin daemon`", client.ErrNotRunning, path)
 			}
 			if err != nil {
 				return err
@@ -46,11 +46,11 @@ func newStatusCmd() *cobra.Command {
 			fmt.Fprintf(out, "secrets:      %d\n", st.Secrets)
 			fmt.Fprintf(out, "grants:       %d active\n", st.ActiveGrants)
 			if st.TamperedGrants > 0 {
-				fmt.Fprintf(out, "WARNING:      %d grant row(s) failed authentication and are ignored (vault file modified outside grantd); see `grantd grants`\n", st.TamperedGrants)
+				fmt.Fprintf(out, "WARNING:      %d grant row(s) failed authentication and are ignored (vault file modified outside grantpin); see `grantpin grants`\n", st.TamperedGrants)
 			}
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&socket, "socket", "", "socket path (default: $GRANTD_SOCKET or the platform default)")
+	cmd.Flags().StringVar(&socket, "socket", "", "socket path (default: $GRANTPIN_SOCKET or the platform default)")
 	return cmd
 }

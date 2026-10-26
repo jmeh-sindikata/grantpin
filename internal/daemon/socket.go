@@ -12,18 +12,18 @@ import (
 )
 
 // SocketEnv overrides the socket path (used by tests and unusual setups).
-const SocketEnv = "GRANTD_SOCKET"
+const SocketEnv = "GRANTPIN_SOCKET"
 
 // socketName is the file name of the daemon socket.
-const socketName = "grantd.sock"
+const socketName = "grantpin.sock"
 
 // DefaultSocketPath returns where the daemon listens and the CLI connects:
 //
-//  1. $GRANTD_SOCKET, if set;
-//  2. $XDG_RUNTIME_DIR/grantd.sock, if XDG_RUNTIME_DIR is set;
-//  3. macOS: ~/Library/Application Support/grantd/grantd.sock;
-//  4. otherwise $XDG_DATA_HOME/grantd/grantd.sock (default
-//     ~/.local/share/grantd/grantd.sock).
+//  1. $GRANTPIN_SOCKET, if set;
+//  2. $XDG_RUNTIME_DIR/grantpin.sock, if XDG_RUNTIME_DIR is set;
+//  3. macOS: ~/Library/Application Support/grantpin/grantpin.sock;
+//  4. otherwise $XDG_DATA_HOME/grantpin/grantpin.sock (default
+//     ~/.local/share/grantpin/grantpin.sock).
 func DefaultSocketPath() (string, error) {
 	if p := os.Getenv(SocketEnv); p != "" {
 		return p, nil
@@ -36,7 +36,7 @@ func DefaultSocketPath() (string, error) {
 
 // PlatformSocketPath is the socket path with no environment override: the
 // per-platform default of DefaultSocketPath (steps 3 and 4). It is where a
-// daemon started by launchd, which exports neither GRANTD_SOCKET nor
+// daemon started by launchd, which exports neither GRANTPIN_SOCKET nor
 // XDG_RUNTIME_DIR, listens unless its plist says otherwise.
 func PlatformSocketPath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -44,13 +44,13 @@ func PlatformSocketPath() (string, error) {
 		return "", fmt.Errorf("daemon: locate socket: %w", err)
 	}
 	if runtime.GOOS == "darwin" {
-		return filepath.Join(home, "Library", "Application Support", "grantd", socketName), nil
+		return filepath.Join(home, "Library", "Application Support", "grantpin", socketName), nil
 	}
 	data := os.Getenv("XDG_DATA_HOME")
 	if data == "" {
 		data = filepath.Join(home, ".local", "share")
 	}
-	return filepath.Join(data, "grantd", socketName), nil
+	return filepath.Join(data, "grantpin", socketName), nil
 }
 
 // maxSocketPath is the longest usable sun_path (excluding the NUL).
@@ -89,7 +89,7 @@ func listenUnix(path string, warn func(msg string, args ...any)) (net.Listener, 
 	} else if !fi.IsDir() {
 		return nil, fmt.Errorf("daemon: socket dir %q is not a directory", dir)
 	} else if fi.Mode().Perm()&0o077 != 0 {
-		// Not ours to chmod (could be /tmp via GRANTD_SOCKET). The 0600 socket
+		// Not ours to chmod (could be /tmp via GRANTPIN_SOCKET). The 0600 socket
 		// plus the peer-UID check still apply.
 		warn("socket directory is accessible by group/other", "dir", dir, "mode", fi.Mode().Perm().String())
 	}

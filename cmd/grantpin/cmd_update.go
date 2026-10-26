@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/jmeh-sindikata/grantd/internal/presence"
-	"github.com/jmeh-sindikata/grantd/internal/proto"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/proto"
 )
 
 func newUpdateCmd() *cobra.Command {
@@ -21,8 +21,8 @@ func newUpdateCmd() *cobra.Command {
 			"stay as they are. An empty --tags, --url or --notes clears that field, and " +
 			"--clear-expires removes the expiry. Changing --min-tier re-encrypts the stored value; " +
 			"lowering it asks for confirmation (dialog and Touch ID).",
-		Example: "  grantd update API_KEY --tags prod,billing --expires 90d\n" +
-			"  grantd update API_KEY --url \"\" --clear-expires",
+		Example: "  grantpin update API_KEY --tags prod,billing --expires 90d\n" +
+			"  grantpin update API_KEY --url \"\" --clear-expires",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			f := cmd.Flags()

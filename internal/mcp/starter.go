@@ -2,7 +2,7 @@ package mcp
 
 // daemonEnvKeys is the allow-list of environment variables forwarded to an
 // auto-started daemon: just enough to locate the user's home, binaries and
-// runtime/data directories. Everything else (including GRANTD_*, tokens, API
+// runtime/data directories. Everything else (including GRANTPIN_*, tokens, API
 // keys) is dropped.
 var daemonEnvKeys = []string{
 	"HOME", "USER", "LOGNAME", "PATH", "TMPDIR", "LANG",

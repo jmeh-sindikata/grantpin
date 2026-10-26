@@ -5,7 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"errors"
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 	"io"
 )
 

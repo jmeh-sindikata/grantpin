@@ -1,4 +1,4 @@
-// Package client is the library the grantd CLI (and later the MCP shim) uses to
+// Package client is the library the grantpin CLI (and later the MCP shim) uses to
 // talk to the daemon over its Unix socket.
 //
 // The protocol is one request per connection: Dial opens a connection, Do sends

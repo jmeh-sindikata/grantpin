@@ -8,7 +8,7 @@ import (
 
 	"github.com/bmatcuk/doublestar/v4"
 
-	"github.com/jmeh-sindikata/grantd/internal/presence"
+	"github.com/jmeh-sindikata/grantpin/internal/presence"
 )
 
 // ExpandNames expands literal names and doublestar globs ("aws/*", "aws/**")

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jmeh-sindikata/grantd/internal/approve"
+	"github.com/jmeh-sindikata/grantpin/internal/approve"
 )
 
 // osascriptPath is absolute on purpose: no PATH lookup, so nothing the agent
@@ -27,7 +27,7 @@ const (
 	buttonCancel         = "Cancel"
 	buttonCreateStanding = "Create standing grant"
 	buttonLower          = "Lower"
-	dialogTitle          = "grantd"
+	dialogTitle          = "grantpin"
 )
 
 // chooserScript is a CONSTANT. Nothing from the request is ever interpolated
@@ -43,7 +43,7 @@ const chooserScript = `on run argv
 	set forLabel to item 4 of argv
 	set btns to {safeLabel, allowLabel}
 	if forLabel is not "" then set btns to {safeLabel, allowLabel, forLabel}
-	set r to display dialog theText with title "grantd" buttons btns default button safeLabel cancel button safeLabel with icon caution giving up after 120
+	set r to display dialog theText with title "grantpin" buttons btns default button safeLabel cancel button safeLabel with icon caution giving up after 120
 	return r
 end run`
 
