@@ -38,20 +38,59 @@ func (b *Broker) handleGrants(ctx context.Context, req *proto.Request, w daemon.
 		}
 		switch err := b.d.Grants.Revoke(ctx, req.GrantID); {
 		case err == nil:
-			_ = w.Finish(&proto.Response{OK: true, GrantID: req.GrantID})
+			id := b.record(ctx, b.revokeEntry(req, "grants revoke", req.GrantID))
+			_ = w.Finish(&proto.Response{OK: true, GrantID: req.GrantID, AuditID: id})
 		case errors.Is(err, grant.ErrNotFound):
 			fail(w, proto.ErrNotFound, proto.ReasonGrantNotFound, "")
 		default:
 			b.internal(w, req.Op, err)
 		}
 	case proto.ActionRevokeAll:
+		// One audit row per grant that was there (a single row with no grant
+		// ID when there were none), so each revocation is traceable by ID.
+		gs, err := b.d.Grants.List(ctx)
+		if err != nil {
+			b.internal(w, req.Op, err)
+			return
+		}
 		if err := b.d.Grants.RevokeAll(ctx); err != nil {
 			b.internal(w, req.Op, err)
 			return
 		}
-		_ = w.Finish(&proto.Response{OK: true})
+		var id string
+		for _, g := range gs {
+			id = b.record(ctx, b.revokeEntry(req, "grants revoke_all", g.ID))
+		}
+		if len(gs) == 0 {
+			id = b.record(ctx, b.revokeEntry(req, "grants revoke_all", ""))
+		}
+		_ = w.Finish(&proto.Response{OK: true, AuditID: id})
 	default:
 		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, "unknown grants action")
+	}
+}
+
+// revokeEntry is the audit entry for revoking a standing or dialog grant. Like
+// the secret lifecycle verbs it is recorded as allowed_once with the verb as
+// the reason, since these ops are not presence-gated (so the row only proves
+// that it happened and who claimed to do it, not that the human did). grantID
+// is empty for a revoke_all that found nothing to revoke.
+func (b *Broker) revokeEntry(req *proto.Request, verb, grantID string) audit.Entry {
+	caller, ok := callerOf(req)
+	if !ok {
+		caller = "(invalid)"
+	}
+	argv := []string{"grantd", "grants", "revoke"}
+	if req.Action == proto.ActionRevokeAll {
+		argv = append(argv, "--all")
+	}
+	if grantID != "" {
+		argv = append(argv, grantID)
+	}
+	return audit.Entry{
+		TS: b.now(), Caller: caller, Cwd: audit.CapString(req.Cwd, audit.MaxCwd),
+		Argv: argv, GrantID: grantID,
+		Decision: audit.DecisionAllowedOnce, Reason: verb,
 	}
 }
 

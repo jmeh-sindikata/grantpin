@@ -905,3 +905,62 @@ func TestNotesMayHoldLineBreaks(t *testing.T) {
 		t.Errorf("notes changed by a refused update: %q", got)
 	}
 }
+
+func TestGrantRevocationsAreAudited(t *testing.T) {
+	e := newEnv(t)
+	e.ap.ttl = time.Hour
+	g1 := e.do(e.run([]string{"API_KEY"}, "true")).final.GrantID
+	g2 := e.do(e.run([]string{"API_KEY"}, "false")).final.GrantID
+	g3 := e.do(e.run([]string{"API_KEY"}, "echo")).final.GrantID
+
+	count := func() int {
+		es, err := e.a.List(context.Background(), 1000, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(es)
+	}
+
+	// An unknown ID writes nothing.
+	before := count()
+	wantFail(t, e.do(&proto.Request{Op: proto.OpGrants, Action: proto.ActionRevoke, GrantID: "nope", Caller: "agent"}), proto.ErrNotFound, proto.ReasonGrantNotFound)
+	if count() != before {
+		t.Fatal("a failed revoke wrote an audit row")
+	}
+
+	w := e.do(&proto.Request{Op: proto.OpGrants, Action: proto.ActionRevoke, GrantID: g1, Caller: "agent"})
+	wantOK(t, w)
+	a := e.lastAudit()
+	if w.final.AuditID != a.ID || a.Decision != audit.DecisionAllowedOnce || a.Reason != "grants revoke" || a.GrantID != g1 ||
+		a.Caller != "agent" || strings.Join(a.Argv, " ") != "grantd grants revoke "+g1 {
+		t.Errorf("revoke audit = %+v (response %+v)", a, w.final)
+	}
+
+	before = count()
+	w = e.do(&proto.Request{Op: proto.OpGrants, Action: proto.ActionRevokeAll})
+	wantOK(t, w)
+	es, err := e.a.List(context.Background(), count()-before, 0)
+	if err != nil || len(es) != 2 {
+		t.Fatalf("rows for revoke_all = %+v %v", es, err)
+	}
+	ids := map[string]bool{}
+	for _, r := range es {
+		if r.Decision != audit.DecisionAllowedOnce || r.Reason != "grants revoke_all" || r.Caller != DefaultCaller {
+			t.Errorf("revoke_all audit = %+v", r)
+		}
+		ids[r.GrantID] = true
+	}
+	if !ids[g2] || !ids[g3] || len(ids) != 2 || w.final.AuditID != es[0].ID {
+		t.Errorf("revoked ids = %v (want %s, %s), audit_id = %q", ids, g2, g3, w.final.AuditID)
+	}
+
+	// Nothing left to revoke still leaves a trace of the attempt.
+	before = count()
+	wantOK(t, e.do(&proto.Request{Op: proto.OpGrants, Action: proto.ActionRevokeAll}))
+	if count() != before+1 {
+		t.Fatalf("empty revoke_all rows = %d", count()-before)
+	}
+	if a := e.lastAudit(); a.Reason != "grants revoke_all" || a.GrantID != "" || strings.Join(a.Argv, " ") != "grantd grants revoke --all" {
+		t.Errorf("empty revoke_all audit = %+v", a)
+	}
+}

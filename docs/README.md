@@ -433,7 +433,7 @@ Flags:
 
 ### `grantd grants`
 
-Bare `grants` is `grants list`. The `STANDING` column says `standing` for grants created with `grants add` (the others, made by the dialog's "Allow for N", show `-`); `EXPIRES` is the time left. Rows that fail authentication are shown as `TAMPERED` and never match; revoke them. Neither list nor revoke needs approval; `add` always does.
+Bare `grants` is `grants list`. The `STANDING` column says `standing` for grants created with `grants add` (the others, made by the dialog's "Allow for N", show `-`); `EXPIRES` is the time left. Rows that fail authentication are shown as `TAMPERED` and never match; revoke them. Neither list nor revoke needs approval (a revoke is audited); `add` always does.
 
 ```
 List or revoke grants
@@ -918,7 +918,7 @@ Every decision is appended to an audit table in the vault database: time, caller
 1. the allow decision (`allowed_once`, `allowed_new_grant` or `allowed_grant`) with reason `released`, written after the secrets are decrypted in the daemon and **before the command is spawned**. If this row cannot be written, nothing is started. Both rows have any injected value scrubbed from `argv`, so a caller that puts a value on the command line does not leave it in the audit table.
 2. a `completed` row with the exit code, duration and the same grant ID, written when the command ends. Its reason is empty for a normal exit, or `timeout`, `canceled`, `command not found`, `cannot execute command`, or `not started: ...` (the process could not be started; no exit code).
 
-A `released` row with no `completed` row after it means the daemon died mid-run. Refusals, denials and failures before the release (an unknown secret, an expired secret, a failed decryption) are one row each (`denied_user`, `refused_policy`, `refused_tier`, `error`). `set`, `delete`, `update` and `show` are recorded too, as `allowed_once` with the verb as the reason.
+A `released` row with no `completed` row after it means the daemon died mid-run. Refusals, denials and failures before the release (an unknown secret, an expired secret, a failed decryption) are one row each (`denied_user`, `refused_policy`, `refused_tier`, `error`). `set`, `delete`, `update` and `show` are recorded too, as `allowed_once` with the verb as the reason, and so are `grants revoke` (reason `grants revoke`, one row with the grant ID) and `grants revoke --all` (reason `grants revoke_all`, one row per grant removed).
 
 **Integrity.** Rows are chained: `HMAC_n = HMAC-SHA256(key, canonical(row_n) || HMAC_{n-1})`, with a key derived from the vault key (HKDF, label `audit-hmac`) that the daemon holds. `grantd audit verify` recomputes the whole chain and reports the first bad row. The table has triggers that abort `UPDATE` and `DELETE`. Each row records its encoding version (`enc`): rows written before the expanded names existed are version 1 and still verify; new rows are version 2 (tag `grantd.audit.v2`, expanded names after the secrets). The version tag is inside the HMAC, so relabelling a row fails verification.
 
