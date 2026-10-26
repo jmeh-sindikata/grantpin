@@ -337,6 +337,7 @@ func (b *Broker) confirmLowerTier(ctx context.Context, req *proto.Request, w dae
 			e.Reason += ": " + msg
 		}
 		r := daemon.Failure(category, reason)
+		r.Message = msg // as in handleShow and runCtx.refuse
 		r.AuditID = b.record(ctx, e)
 		_ = w.Finish(r)
 	}

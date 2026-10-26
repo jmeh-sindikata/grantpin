@@ -786,6 +786,9 @@ func TestUpdateLoweringRefusedChangesNothing(t *testing.T) {
 			tc.setup(e.ap)
 			w := e.do(&proto.Request{Op: proto.OpUpdate, Name: "k", MinTier: &dialog, Notes: "new"})
 			wantFail(t, w, tc.category, tc.reason)
+			if want := strings.TrimPrefix(tc.suffix, ": "); w.final.Message != want {
+				t.Errorf("message = %q, want %q", w.final.Message, want)
+			}
 			a := e.lastAudit()
 			if a.Decision != tc.decision || a.Reason != "update: lower min_tier"+tc.suffix || a.ID != w.final.AuditID {
 				t.Errorf("audit = %+v", a)
