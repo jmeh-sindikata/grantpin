@@ -819,7 +819,7 @@ func TestDefaultSocketPath(t *testing.T) {
 }
 
 func TestBackoff(t *testing.T) {
-	if backoff(0) != 5*time.Millisecond || backoff(600*time.Millisecond) != time.Second || backoff(time.Second) != time.Second {
+	if backoff(0) != 10*time.Millisecond || backoff(600*time.Millisecond) != time.Second || backoff(time.Second) != time.Second {
 		t.Error("backoff")
 	}
 }

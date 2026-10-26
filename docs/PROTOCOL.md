@@ -8,6 +8,7 @@ This is the protocol between a client (the `grantd` CLI, the MCP shim, or anythi
 - The socket file is mode 0600; the daemon creates its directory as 0700 if it did not exist. On every accepted connection the daemon reads the peer's effective UID (`LOCAL_PEERCRED` on macOS, `SO_PEERCRED` on Linux) and rejects any peer whose UID differs from its own, or whose credentials cannot be read, with `refused` / `peer_rejected` before reading anything. The check identifies the **user**, not the program: every process running as that user is an authorised client.
 - **One request per connection.** The client connects, sends one request line, reads zero or more stream frames and exactly one final response, and the server closes the connection. A second request needs a new connection (`client.Client` returns `ErrUsed` if you try).
 - **Keep the write side open.** The daemon watches the connection for the client going away; any read result, including EOF from a half-close, cancels the request (for `run`, that stops the command: SIGTERM to its process group, SIGKILL two seconds later). Clients must send the request and then only read. This matters for tools like `nc`, which may close their sending side when stdin ends; write a small client instead.
+- At most **64 connections** are served at once. A connection over the limit is answered `failed` / `busy` (when that line can be written at once; otherwise it is just closed) and closed without reading; retry shortly. Running out of file descriptors (`EMFILE`, `ENFILE`) never stops the daemon: it backs off (10 ms up to 1 s) and keeps accepting.
 - The daemon expects the request line within **5 seconds** of connecting, else it answers `bad_request`.
 
 ## Framing
@@ -117,6 +118,7 @@ For `run`, zero or more frames arrive before the final response:
 | `timeout` | failed | The connection deadline expired (command budget plus approval grace), for example while waiting for the human. A command that merely overran its own `timeout_s` is a **successful** response with `exit_code` 124 and `reason: "timeout"`. |
 | `canceled` | failed | The client went away or the daemon is shutting down. |
 | `internal` | failed | Unexpected error. The cause goes to the daemon log, not to the client. |
+| `busy` | failed | The daemon already serves its maximum number of concurrent connections (64). Nothing was read or done; retry shortly. |
 | `response_too_large` | failed | The result would not fit in one protocol line (`list`, `audit export`, `show`). Narrow the request. If a handler's response cannot be encoded within the line limit the daemon itself answers `failed` / `internal` with the message "response too large". |
 
 ## Ops

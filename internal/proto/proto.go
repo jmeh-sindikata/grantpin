@@ -80,6 +80,7 @@ const (
 	ReasonCanceled            = "canceled"              // (failed) client went away / daemon shutting down
 	ReasonInternal            = "internal"              // (failed) message must not contain secret values
 	ReasonResponseTooLarge    = "response_too_large"    // (failed) the result would not fit in one protocol line
+	ReasonBusy                = "busy"                  // (failed) the daemon has too many open connections; retry shortly
 )
 
 // Request is the single request line a client sends per connection. Only the

@@ -9,6 +9,8 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -21,7 +23,11 @@ const (
 	DefaultFirstLineTimeout = 5 * time.Second
 	DefaultShutdownGrace    = 10 * time.Second
 	DefaultHandlerGrace     = 5 * time.Second
-	DefaultApprovalGrace    = 10 * time.Minute
+	// DefaultMaxConns is the number of connections served at once. A request
+	// that is waiting for a human or running a command holds its connection,
+	// so this also bounds the daemon's file descriptors.
+	DefaultMaxConns      = 64
+	DefaultApprovalGrace = 10 * time.Minute
 
 	// writeTimeout bounds a single write to a client that stopped reading.
 	writeTimeout = 30 * time.Second
@@ -66,6 +72,11 @@ type Config struct {
 	// ShutdownGrace is how long Serve waits for in-flight connections after
 	// its context is cancelled before cancelling their handlers (default 10s).
 	ShutdownGrace time.Duration
+	// MaxConns is the most connections served concurrently (default
+	// DefaultMaxConns). A connection over the limit is answered `failed` /
+	// `busy` when that line can be written at once, and closed otherwise;
+	// the accept loop never waits for a slot.
+	MaxConns int
 	// HandlerGrace is how long after a connection's context ends (timeout,
 	// client gone, forced shutdown) the server waits for the handler to return
 	// before replying itself and abandoning it (default 5s).
@@ -90,6 +101,9 @@ type Server struct {
 	baseCtx    context.Context
 	baseCancel context.CancelFunc
 	conns      sync.WaitGroup
+	slots      chan struct{} // one token per connection being served
+
+	rejectLogged atomic.Int64 // UnixNano of the last "rejected" log line
 }
 
 // New validates cfg and builds a Server. It does not touch the filesystem.
@@ -118,11 +132,14 @@ func New(cfg Config) (*Server, error) {
 	if cfg.HandlerGrace <= 0 {
 		cfg.HandlerGrace = DefaultHandlerGrace
 	}
+	if cfg.MaxConns <= 0 {
+		cfg.MaxConns = DefaultMaxConns
+	}
 	log := cfg.Logger
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	s := &Server{cfg: cfg, log: log, router: cfg.Router, peerCheck: checkPeer}
+	s := &Server{cfg: cfg, log: log, router: cfg.Router, peerCheck: checkPeer, slots: make(chan struct{}, cfg.MaxConns)}
 	s.baseCtx, s.baseCancel = context.WithCancel(context.Background())
 	return s, nil
 }
@@ -171,20 +188,38 @@ func (s *Server) Serve(ctx context.Context) error {
 	for delay := time.Duration(0); ; {
 		conn, err := s.ln.Accept()
 		if err != nil {
-			if ctx.Err() == nil && !errors.Is(err, net.ErrClosed) {
-				if ne, ok := err.(net.Error); ok && ne.Timeout() {
-					delay = backoff(delay)
-					time.Sleep(delay)
-					continue
-				}
-				acceptErr = fmt.Errorf("daemon: accept: %w", err)
+			if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+				break
 			}
-			break
+			if !retryableAccept(err) {
+				acceptErr = fmt.Errorf("daemon: accept: %w", err)
+				break
+			}
+			// Out of descriptors (EMFILE/ENFILE) or another transient
+			// condition: this must not take the daemon down and with it every
+			// command it is running. Back off and try again; the pending
+			// connection stays queued in the kernel meanwhile.
+			delay = backoff(delay)
+			s.log.Warn("accept failed; retrying", "err", err.Error(), "delay", delay.String())
+			t := time.NewTimer(delay)
+			select {
+			case <-t.C:
+			case <-ctx.Done():
+				t.Stop()
+			}
+			continue
 		}
 		delay = 0
+		select {
+		case s.slots <- struct{}{}:
+		default:
+			s.reject(conn)
+			continue
+		}
 		s.conns.Add(1)
 		go func() {
 			defer s.conns.Done()
+			defer func() { <-s.slots }()
 			s.serveConn(conn)
 		}()
 	}
@@ -206,9 +241,48 @@ func (s *Server) Serve(ctx context.Context) error {
 	return acceptErr
 }
 
+// retryableAccept reports whether an Accept error is transient: running out of
+// file descriptors (per process or system-wide), a connection that died before
+// it was accepted, a timeout, or anything that calls itself temporary.
+func retryableAccept(err error) bool {
+	if errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) ||
+		errors.Is(err, syscall.ECONNABORTED) || errors.Is(err, syscall.ENOBUFS) || errors.Is(err, syscall.ENOMEM) {
+		return true
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return true
+	}
+	var tmp interface{ Temporary() bool }
+	return errors.As(err, &tmp) && tmp.Temporary()
+}
+
+// rejectWriteTimeout bounds the attempt to tell an over-limit client that the
+// daemon is busy. The line is a few dozen bytes into a fresh socket buffer, so
+// it normally goes at once; if it does not, the connection is just closed.
+const rejectWriteTimeout = 20 * time.Millisecond
+
+// reject answers a connection over the MaxConns limit with failed / busy if
+// that can be written cheaply, and closes it. It reads nothing.
+func (s *Server) reject(conn net.Conn) {
+	defer conn.Close()
+	resp := Failure(proto.ErrFailed, proto.ReasonBusy)
+	resp.Message = "too many concurrent connections; retry shortly"
+	line, err := proto.Encode(resp)
+	if err == nil {
+		_ = conn.SetWriteDeadline(time.Now().Add(rejectWriteTimeout))
+		_, _ = conn.Write(line)
+	}
+	// A flood of clients must not also flood the log: one line per second.
+	if now := time.Now().UnixNano(); now-s.rejectLogged.Load() > int64(time.Second) {
+		s.rejectLogged.Store(now)
+		s.log.Warn("connection rejected: too many concurrent connections", "max", s.cfg.MaxConns)
+	}
+}
+
 func backoff(d time.Duration) time.Duration {
 	if d == 0 {
-		return 5 * time.Millisecond
+		return 10 * time.Millisecond
 	}
 	return min(d*2, time.Second)
 }

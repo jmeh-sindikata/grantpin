@@ -182,7 +182,7 @@ func TestExportShowsLegacyOversizeRowsInBoundedForm(t *testing.T) {
 	// A row as an older build wrote it: unbounded argv, written straight to the table.
 	huge, _ := json.Marshal([]string{"true", strings.Repeat("z", 2<<20)})
 	if _, err := db.Exec(`INSERT INTO audit (ts, caller, cwd, argv, secrets, decision, prev_hmac, hmac)
-VALUES ('2026-01-01T00:00:00Z','cli','/','`+string(huge)+`','[]','error',x'00',x'00')`); err != nil {
+VALUES ('2026-01-01T00:00:00Z','cli','/','` + string(huge) + `','[]','error',x'00',x'00')`); err != nil {
 		t.Fatal(err)
 	}
 	var sb strings.Builder
