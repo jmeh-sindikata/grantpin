@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"grantd/internal/proto"
 )
@@ -820,5 +821,36 @@ func TestDefaultSocketPath(t *testing.T) {
 func TestBackoff(t *testing.T) {
 	if backoff(0) != 5*time.Millisecond || backoff(600*time.Millisecond) != time.Second || backoff(time.Second) != time.Second {
 		t.Error("backoff")
+	}
+}
+
+func TestClipLogBoundsUntrustedFields(t *testing.T) {
+	if got := clipLog("/work/proj"); got != "/work/proj" {
+		t.Fatalf("short field changed: %q", got)
+	}
+	long := strings.Repeat("x", 3<<20)
+	if got := clipLog(long); len(got) != maxLogField || !strings.HasSuffix(got, "...") {
+		t.Fatalf("long field: %d bytes", len(got))
+	}
+	// Never cuts inside a multi-byte character.
+	for n := 190; n < 210; n++ {
+		got := clipLog(strings.Repeat("x", n-190) + strings.Repeat("€", 100))
+		if len(got) > maxLogField || !utf8.ValidString(got) {
+			t.Fatalf("n=%d: %d bytes, valid=%v", n, len(got), utf8.ValidString(got))
+		}
+	}
+}
+
+func TestLogRequestClipsCallerAndCwd(t *testing.T) {
+	logs := &syncBuf{}
+	rt := NewRouter()
+	rt.Register(proto.OpList, HandlerFunc(func(_ context.Context, _ *proto.Request, w ResponseWriter) {
+		_ = w.Finish(okResp())
+	}))
+	r := start(t, Config{Router: rt, Logger: slog.New(slog.NewTextHandler(logs, nil))})
+	_, _ = call(t, r.path, proto.Request{Op: proto.OpList, Caller: strings.Repeat("c", 1<<20), Cwd: "/" + strings.Repeat("d", 1<<20)})
+	_ = r.stop(t)
+	if out := logs.String(); len(out) > 4<<10 || !strings.Contains(out, "op=list") {
+		t.Fatalf("log is %d bytes:\n%.300s", len(out), out)
 	}
 }

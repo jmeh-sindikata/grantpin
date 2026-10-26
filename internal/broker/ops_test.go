@@ -3,6 +3,7 @@ package broker
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
@@ -423,25 +424,130 @@ func TestOkRefusesAResultThatCannotFitOneLine(t *testing.T) {
 	wantOK(t, w)
 }
 
-func TestAuditListTruncatesInsteadOfOverflowing(t *testing.T) {
+// legacyRows writes audit rows straight into the table, as a build that did not
+// bound its fields wrote them. The MACs are placeholders: nothing here verifies.
+func (e *env) legacyRows(n int, argv []string, reason string) {
+	e.t.Helper()
+	av, _ := json.Marshal(argv)
+	for range n {
+		if _, err := e.v.DB().Exec(`INSERT INTO audit (ts, caller, cwd, argv, secrets, decision, reason, prev_hmac, hmac, enc)
+VALUES ('2026-01-01T00:00:00Z','cli','/',?,'[]','error',?,x'00',x'00',2)`, string(av), reason); err != nil {
+			e.t.Fatal(err)
+		}
+	}
+}
+
+func (e *env) auditList(limit int, before string) proto.AuditListResult {
+	e.t.Helper()
+	w := e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: limit, BeforeID: before})
+	wantOK(e.t, w)
+	if len(w.final.Result) > maxResultBytes {
+		e.t.Errorf("result is %d bytes", len(w.final.Result))
+	}
+	return decode[proto.AuditListResult](e.t, w)
+}
+
+func TestAuditListTruncatesInsteadOfOverflowingAndPages(t *testing.T) {
 	e := newEnv(t)
-	e.bigRows(5, strings.Repeat("r", 1<<20+512<<10)) // 1.5 MiB each
-	w := e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 10})
-	wantOK(t, w)
-	res := decode[proto.AuditListResult](t, w)
-	if !res.Truncated || len(res.Entries) == 0 || len(res.Entries) >= 5 {
+	// A thousand rows at the reason cap are more than one protocol line.
+	e.bigRows(1000, strings.Repeat("r", audit.MaxReason))
+	res := e.auditList(1000, "")
+	if !res.Truncated || len(res.Entries) == 0 || len(res.Entries) >= 1000 {
 		t.Fatalf("entries=%d truncated=%v", len(res.Entries), res.Truncated)
 	}
-	if res.Entries[0].ID != "5" { // newest first
+	if res.Entries[0].ID != "1000" { // newest first
 		t.Errorf("first = %s", res.Entries[0].ID)
 	}
-	if len(w.final.Result) > maxResultBytes {
-		t.Errorf("result is %d bytes", len(w.final.Result))
+	if last := res.Entries[len(res.Entries)-1].ID; res.NextBeforeID != last {
+		t.Errorf("next_before_id = %q, last entry %q", res.NextBeforeID, last)
 	}
 	// A page that fits is not flagged.
-	small := decode[proto.AuditListResult](t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, Limit: 2}))
-	if small.Truncated || len(small.Entries) != 2 {
+	small := e.auditList(2, "")
+	if small.Truncated || len(small.Entries) != 2 || small.NextBeforeID != "999" {
 		t.Fatalf("small page: %+v", small)
+	}
+	// Walking back with next_before_id reaches every row exactly once.
+	seen := map[string]bool{}
+	before, pages := "", 0
+	for {
+		page := e.auditList(1000, before)
+		pages++
+		for _, en := range page.Entries {
+			if seen[en.ID] {
+				t.Fatalf("row %s returned twice", en.ID)
+			}
+			seen[en.ID] = true
+		}
+		if page.NextBeforeID == "" {
+			break
+		}
+		before = page.NextBeforeID
+	}
+	if len(seen) != 1000 || pages < 2 {
+		t.Fatalf("walked %d rows in %d pages", len(seen), pages)
+	}
+}
+
+func TestAuditListBeforeID(t *testing.T) {
+	e := newEnv(t)
+	e.bigRows(5, "x")
+	ids := func(r proto.AuditListResult) string {
+		var s []string
+		for _, en := range r.Entries {
+			s = append(s, en.ID)
+		}
+		return strings.Join(s, ",")
+	}
+	if got := ids(e.auditList(10, "4")); got != "3,2,1" {
+		t.Errorf("before 4 = %s", got)
+	}
+	if got := ids(e.auditList(2, "5")); got != "4,3" {
+		t.Errorf("before 5 limit 2 = %s", got)
+	}
+	if r := e.auditList(10, "1"); len(r.Entries) != 0 || r.NextBeforeID != "" || r.Truncated {
+		t.Errorf("before 1 = %+v", r)
+	}
+	for _, bad := range []string{"abc", "0", "-3", "1.5", "99999999999999999999"} {
+		wantFail(t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionList, BeforeID: bad}), proto.ErrBadRequest, proto.ReasonBadRequest)
+	}
+}
+
+func TestAuditListWalksPastOversizeLegacyRows(t *testing.T) {
+	e := newEnv(t)
+	e.bigRows(1, "old")
+	e.legacyRows(3, []string{"true", strings.Repeat("a", 1<<20)}, strings.Repeat("r", 1<<20))
+	e.bigRows(1, "new")
+	res := e.auditList(10, "")
+	if res.Truncated || res.Skipped != 0 || len(res.Entries) != 5 {
+		t.Fatalf("truncated=%v skipped=%d entries=%d", res.Truncated, res.Skipped, len(res.Entries))
+	}
+	for _, en := range res.Entries[1:4] {
+		if en.Argv[len(en.Argv)-1] != audit.TruncatedMarker || !strings.HasSuffix(en.Reason, audit.TruncatedMarker) {
+			t.Errorf("row %s was not shortened and marked: %d argv, reason %d bytes", en.ID, len(en.Argv), len(en.Reason))
+		}
+	}
+	if res.Entries[0].Reason != "new" || res.Entries[4].Reason != "old" {
+		t.Errorf("ordinary rows altered: %q %q", res.Entries[0].Reason, res.Entries[4].Reason)
+	}
+}
+
+func TestAuditListSkipsARowThatCannotBeShortenedEnough(t *testing.T) {
+	e := newEnv(t)
+	e.bigRows(3, "r")
+	old := maxAuditRowBytes
+	maxAuditRowBytes = 100 // every row is too large, even shortened
+	defer func() { maxAuditRowBytes = old }()
+	res := e.auditList(10, "")
+	if res.Skipped != 3 || len(res.Entries) != 0 || res.NextBeforeID != "1" {
+		t.Fatalf("result = %+v", res)
+	}
+	// With a limit the client still moves on: the walk is not stuck on the row.
+	res = e.auditList(2, "")
+	if res.Skipped != 2 || res.NextBeforeID != "2" {
+		t.Fatalf("result = %+v", res)
+	}
+	if next := e.auditList(2, res.NextBeforeID); next.Skipped != 1 || next.NextBeforeID != "1" {
+		t.Fatalf("next page = %+v", next)
 	}
 }
 
@@ -449,7 +555,7 @@ func TestAuditExportLimitIsOnTheEncodedLength(t *testing.T) {
 	// Raw CSV well under the limit, but every quote becomes "" in CSV and \"\"
 	// in the JSON string: only the encoded length is too big.
 	e := newEnv(t)
-	e.bigRows(3, strings.Repeat(`"`, 600<<10))
+	e.bigRows(300, strings.Repeat(`"`, 4000))
 	var raw bytes.Buffer
 	if err := e.a.ExportCSV(context.Background(), &raw); err != nil {
 		t.Fatal(err)
@@ -461,8 +567,18 @@ func TestAuditExportLimitIsOnTheEncodedLength(t *testing.T) {
 
 	// A raw CSV beyond the limit is refused without being collected whole.
 	e2 := newEnv(t)
-	e2.bigRows(4, strings.Repeat("r", 1<<20+256<<10))
+	e2.bigRows(1100, strings.Repeat("r", audit.MaxReason))
 	wantFail(t, e2.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionExport}), proto.ErrFailed, proto.ReasonResponseTooLarge)
+}
+
+func TestAuditExportSurvivesOversizeLegacyRows(t *testing.T) {
+	e := newEnv(t)
+	e.legacyRows(4, []string{"true", strings.Repeat("a", 1<<20)}, strings.Repeat("r", 1<<20))
+	w := e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionExport})
+	wantOK(t, w)
+	if csv := decode[proto.AuditExportResult](t, w).CSV; !strings.Contains(csv, audit.TruncatedMarker) {
+		t.Errorf("export does not mark the shortened rows")
+	}
 }
 
 func listInfo(t *testing.T, e *env, name string) proto.SecretInfo {

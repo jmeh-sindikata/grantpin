@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 
+	"grantd/internal/audit"
 	"grantd/internal/daemon"
 	"grantd/internal/grant"
 	"grantd/internal/proto"
@@ -61,31 +63,52 @@ func (b *Broker) handleAudit(ctx context.Context, req *proto.Request, w daemon.R
 			limit = 100
 		}
 		limit = min(limit, maxAuditList)
-		es, err := b.d.Audit.List(ctx, limit, 0)
+		var before int64
+		if req.BeforeID != "" {
+			n, err := strconv.ParseInt(req.BeforeID, 10, 64)
+			if err != nil || n <= 0 {
+				fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, "before_id must be an audit entry ID")
+				return
+			}
+			before = n
+		}
+		es, err := b.d.Audit.ListBefore(ctx, limit, before)
 		if err != nil {
 			b.internal(w, req.Op, err)
 			return
 		}
 		// Rows are free-form enough (argv, reason) that a page can outgrow one
-		// protocol line. Return as many newest rows as fit and say so.
+		// protocol line, and rows written before Append bounded its fields can
+		// be megabytes each. A row over maxAuditRowBytes is sent in its
+		// shortened form (the Append caps, which mark what they cut); one that
+		// is still too large is skipped and counted. Neither stops the walk.
+		// When the page itself is full the rest is cut off and Truncated says
+		// so; NextBeforeID is where the next page starts.
 		res := proto.AuditListResult{Entries: make([]proto.AuditInfo, 0, len(es))}
-		size := len(`{"entries":[],"truncated":true}`)
+		size := len(`{"entries":[],"truncated":true,"skipped":1000,"next_before_id":"9223372036854775807"}`)
 		for _, e := range es {
-			info := proto.AuditInfo{
-				ID: e.ID, TS: e.TS, Caller: e.Caller, Cwd: e.Cwd, Argv: e.Argv, Secrets: e.Secrets, Expanded: e.Expanded,
-				Decision: e.Decision, GrantID: e.GrantID, ExitCode: e.ExitCode,
-				DurationMS: e.Duration.Milliseconds(), Reason: e.Reason,
-			}
-			enc, err := json.Marshal(info)
+			enc, info, err := auditRow(e)
 			if err != nil {
 				b.internal(w, req.Op, err)
 				return
+			}
+			if len(enc) > maxAuditRowBytes {
+				if enc, info, err = auditRow(audit.Capped(e)); err != nil {
+					b.internal(w, req.Op, err)
+					return
+				}
+			}
+			if len(enc) > maxAuditRowBytes {
+				res.Skipped++
+				res.NextBeforeID = e.ID
+				continue
 			}
 			if size += len(enc) + 1; size > maxResultBytes {
 				res.Truncated = true
 				break
 			}
 			res.Entries = append(res.Entries, info)
+			res.NextBeforeID = e.ID
 		}
 		ok(w, res)
 	case proto.ActionVerify:
@@ -122,6 +145,21 @@ func (b *Broker) handleAudit(ctx context.Context, req *proto.Request, w daemon.R
 	default:
 		fail(w, proto.ErrBadRequest, proto.ReasonBadRequest, "unknown audit action")
 	}
+}
+
+// maxAuditRowBytes is the most one entry may take in an audit list page (its
+// encoded size). A variable so that tests can reach the skip path.
+var maxAuditRowBytes = 256 << 10
+
+// auditRow converts e and returns its encoding.
+func auditRow(e audit.Entry) ([]byte, proto.AuditInfo, error) {
+	info := proto.AuditInfo{
+		ID: e.ID, TS: e.TS, Caller: e.Caller, Cwd: e.Cwd, Argv: e.Argv, Secrets: e.Secrets, Expanded: e.Expanded,
+		Decision: e.Decision, GrantID: e.GrantID, ExitCode: e.ExitCode,
+		DurationMS: e.Duration.Milliseconds(), Reason: e.Reason,
+	}
+	enc, err := json.Marshal(info)
+	return enc, info, err
 }
 
 var errCapExceeded = errors.New("broker: output exceeds the response limit")

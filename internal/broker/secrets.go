@@ -101,8 +101,9 @@ func (b *Broker) lifecycleEntry(req *proto.Request, verb string) audit.Entry {
 	if !ok {
 		caller = "(invalid)"
 	}
+	// cwd is not validated for these ops (show only displays it): cap it.
 	return audit.Entry{
-		TS: b.now(), Caller: caller, Cwd: req.Cwd,
+		TS: b.now(), Caller: caller, Cwd: audit.CapString(req.Cwd, audit.MaxCwd),
 		Argv: []string{"grantd", verb, req.Name}, Secrets: []string{req.Name},
 		Decision: audit.DecisionAllowedOnce, Reason: verb,
 	}

@@ -17,20 +17,22 @@ import (
 func newAuditCmd() *cobra.Command {
 	var socket string
 	var limit int
+	var before string
 	// A run that was released appears as two rows, newest first: "completed"
 	// (exit code, duration, reason such as timeout or canceled) above the
 	// allowed_* row with reason "released" that was written before the
 	// command was spawned (secrets already decrypted). A released row with no completed row above it
 	// means the daemon died mid-run.
 	list := func(cmd *cobra.Command, _ []string) error {
-		resp, err := simpleCall(cmd.Context(), socket, &proto.Request{Op: proto.OpAudit, Caller: "cli", Action: proto.ActionList, Limit: limit})
+		resp, err := simpleCall(cmd.Context(), socket, &proto.Request{Op: proto.OpAudit, Caller: "cli", Action: proto.ActionList, Limit: limit, BeforeID: before})
 		if err != nil {
 			return err
 		}
-		es, truncated, err := decodeAuditList(resp)
+		page, err := decodeAuditList(resp)
 		if err != nil {
 			return err
 		}
+		es := page.Entries
 		tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 		fmt.Fprintln(tw, "ID\tTIME\tDECISION\tCALLER\tCOMMAND\tSECRETS\tGRANT\tEXIT\tTOOK\tREASON")
 		for _, e := range es {
@@ -51,8 +53,15 @@ func newAuditCmd() *cobra.Command {
 		if err := tw.Flush(); err != nil {
 			return err
 		}
-		if truncated {
-			fmt.Fprintf(cmd.ErrOrStderr(), "grantd: only the %d newest entries fit in one reply; use --limit with a smaller number to see them without this cut-off\n", len(es))
+		if page.Skipped > 0 {
+			fmt.Fprintf(cmd.ErrOrStderr(), "grantd: %d entries were too large to show and are left out\n", page.Skipped)
+		}
+		if page.Truncated {
+			next := ""
+			if page.NextBeforeID != "" {
+				next = "; the next page starts with `--before " + page.NextBeforeID + "`"
+			}
+			fmt.Fprintf(cmd.ErrOrStderr(), "grantd: only %d entries fit in one reply%s\n", len(es), next)
 		}
 		return nil
 	}
@@ -65,6 +74,7 @@ func newAuditCmd() *cobra.Command {
 	listCmd := &cobra.Command{Use: "list", Short: "List recent audit entries (newest first; a run is a completed row above its released row)", Args: cobra.NoArgs, RunE: list}
 	for _, x := range []*cobra.Command{c, listCmd} {
 		x.Flags().IntVar(&limit, "limit", 0, "maximum entries to show (default 100)")
+		x.Flags().StringVar(&before, "before", "", "only entries with an ID below this one (to page back through the log)")
 	}
 	verify := &cobra.Command{
 		Use: "verify", Short: "Verify the HMAC chain", Args: cobra.NoArgs,
@@ -118,18 +128,16 @@ func secretsCell(e proto.AuditInfo) string {
 	return req + " → " + strings.Join(e.Expanded, ", ")
 }
 
-// decodeAuditList reads an audit list result: an object with entries and an
-// optional truncated flag (an older daemon sends a bare array).
-func decodeAuditList(resp *proto.Response) (entries []proto.AuditInfo, truncated bool, err error) {
-	if t := bytes.TrimSpace(resp.Result); len(t) > 0 && t[0] == '[' {
-		err = decodeResult(resp, &entries)
-		return entries, false, err
-	}
+// decodeAuditList reads an audit list result: an object with entries and the
+// optional paging fields (an older daemon sends a bare array).
+func decodeAuditList(resp *proto.Response) (proto.AuditListResult, error) {
 	var r proto.AuditListResult
-	if err := decodeResult(resp, &r); err != nil {
-		return nil, false, err
+	if t := bytes.TrimSpace(resp.Result); len(t) > 0 && t[0] == '[' {
+		err := decodeResult(resp, &r.Entries)
+		return r, err
 	}
-	return r.Entries, r.Truncated, nil
+	err := decodeResult(resp, &r)
+	return r, err
 }
 
 // printable replaces control characters, so a row written by an untrusted

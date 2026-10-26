@@ -86,10 +86,17 @@ type AuditInfo struct {
 
 // AuditListResult is the OpAudit list result. Truncated is true when the
 // daemon returned fewer rows than asked for because the encoded page would not
-// fit in one protocol line; ask for a smaller limit.
+// fit in one protocol line; continue with NextBeforeID (or a smaller limit).
+// Skipped counts rows that were left out of this page because even their
+// shortened form was too large to send. NextBeforeID is the ID of the oldest
+// row the daemon examined for this page (returned or skipped): pass it as
+// Request.BeforeID to get the next older page. It is absent when no row was
+// examined, which means there is nothing older.
 type AuditListResult struct {
-	Entries   []AuditInfo `json:"entries"`
-	Truncated bool        `json:"truncated,omitempty"`
+	Entries      []AuditInfo `json:"entries"`
+	Truncated    bool        `json:"truncated,omitempty"`
+	Skipped      int         `json:"skipped,omitempty"`
+	NextBeforeID string      `json:"next_before_id,omitempty"`
 }
 
 // AuditExportResult is the OpAudit export result: the whole log as CSV text.

@@ -54,9 +54,12 @@ func (rc *runCtx) refuse(ctx context.Context, decision, category, reason, msg st
 
 func (b *Broker) handleRun(ctx context.Context, req *proto.Request, w daemon.ResponseWriter) {
 	caller, callerOK := callerOf(req)
-	rc := &runCtx{b: b, w: w, started: b.now(), entry: audit.Entry{
+	// The entry is built from the raw request, which is untrusted and may be
+	// megabytes (validateRun has not run yet): record capped copies, so that a
+	// request refused as too large does not make the audit log carry it.
+	rc := &runCtx{b: b, w: w, started: b.now(), entry: audit.Capped(audit.Entry{
 		TS: b.now(), Caller: caller, Cwd: req.Cwd, Argv: req.Argv, Secrets: req.Secrets,
-	}}
+	})}
 	if !callerOK {
 		rc.entry.Caller = "(invalid)"
 	}

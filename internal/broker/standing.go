@@ -37,9 +37,10 @@ const ReasonStanding = "standing"
 // grant is revoked again (no standing grant without a trail).
 func (b *Broker) handleGrantAdd(ctx context.Context, req *proto.Request, w daemon.ResponseWriter) {
 	label := strings.TrimSpace(req.GrantCaller)
-	rc := &runCtx{b: b, w: w, started: b.now(), entry: audit.Entry{
+	// Capped copies of the raw request, as in handleRun.
+	rc := &runCtx{b: b, w: w, started: b.now(), entry: audit.Capped(audit.Entry{
 		TS: b.now(), Caller: label, Cwd: req.Cwd, Argv: req.Argv, Secrets: req.Secrets,
-	}}
+	})}
 	refuse := func(decision, category, reason, msg string) {
 		rc.refuse(ctx, decision, category, reason, "standing grant: "+msg)
 	}

@@ -127,6 +127,9 @@ type Request struct {
 	Action  string `json:"action,omitempty"`
 	GrantID string `json:"grant_id,omitempty"`
 	Limit   int    `json:"limit,omitempty"` // audit list; 0 = daemon default
+	// BeforeID pages audit list: only rows whose ID is below it (an ID as the
+	// daemon returned it, a decimal string). Empty = start at the newest.
+	BeforeID string `json:"before_id,omitempty"`
 
 	// grants add (a standing grant). cwd, secrets and argv (the command
 	// prefix) are the run fields above; Caller is who is asking, as always.

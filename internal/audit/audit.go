@@ -254,12 +254,16 @@ func (l *Log) mac(canon, prev []byte) []byte {
 }
 
 // Append adds an entry, chaining it to the previous row, and returns its ID.
-// A zero TS is replaced by the current time. Entry.ID/Seq/PrevHMAC/HMAC inputs
+// A zero TS is replaced by the current time. Fields over their caps (Capped)
+// are cut and marked "(truncated)" before the row is written. Entry.ID/Seq/PrevHMAC/HMAC inputs
 // are ignored.
 func (l *Log) Append(ctx context.Context, e Entry) (string, error) {
 	if !validDecisions[e.Decision] {
 		return "", fmt.Errorf("%w: unknown decision %q", ErrInvalid, e.Decision)
 	}
+	// Bound every field first: the row, its HMAC and what List and export
+	// return are all computed from the bounded copy (see caps.go).
+	e = Capped(e)
 	if e.TS.IsZero() {
 		e.TS = time.Now()
 	}
@@ -370,6 +374,34 @@ func (l *Log) List(ctx context.Context, limit, offset int) ([]Entry, error) {
 	return out, rows.Err()
 }
 
+// ListBefore is List for paging by ID: the newest limit entries whose Seq is
+// below beforeSeq, newest first. beforeSeq <= 0 means no upper bound.
+func (l *Log) ListBefore(ctx context.Context, limit int, beforeSeq int64) ([]Entry, error) {
+	if limit <= 0 {
+		limit = defaultList
+	}
+	q := `SELECT ` + selectCols + ` FROM audit `
+	args := []any{}
+	if beforeSeq > 0 {
+		q += `WHERE id < ? `
+		args = append(args, beforeSeq)
+	}
+	rows, err := l.db.QueryContext(ctx, q+`ORDER BY id DESC LIMIT ?`, append(args, limit)...)
+	if err != nil {
+		return nil, fmt.Errorf("audit: list: %w", err)
+	}
+	defer rows.Close()
+	var out []Entry
+	for rows.Next() {
+		e, _, _, err := scan(rows)
+		if err != nil {
+			return nil, fmt.Errorf("audit: list: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // Verify walks the whole chain from the first row, recomputing every HMAC.
 func (l *Log) Verify(ctx context.Context) (VerifyResult, error) {
 	rows, err := l.db.QueryContext(ctx, `SELECT `+selectCols+` FROM audit ORDER BY id ASC`)
@@ -400,7 +432,8 @@ func (l *Log) Verify(ctx context.Context) (VerifyResult, error) {
 	return res, nil
 }
 
-// ExportCSV writes every row oldest first as CSV with a header. argv and
+// ExportCSV writes every row oldest first as CSV with a header (fields over the
+// Append caps are shortened and marked, see Capped). argv and
 // secrets are JSON array strings, so spaces and quotes survive intact.
 func (l *Log) ExportCSV(ctx context.Context, w io.Writer) error {
 	rows, err := l.db.QueryContext(ctx, `SELECT `+selectCols+` FROM audit ORDER BY id ASC`)
@@ -415,6 +448,10 @@ func (l *Log) ExportCSV(ctx context.Context, w io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("audit: export: %w", err)
 		}
+		// Rows written before Append bounded its fields can be huge; the
+		// export shows them in the bounded form, marked "(truncated)", so that
+		// one of them does not make the whole log unexportable.
+		e = Capped(e)
 		a, _ := json.Marshal(nonNil(e.Argv))
 		s, _ := json.Marshal(nonNil(e.Secrets))
 		x, _ := json.Marshal(nonNil(e.Expanded))

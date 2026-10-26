@@ -927,3 +927,68 @@ func TestRunAuditRowsRecordExpandedNames(t *testing.T) {
 		t.Errorf("csv = %q", csv)
 	}
 }
+
+// A refused request must not make the audit log carry what made it too large:
+// the entry is written from capped copies, and the log stays listable and
+// exportable afterwards.
+func TestRefusedOversizeRequestDoesNotPoisonTheAudit(t *testing.T) {
+	e := newEnv(t)
+	huge := strings.Repeat("A", 3<<20)
+
+	cases := map[string]*proto.Request{
+		"argv element": {Op: proto.OpRun, Caller: "tester", Cwd: e.cwd, Argv: []string{"true", huge}, Secrets: []string{"API_KEY"}},
+		"many argv":    {Op: proto.OpRun, Caller: "tester", Cwd: e.cwd, Argv: make([]string, 600000), Secrets: []string{"API_KEY"}},
+		"cwd":          {Op: proto.OpRun, Caller: "tester", Cwd: "/" + huge, Argv: []string{"true"}, Secrets: []string{"API_KEY"}},
+		"caller":       {Op: proto.OpRun, Caller: huge, Cwd: e.cwd, Argv: []string{"true"}, Secrets: []string{"API_KEY"}},
+		"secrets":      {Op: proto.OpRun, Caller: "tester", Cwd: e.cwd, Argv: []string{"true"}, Secrets: []string{huge}},
+		"grant add": {Op: proto.OpGrants, Action: proto.ActionAdd, Caller: "cli", GrantCaller: huge, Cwd: e.cwd,
+			Argv: []string{"true", huge}, Secrets: []string{"API_KEY"}, TTLS: 3600},
+		"grant add cwd": {Op: proto.OpGrants, Action: proto.ActionAdd, Caller: "cli", GrantCaller: "x", Cwd: "/" + huge,
+			Argv: []string{"true"}, Secrets: []string{"API_KEY"}, TTLS: 3600},
+		"show cwd": {Op: proto.OpShow, Caller: "tester", Name: "API_KEY", Cwd: huge},
+	}
+	for i := range cases["many argv"].Argv {
+		cases["many argv"].Argv[i] = "a"
+	}
+	e.ap.allow = false // a request that got past validation would be denied, not run
+	for name, req := range cases {
+		w := e.do(req)
+		if w.final.OK {
+			t.Fatalf("%s: accepted", name)
+		}
+		if w.final.AuditID == "" && name != "show cwd" { // show is refused by the approver, after its own audit rules
+			t.Errorf("%s: no audit row", name)
+		}
+	}
+
+	// Every row is small, the whole log lists in one page and exports.
+	var rowBytes int
+	if err := e.v.DB().QueryRow(`SELECT max(length(caller)+length(cwd)+length(argv)+length(secrets)+length(expanded)+length(reason)) FROM audit`).Scan(&rowBytes); err != nil {
+		t.Fatal(err)
+	}
+	if rowBytes > 256<<10 {
+		t.Errorf("an audit row is %d bytes", rowBytes)
+	}
+	res := e.auditList(1000, "")
+	if res.Truncated || res.Skipped != 0 || len(res.Entries) < len(cases)-1 {
+		t.Fatalf("list: truncated=%v skipped=%d entries=%d", res.Truncated, res.Skipped, len(res.Entries))
+	}
+	wantOK(t, e.do(&proto.Request{Op: proto.OpAudit, Action: proto.ActionExport}))
+	if v, err := e.a.Verify(context.Background()); err != nil || !v.OK {
+		t.Fatalf("verify = %+v %v", v, err)
+	}
+
+	// The argv row records the start of the command and says it was cut.
+	var found bool
+	for _, en := range res.Entries {
+		if len(en.Argv) > 1 && en.Argv[0] == "true" && en.Argv[len(en.Argv)-1] == audit.TruncatedMarker {
+			found = true
+			if len(en.Argv[1]) > audit.MaxArgvElem {
+				t.Errorf("argv element of %d bytes recorded", len(en.Argv[1]))
+			}
+		}
+	}
+	if !found {
+		t.Error("no capped argv row with a (truncated) marker")
+	}
+}

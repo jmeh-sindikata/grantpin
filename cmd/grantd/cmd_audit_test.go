@@ -25,18 +25,18 @@ func TestSecretsCell(t *testing.T) {
 }
 
 func TestDecodeAuditList(t *testing.T) {
-	obj := &proto.Response{OK: true, Result: json.RawMessage(`{"entries":[{"id":"2"},{"id":"1"}],"truncated":true}`)}
-	es, trunc, err := decodeAuditList(obj)
-	if err != nil || !trunc || len(es) != 2 || es[0].ID != "2" {
-		t.Fatalf("object: %v %v %v", es, trunc, err)
+	obj := &proto.Response{OK: true, Result: json.RawMessage(`{"entries":[{"id":"2"},{"id":"1"}],"truncated":true,"skipped":3,"next_before_id":"1"}`)}
+	r, err := decodeAuditList(obj)
+	if err != nil || !r.Truncated || len(r.Entries) != 2 || r.Entries[0].ID != "2" || r.Skipped != 3 || r.NextBeforeID != "1" {
+		t.Fatalf("object: %+v %v", r, err)
 	}
 	// An older daemon sends a bare array.
 	arr := &proto.Response{OK: true, Result: json.RawMessage(` [{"id":"7"}]`)}
-	es, trunc, err = decodeAuditList(arr)
-	if err != nil || trunc || len(es) != 1 || es[0].ID != "7" {
-		t.Fatalf("array: %v %v %v", es, trunc, err)
+	r, err = decodeAuditList(arr)
+	if err != nil || r.Truncated || len(r.Entries) != 1 || r.Entries[0].ID != "7" {
+		t.Fatalf("array: %+v %v", r, err)
 	}
-	if _, _, err := decodeAuditList(&proto.Response{OK: true}); err == nil {
+	if _, err := decodeAuditList(&proto.Response{OK: true}); err == nil {
 		t.Fatal("missing result accepted")
 	}
 }

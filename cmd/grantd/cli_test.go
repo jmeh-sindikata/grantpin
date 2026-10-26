@@ -150,6 +150,15 @@ func TestCLIEndToEnd(t *testing.T) {
 	if o := mustCLI(t, "", "audit", "list", "--limit", "1"); strings.Count(o, "\n") != 2 || !strings.Contains(o, "TOOK") {
 		t.Errorf("audit list --limit 1 = %q", o)
 	}
+	// Paging: --before shows only older rows, and its page does not repeat the newest.
+	newest := strings.Fields(strings.Split(mustCLI(t, "", "audit", "list", "--limit", "1"), "\n")[1])[0]
+	older := mustCLI(t, "", "audit", "list", "--before", newest, "--limit", "1")
+	if oid := strings.Fields(strings.Split(older, "\n")[1])[0]; oid == newest || strings.Count(older, "\n") != 2 {
+		t.Errorf("audit list --before %s = %q", newest, older)
+	}
+	if _, _, err := cli(t, "", "audit", "list", "--before", "nope"); err == nil || !strings.Contains(err.Error(), "before_id") {
+		t.Errorf("bad --before err = %v", err)
+	}
 	if o := mustCLI(t, "", "audit", "verify"); !strings.Contains(o, "audit chain ok") {
 		t.Errorf("verify output = %q", o)
 	}

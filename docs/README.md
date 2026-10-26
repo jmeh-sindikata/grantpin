@@ -525,7 +525,7 @@ Flags:
 
 ### `grantd audit`
 
-Bare `audit` is `audit list`; `--limit` applies to the list (default 100, at most 1000). A run appears as a `completed` row above its `released` row.
+Bare `audit` is `audit list`; `--limit` and `--before` apply to the list (`--limit` default 100, at most 1000; `--before ID` shows only entries older than ID, which is how to page back when a reply was cut off). A run appears as a `completed` row above its `released` row.
 
 ```
 Inspect and verify the audit log
@@ -541,6 +541,7 @@ Available Commands:
 
 Flags:
   -h, --help            help for audit
+      --before string   only entries with an ID below this one (to page back through the log)
       --limit int       maximum entries to show (default 100)
       --socket string   socket path (default: $GRANTD_SOCKET or the platform default)
 
@@ -557,6 +558,7 @@ Usage:
 
 Flags:
   -h, --help            help for list
+      --before string   only entries with an ID below this one (to page back through the log)
       --limit int       maximum entries to show (default 100)
       --socket string   socket path (default: $GRANTD_SOCKET or the platform default)
 ```
@@ -907,7 +909,7 @@ A `released` row with no `completed` row after it means the daemon died mid-run.
 - **Truncation is not detected.** Deleting the newest rows leaves a valid chain; there is no external anchor (a signed head, a remote log). An attacker who can write the file can erase their most recent activity.
 - The audit log and the grants table are independent: a replayed genuine grant row (see Grants) is not visible in the audit log except as repeated `allowed_grant` rows for a grant you had revoked.
 
-`grantd audit export` prints the log as CSV (`id, ts, caller, cwd, argv, secrets, expanded, decision, grant_id, reason, exit_code, duration_ms`); `argv`, `secrets` and `expanded` are JSON arrays. `secrets` is what the request asked for (`aws/*`), `expanded` the concrete names it released. Exports whose encoded size does not fit in one protocol line (a little under 4 MiB) are refused over the socket; use `audit list --limit`. `grantd audit` shows `aws/* → aws/a, aws/b` in its SECRETS column when a glob expanded, and says so when a page was cut to fit.
+`grantd audit export` prints the log as CSV (`id, ts, caller, cwd, argv, secrets, expanded, decision, grant_id, reason, exit_code, duration_ms`); `argv`, `secrets` and `expanded` are JSON arrays. `secrets` is what the request asked for (`aws/*`), `expanded` the concrete names it released. Exports whose encoded size does not fit in one protocol line (a little under 4 MiB) are refused over the socket; use `audit list --limit`. `grantd audit` shows `aws/* → aws/a, aws/b` in its SECRETS column when a glob expanded, and says so when a page was cut to fit, with the `--before` value that continues from there. Each field of a row is bounded when it is written (a command line is kept up to 64 KiB, with a `(truncated)` marker when it was longer), so one oversized request cannot make the log unlistable.
 
 ## Manual testing on a Mac
 
