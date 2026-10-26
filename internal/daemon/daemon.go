@@ -224,12 +224,11 @@ func (s *Server) Serve(ctx context.Context) error {
 		}()
 	}
 	close(stopped)
+	// Closing the listener also unlinks the socket path (net.UnixListener does
+	// that for a socket it created), so new clients see "not running" and a
+	// new daemon can bind while we drain. Do not Remove the path again here: by
+	// now a successor daemon may already have bound a fresh socket at it.
 	_ = s.ln.Close()
-	// Free the path immediately so new clients see "not running" and a new
-	// daemon can bind while we drain.
-	if err := os.Remove(s.cfg.SocketPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		s.log.Warn("remove socket", "err", err)
-	}
 
 	s.log.Info("shutting down", "grace", s.cfg.ShutdownGrace.String())
 	if !waitTimeout(&s.conns, s.cfg.ShutdownGrace) {

@@ -854,3 +854,62 @@ func TestLogRequestClipsCallerAndCwd(t *testing.T) {
 		t.Fatalf("log is %d bytes:\n%.300s", len(out), out)
 	}
 }
+
+// closeHook wraps a listener and runs hook right after the real Close, to
+// simulate a successor daemon binding the path the instant ours is released.
+type closeHook struct {
+	net.Listener
+	hook func()
+	once sync.Once
+}
+
+func (c *closeHook) Close() error {
+	err := c.Listener.Close()
+	c.once.Do(c.hook)
+	return err
+}
+
+func TestShutdownDoesNotRemoveSuccessorSocket(t *testing.T) {
+	path := filepath.Join(shortDir(t), "s.sock")
+	srv, err := New(Config{SocketPath: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	var successor net.Listener
+	srv.ln = &closeHook{Listener: srv.ln, hook: func() {
+		l, err := net.Listen("unix", path)
+		if err != nil {
+			t.Errorf("successor bind: %v", err)
+			return
+		}
+		successor = l
+	}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Serve(ctx) }()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Serve did not return")
+	}
+	if successor == nil {
+		t.Fatal("successor was not bound")
+	}
+	defer successor.Close()
+	if _, err := os.Lstat(path); err != nil {
+		t.Fatalf("successor socket was removed by the old daemon: %v", err)
+	}
+	c, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatalf("dial successor: %v", err)
+	}
+	c.Close()
+}

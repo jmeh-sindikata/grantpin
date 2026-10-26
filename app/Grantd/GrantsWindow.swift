@@ -40,11 +40,13 @@ struct GrantsWindow: View {
             }
             .alert(
                 Text(verbatim: confirmation?.title ?? ""),
-                isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil; pendingRevoke = nil } }),
+                isPresented: Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } }),
                 presenting: confirmation
             ) { c in
                 Button(c.confirmLabel, role: .destructive) { performRevoke() }
-                Button("Cancel", role: .cancel) {}
+                // pendingRevoke is cleared here and in performRevoke, not in the
+                // binding setter: SwiftUI may flip the binding before the button runs.
+                Button("Cancel", role: .cancel) { pendingRevoke = nil }
             } message: { c in
                 Text(verbatim: c.message)
             }
