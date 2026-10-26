@@ -200,11 +200,12 @@ public final class SecretFormModel {
         }
     }
 
-    /// Why the chosen expiry cannot be used, nil if it can. In Edit details an
-    /// unchanged expiry is never a problem (an already expired secret can be
-    /// edited without touching the date).
+    /// Why the chosen expiry cannot be used, nil if it can. In Edit details and
+    /// Replace value an unchanged expiry is never a problem (an already
+    /// expired secret can be edited, or get a new value, without touching the
+    /// date).
     public var expiryMessage: String? {
-        if mode == .editDetails, !expiryChanged { return nil }
+        if mode != .add, !expiryChanged { return nil }
         do { _ = try expiryChoice.resolve(now: now(), calendar: calendar) } catch let e as ExpiryError {
             if expiryKind == .custom, expiryCustom.isEmpty { return nil }
             return e.message
@@ -361,7 +362,12 @@ public final class SecretFormModel {
     private func saveValue() async throws {
         var data = Data(Validators.normalisedValue(value).utf8)
         defer { data.resetBytes(in: 0..<data.count) }
-        let expires = try expiryChoice.resolve(now: now(), calendar: calendar)
+        // Replace value with the expiry untouched sends the stored instant as it
+        // is: resolving the prefilled date would move it to the end of its day.
+        let expires: Date?
+        if mode == .replaceValue, !expiryChanged { expires = original?.expiresAt } else {
+            expires = try expiryChoice.resolve(now: now(), calendar: calendar)
+        }
         let target = original?.name ?? name
         let notesValue = notes.isEmpty ? nil : notes
         let urlValue = url.trimmingCharacters(in: .whitespacesAndNewlines)

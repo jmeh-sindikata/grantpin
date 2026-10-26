@@ -489,8 +489,34 @@ final class SecretFormModelTests: XCTestCase {
         XCTAssertEqual(c.url, "https://old")
         XCTAssertEqual(c.notes, "old notes")
         XCTAssertEqual(c.minTier, .hardware)
-        XCTAssertEqual(try XCTUnwrap(c.expires).timeIntervalSince(exp), 0, accuracy: 86_400, "the same day, end of day")
+        XCTAssertEqual(try XCTUnwrap(c.expires).timeIntervalSince(exp), 0, accuracy: 0, "an untouched expiry is sent unchanged")
         XCTAssertTrue(svc.updates.isEmpty)
+    }
+
+    func testReplaceValueOfAnAlreadyExpiredSecretKeepsItsExpiry() async throws {
+        let exp = now.addingTimeInterval(-3 * 86_400 + 1234)
+        let o = original(tier: .dialog, expires: exp)
+        let svc = FakeService(secrets: [o])
+        let f = form(svc, original: o)
+        f.mode = .replaceValue
+        XCTAssertNil(f.expiryMessage, "an unchanged past expiry does not block Save")
+        f.value = "new-value"
+        XCTAssertTrue(f.canSave)
+        _ = await f.save()
+        XCTAssertEqual(try XCTUnwrap(svc.sets.first).expires, exp)
+    }
+
+    func testReplaceValueWithAChangedExpiryStillMustBeInTheFuture() async throws {
+        let o = original(tier: .dialog, expires: now.addingTimeInterval(-86_400))
+        let f = form(FakeService(secrets: [o]), original: o)
+        f.mode = .replaceValue
+        f.value = "v"
+        f.expiryKind = .never
+        XCTAssertTrue(f.canSave)
+        f.expiryKind = .date
+        f.expiryDate = now.addingTimeInterval(-5 * 86_400)
+        XCTAssertNotNil(f.expiryMessage)
+        XCTAssertFalse(f.canSave)
     }
 
     func testSwitchingModeDropsTheTypedValue() {
