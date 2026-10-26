@@ -419,3 +419,53 @@ func TestClosedDBErrors(t *testing.T) {
 		t.Fatal("migrate")
 	}
 }
+
+func TestCSVCellNeutralisesFormulas(t *testing.T) {
+	for in, want := range map[string]string{
+		"=1+1": "'=1+1", "+1": "'+1", "-1": "'-1", "@SUM(A1)": "'@SUM(A1)", "\tx": "'\tx", "\rx": "'\rx",
+		`=HYPERLINK("http://x","y")`: `'=HYPERLINK("http://x","y")`,
+		"":                           "", "claude-code": "claude-code", "a=b": "a=b", "/work/app": "/work/app", `["=x"]`: `["=x"]`, " =x": " =x",
+		"'=x": "'=x", "é": "é",
+	} {
+		if got := csvCell(in); got != want {
+			t.Errorf("csvCell(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestExportCSVDoesNotEmitFormulas(t *testing.T) {
+	ctx := context.Background()
+	l, _ := newLog(t)
+	e := sample(0)
+	e.Caller = `=HYPERLINK("http://evil","x")`
+	e.Cwd = "+cmd|' /C calc'!A0"
+	e.Reason = "@SUM(1+1)"
+	e.GrantID = "-2+3"
+	if _, err := l.Append(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := l.ExportCSV(ctx, &buf); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := csv.NewReader(&buf).ReadAll()
+	if err != nil || len(recs) != 2 {
+		t.Fatalf("%v %v", recs, err)
+	}
+	r := recs[1]
+	if r[2] != `'=HYPERLINK("http://evil","x")` || r[3] != "'+cmd|' /C calc'!A0" || r[9] != "'@SUM(1+1)" || r[8] != "'-2+3" {
+		t.Fatalf("row = %q", r)
+	}
+	for i, cell := range r {
+		if cell != "" && strings.ContainsRune("=+-@\t\r", rune(cell[0])) {
+			t.Errorf("cell %d starts like a formula: %q", i, cell)
+		}
+	}
+	// The stored row is untouched: the log still verifies and lists the original.
+	if v, err := l.Verify(ctx); err != nil || !v.OK {
+		t.Fatalf("verify: %+v %v", v, err)
+	}
+	if es, _ := l.List(ctx, 1, 0); es[0].Caller != e.Caller {
+		t.Errorf("stored caller changed: %q", es[0].Caller)
+	}
+}

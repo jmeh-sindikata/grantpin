@@ -433,7 +433,8 @@ func (l *Log) Verify(ctx context.Context) (VerifyResult, error) {
 }
 
 // ExportCSV writes every row oldest first as CSV with a header (fields over the
-// Append caps are shortened and marked, see Capped). argv and
+// Append caps are shortened and marked, see Capped; text cells that start like
+// a spreadsheet formula get a leading apostrophe, see csvCell). argv and
 // secrets are JSON array strings, so spaces and quotes survive intact.
 func (l *Log) ExportCSV(ctx context.Context, w io.Writer) error {
 	rows, err := l.db.QueryContext(ctx, `SELECT `+selectCols+` FROM audit ORDER BY id ASC`)
@@ -459,14 +460,26 @@ func (l *Log) ExportCSV(ctx context.Context, w io.Writer) error {
 		if e.ExitCode != nil {
 			exit = strconv.Itoa(*e.ExitCode)
 		}
-		_ = cw.Write([]string{e.ID, ts, e.Caller, e.Cwd, string(a), string(s), string(x), e.Decision, e.GrantID, e.Reason,
-			exit, strconv.FormatInt(e.Duration.Milliseconds(), 10)})
+		_ = cw.Write([]string{e.ID, ts, csvCell(e.Caller), csvCell(e.Cwd), csvCell(string(a)), csvCell(string(s)), csvCell(string(x)),
+			csvCell(e.Decision), csvCell(e.GrantID), csvCell(e.Reason), exit, strconv.FormatInt(e.Duration.Milliseconds(), 10)})
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("audit: export: %w", err)
 	}
 	cw.Flush()
 	return cw.Error()
+}
+
+// csvCell neutralises a cell that a spreadsheet would read as a formula: one
+// that starts with = + - @ TAB or CR gets a leading apostrophe (OWASP, "CSV
+// injection"). caller, cwd and the other text columns come from untrusted
+// requests, so `=HYPERLINK(...)` as a caller label must stay text when the
+// export is opened in Excel, Numbers or Sheets.
+func csvCell(s string) string {
+	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
+		return "'" + s
+	}
+	return s
 }
 
 func nonNil(s []string) []string {
