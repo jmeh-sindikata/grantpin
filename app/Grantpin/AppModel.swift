@@ -43,6 +43,48 @@ final class SystemLoginItem: LoginItemControl {
     func openSystemSettings() { SMAppService.openSystemSettingsLoginItems() }
 }
 
+/// Who may be changing the background service right now, so that only one
+/// thing does at a time (docs/UI-SPEC.md 3.1): the popover's Start, a
+/// Settings action, onboarding's Install, the open Uninstall sheet or the
+/// automatic restore. Each model asks whether anyone else is and refuses its
+/// own action meanwhile (`ServiceBusy`); the automatic restore does not start
+/// while anyone is. The models are created one after another and each one's
+/// closure has to see the others, so this exists first and they are attached
+/// once they all exist.
+@MainActor
+@Observable
+final class ServiceActivity {
+    enum Part: CaseIterable {
+        case popover, settings, onboarding, uninstall, restore
+    }
+
+    @ObservationIgnored weak var popover: PopoverModel?
+    @ObservationIgnored weak var settings: SettingsModel?
+    @ObservationIgnored weak var onboarding: OnboardingModel?
+    @ObservationIgnored weak var recovery: ServiceRecovery?
+    /// The Uninstall sheet is open: `service uninstall` may run any moment.
+    var uninstallOpen = false
+
+    /// Whether `part` is changing the service now.
+    func isBusy(_ part: Part) -> Bool {
+        switch part {
+        case .popover: return popover?.running != nil
+        case .settings: return settings?.isBusy == true
+        case .onboarding: return onboarding?.running != nil
+        case .uninstall: return uninstallOpen
+        case .restore: return recovery?.isRestoring == true
+        }
+    }
+
+    /// Something other than `own` is changing the service.
+    func busy(besides own: Set<Part>) -> Bool {
+        Part.allCases.contains { !own.contains($0) && isBusy($0) }
+    }
+
+    /// Anything is.
+    var anyBusy: Bool { busy(besides: []) }
+}
+
 /// Everything the windows share: the socket client, the monitor that polls
 /// `status`, the popover's and the Secrets window's models, and the helper
 /// that starts the daemon and creates the vault.
@@ -67,6 +109,8 @@ final class AppModel {
     let serviceWatcher: ServiceWatcher
     /// Restores a service the person had installed, or asks about it.
     let serviceRecovery: ServiceRecovery
+    /// Who is changing the service right now (one action at a time).
+    let serviceActivity: ServiceActivity
     let loginItem = SystemLoginItem()
     /// Where the app runs from; outside an Applications folder the service and
     /// vault actions are off (docs/UI-SPEC.md 2.5).
@@ -94,8 +138,6 @@ final class AppModel {
 
     @ObservationIgnored private var visibleSurfaces = Set<String>()
     @ObservationIgnored private var recoveryTimer: Task<Void, Never>?
-    /// The Uninstall sheet is open: nothing is restored behind its back.
-    var uninstallActive = false
     @ObservationIgnored private var observers = [NSObjectProtocol]()
 
     init() {
@@ -117,17 +159,23 @@ final class AppModel {
         self.location = location
         let devSocket = socket.isDevelopment ? socket.path : nil
         let refresh: @MainActor () async -> Void = { await monitor.refreshNow() }
+        // One service action at a time: each model is told when another one,
+        // or the automatic restore, is changing the service (ServiceActivity).
+        let serviceActivity = ServiceActivity()
+        self.serviceActivity = serviceActivity
 
         self.popover = PopoverModel(
             audit: client, actions: actions, developmentSocket: devSocket, secrets: client, location: location,
-            onActionFinished: refresh)
+            onActionFinished: refresh,
+            // The automatic restore runs through this model's Start, so it is not someone else here.
+            externallyBusy: { serviceActivity.busy(besides: [.popover, .restore]) })
         self.secrets = SecretsViewModel(service: client, pasteboard: SystemPasteboard())
         self.grants = GrantsViewModel(service: client)
         self.activity = ActivityViewModel(service: client)
         let login = loginItem
         self.settings = SettingsModel(
             control: actions, loginItem: login, developmentSocket: devSocket, resolvedSocket: socket.path,
-            location: location, onChanged: refresh)
+            location: location, onChanged: refresh, externallyBusy: { serviceActivity.busy(besides: [.settings]) })
         // The link points at the helper of THIS bundle, never at the development override.
         let bundledHelper = try? HelperLocator.resolve(bundleURL: Bundle.main.bundleURL)
         self.commandLine = CommandLineToolModel(
@@ -136,29 +184,28 @@ final class AppModel {
         self.onboarding = OnboardingModel(
             control: actions, loginItem: login, isDevelopment: socket.isDevelopment, location: location,
             onFinished: { UserDefaults.standard.set(true, forKey: AppModel.onboardingDoneKey) },
-            onActionFinished: refresh)
+            onActionFinished: refresh, externallyBusy: { serviceActivity.busy(besides: [.onboarding]) })
         // The service status is only looked at while the daemon is down, and never in development mode.
         let watcher = ServiceWatcher(control: socket.isDevelopment ? nil : actions)
         self.serviceWatcher = watcher
         let popoverModel = self.popover
-        let settingsModel = self.settings
-        let onboardingModel = self.onboarding
         // Restores the service itself only when the person installed it before
         // (the `service.wanted` marker); otherwise it asks (ServiceAskGate).
         self.serviceRecovery = ServiceRecovery(
             connection: { monitor.state }, location: location, isDevelopment: socket.isDevelopment,
             onboardingPending: { !UserDefaults.standard.bool(forKey: AppModel.onboardingDoneKey) },
             popoverOpen: { AppModel.current?.isPopoverOpen ?? false },
-            suspended: {
-                popoverModel.running != nil || settingsModel.isBusy || onboardingModel.running != nil
-                    || (AppModel.current?.uninstallActive ?? false)
-            },
+            suspended: { serviceActivity.busy(besides: [.restore]) },
             diagnose: { await watcher.poll(); return watcher.diagnosis },
             restore: {
                 // The same action as the Start button; what this run did, not
                 // the screen's `lastResult`, which may be dismissed meanwhile.
                 await popoverModel.perform(.startService)
             })
+        serviceActivity.popover = popoverModel
+        serviceActivity.settings = self.settings
+        serviceActivity.onboarding = self.onboarding
+        serviceActivity.recovery = self.serviceRecovery
 
         AppModel.current = self
         monitor.start()

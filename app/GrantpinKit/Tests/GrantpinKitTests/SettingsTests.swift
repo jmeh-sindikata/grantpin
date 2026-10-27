@@ -5,9 +5,11 @@ import XCTest
 @MainActor
 final class SettingsModelTests: XCTestCase {
     func model(control: ServiceControl? = FakeServiceControl(), login: LoginItemControl? = FakeLoginItem(),
-               dev: String? = nil, location: AppLocation = .ok, onChanged: @escaping @MainActor () async -> Void = {}) -> SettingsModel {
+               dev: String? = nil, location: AppLocation = .ok, onChanged: @escaping @MainActor () async -> Void = {},
+               busy: @escaping @MainActor () -> Bool = { false }) -> SettingsModel {
         SettingsModel(control: control, loginItem: login, developmentSocket: dev, resolvedSocket: "/s.sock", location: location,
-                      pathDetector: PathDetector(environment: [:], shellsFile: "/nonexistent"), onChanged: onChanged)
+                      pathDetector: PathDetector(environment: [:], shellsFile: "/nonexistent"), onChanged: onChanged,
+                      externallyBusy: busy)
     }
 
     func testStatusRowsFollowServiceStatus() async {
@@ -64,6 +66,24 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertEqual(l.registered, 0)
         XCTAssertNil(m.service)
         XCTAssertFalse(m.loginItemAvailable)
+    }
+
+    func testTheServiceControlsWaitWhileSomethingElseChangesTheService() async {
+        var busy = true
+        let c = FakeServiceControl()
+        let m = model(control: c, busy: { busy })
+        XCTAssertEqual(m.busyElsewhereReason, ServiceBusy.reason)
+        XCTAssertTrue(m.serviceControlsDisabled)
+        XCTAssertNil(m.controlsDisabledReason, "not a fixed reason: the PATH field still loads")
+        await m.install()
+        await m.stopService()
+        XCTAssertEqual(c.installs.count + c.uninstalls, 0)
+        XCTAssertNil(m.lastResult)
+        busy = false
+        XCTAssertNil(m.busyElsewhereReason)
+        XCTAssertFalse(m.serviceControlsDisabled)
+        await m.install()
+        XCTAssertEqual(c.installs.count, 1)
     }
 
     func testNoHelperAndWrongLocationDisableTheControls() async {

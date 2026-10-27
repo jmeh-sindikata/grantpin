@@ -281,6 +281,20 @@ final class PopoverModelTests: XCTestCase {
         XCTAssertNil(m.lastResult)
     }
 
+    func testTheButtonsWaitWhileSomethingElseChangesTheService() async {
+        var busy = true
+        let actions = FakeActions()
+        let m = PopoverModel(audit: FakeService(), actions: actions, externallyBusy: { busy })
+        XCTAssertEqual(m.buttonsDisabledReason, ServiceBusy.reason)
+        let refused = await m.perform(.startService)
+        XCTAssertNil(refused)
+        XCTAssertEqual(actions.started, 0)
+        busy = false
+        XCTAssertNil(m.buttonsDisabledReason)
+        await m.start()
+        XCTAssertEqual(actions.started, 1)
+    }
+
     func testPerformAnswersWhatThisRunDidAndNilWhenNothingRan() async throws {
         let actions = FakeActions()
         let m = PopoverModel(audit: FakeService(), actions: actions)

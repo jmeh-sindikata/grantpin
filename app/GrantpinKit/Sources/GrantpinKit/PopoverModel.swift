@@ -216,6 +216,7 @@ public final class PopoverModel {
     @ObservationIgnored private let actions: DaemonActions?
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let onActionFinished: @MainActor () async -> Void
+    @ObservationIgnored private let externallyBusy: @MainActor () -> Bool
 
     /// How many rows to ask for; the pairing needs a few more than are shown.
     public nonisolated static let auditWindow = 12
@@ -224,9 +225,12 @@ public final class PopoverModel {
     ///   - actions: nil when no helper can be found (for example an unsigned
     ///     development build); the buttons then explain.
     ///   - onActionFinished: runs after Start or Create vault, to poll `status` at once.
+    ///   - externallyBusy: something else is changing the service right now
+    ///     (`ServiceBusy`); the buttons wait.
     public init(audit: AuditService, actions: DaemonActions?, developmentSocket: String? = nil,
                 secrets: SecretsListing? = nil, location: AppLocation = .ok,
-                now: @escaping () -> Date = Date.init, onActionFinished: @escaping @MainActor () async -> Void = {}) {
+                now: @escaping () -> Date = Date.init, onActionFinished: @escaping @MainActor () async -> Void = {},
+                externallyBusy: @escaping @MainActor () -> Bool = { false }) {
         self.audit = audit
         self.secretsList = secrets
         self.location = location
@@ -234,6 +238,7 @@ public final class PopoverModel {
         self.developmentSocket = developmentSocket
         self.now = now
         self.onActionFinished = onActionFinished
+        self.externallyBusy = externallyBusy
     }
 
     public var isDevelopment: Bool { developmentSocket != nil }
@@ -243,6 +248,7 @@ public final class PopoverModel {
         if isDevelopment { return "In development mode the background service and the vault are not touched." }
         if actions == nil { return "The helper inside this app could not be found." }
         if !location.isOK { return AppLocation.blockedMessage }
+        if externallyBusy() { return ServiceBusy.reason }
         return nil
     }
 

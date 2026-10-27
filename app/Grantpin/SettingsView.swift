@@ -117,8 +117,9 @@ private struct GeneralSettings: View {
                 set: { on in
                     if on { Task { await model.install() } } else { confirmingStop = true }
                 }))
-                .disabled(model.controlsDisabledReason != nil || model.isBusy)
+                .disabled(model.serviceControlsDisabled)
             if model.isBusy { ProgressView().controlSize(.small) }
+            if let reason = model.busyElsewhereReason { Hint(reason, tint: .secondary) }
             if let s = model.service {
                 LabeledContent("Status") {
                     Text(verbatim: s.running ? "Running" + (s.pid.map { " (pid \($0))" } ?? "") : (s.installed ? "Stopped" : "Not installed"))
@@ -135,7 +136,7 @@ private struct GeneralSettings: View {
                             .fixedSize(horizontal: false, vertical: true)
                     } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
                     Button("Repair") { Task { await model.install() } }
-                        .disabled(model.controlsDisabledReason != nil || model.isBusy)
+                        .disabled(model.serviceControlsDisabled)
                 }
             } else if model.serviceUnreadable {
                 Hint("The service status could not be read.", tint: .secondary)
@@ -155,7 +156,7 @@ private struct GeneralSettings: View {
                 Button("Re-detect") { Task { await model.redetectPath() } }
                     .help("Ask your login shell for its PATH")
                 Button("Apply") { Task { await model.applyPath() } }
-                    .disabled(model.controlsDisabledReason != nil || model.isBusy)
+                    .disabled(model.serviceControlsDisabled)
                     .help("Saves this list and restarts the background service")
             }
             if let m = model.pathMessage { Hint(m, tint: .red) }
@@ -182,7 +183,7 @@ private struct GeneralSettings: View {
                 } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
                 if let action = model.versionAction {
                     Button(action) { Task { await model.install() } }
-                        .disabled(model.controlsDisabledReason != nil || model.isBusy)
+                        .disabled(model.serviceControlsDisabled)
                 }
             }
             pathRow("Socket", model.status.map { $0.socket.isEmpty ? model.resolvedSocket : $0.socket } ?? model.resolvedSocket)
@@ -354,7 +355,7 @@ private struct UninstallSettings: View {
         .sheet(item: $sheet) { model in
             UninstallSheet(model: model, app: app) { sheet = nil }
         }
-        .onChange(of: sheet != nil) { _, open in app.uninstallActive = open }
+        .onChange(of: sheet != nil) { _, open in app.serviceActivity.uninstallOpen = open }
     }
 
     private func makeModel() -> UninstallModel {
@@ -363,12 +364,14 @@ private struct UninstallSettings: View {
         if case .locked? = app.settings.connection { locked = true }
         let client = app.client
         let login = app.loginItem
+        let activity = app.serviceActivity
         return UninstallModel(
             control: app.serviceControl, secrets: status?.secrets, grants: status.map { $0.activeGrants + $0.tamperedGrants },
             keystoreTier: status?.keystoreTier, isDevelopment: app.socket.isDevelopment, vaultLocked: locked,
             keychain: app.serviceControl.map { HelperKeystore(helper: $0.helper) },
             daemonState: { await DaemonState.probe(client) },
             unregisterLoginItem: { try? login.unregister() },
-            commandLine: app.commandLine.tool)
+            commandLine: app.commandLine.tool,
+            externallyBusy: { activity.busy(besides: [.uninstall]) })
     }
 }
