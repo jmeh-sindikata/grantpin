@@ -210,13 +210,42 @@ final class ServiceRecoveryTests: XCTestCase {
         XCTAssertEqual(w.restores, 1)
     }
 
-    func testStartedButNotAnsweringIsNotARestore() async {
+    func testStartedButNotAnsweringWaitsAndIsARestoreOnceTheDaemonAnswers() async {
         let w = World(), r = recovery(w)
         w.restoreResult = ActionResult(outcome: .startedNotAnswering, summary: "started")
         _ = await r.check(); w.advance(10)
         let verdict = await r.check()
+        XCTAssertEqual(verdict, .nothing, "launchd has the job: no window for a service the app just started")
+        XCTAssertEqual(w.restores, 1)
+        XCTAssertNil(r.restoredAt)
+        XCTAssertEqual(r.nextCheck(), ServiceRestorePolicy.grace, "a fresh grace")
+        w.advance(4)
+        let still = await r.check()
+        XCTAssertEqual(still, .nothing)
+        XCTAssertEqual(r.nextCheck(), ServiceRestorePolicy.grace - 4)
+        w.advance(2); w.state = .ready(StatusResult())
+        let up = await r.check()
+        XCTAssertEqual(up, .nothing)
+        XCTAssertEqual(r.restoredAt, w.t)
+        XCTAssertNil(r.nextCheck())
+        // a later outage asks as usual; the one attempt is used
+        w.advance(120); w.state = .notRunning; _ = await r.check(); w.advance(10)
+        let later = await r.check()
+        XCTAssertEqual(later, .askNow)
+        XCTAssertEqual(w.restores, 1)
+    }
+
+    func testStartedButNotAnsweringAsksOnceTheFreshGraceIsOver() async {
+        let w = World(), r = recovery(w)
+        w.restoreResult = ActionResult(outcome: .startedNotAnswering, summary: "started")
+        _ = await r.check(); w.advance(10)
+        _ = await r.check()
+        w.advance(ServiceRestorePolicy.grace)
+        let verdict = await r.check()
         XCTAssertEqual(verdict, .askNow)
         XCTAssertNil(r.restoredAt)
+        XCTAssertNil(r.nextCheck())
+        XCTAssertEqual(w.restores, 1)
     }
 
     func testNothingRanIsAFailureToo() async {

@@ -145,6 +145,10 @@ public final class ServiceRecovery {
 
     @ObservationIgnored private var policy = ServiceRestorePolicy()
     @ObservationIgnored private var gate = ServiceAskGate()
+    /// The restore started the job but the daemon had not answered when
+    /// `service install` returned (docs/UI-SPEC.md 2.5): since when the
+    /// decision waits for it, a fresh grace long.
+    @ObservationIgnored private var pendingSince: Date?
     @ObservationIgnored private let connection: @MainActor () -> ConnectionState?
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let markerPresent: () -> Bool
@@ -208,9 +212,15 @@ public final class ServiceRecovery {
                         // connection is read again before anything decides.
                         state = connection()
                         policy.observe(state, now: now())
-                        if result?.outcome == .succeeded {
+                        switch result?.outcome {
+                        case .succeeded?:
                             restoredAt = now()
                             gate.resolve()
+                        case .startedNotAnswering?:
+                            // launchd has the job; the daemon gets a fresh grace to answer.
+                            pendingSince = now()
+                        case .failed?, nil:
+                            break  // the ask decides below
                         }
                     }
                 }
@@ -218,6 +228,16 @@ public final class ServiceRecovery {
         }
         // Another check may have started a restore while this one waited.
         guard !isRestoring else { return .nothing }
+        if let since = pendingSince {
+            switch state {
+            case .notRunning?, nil:
+                if now().timeIntervalSince(since) < ServiceRestorePolicy.grace { return .nothing }
+                pendingSince = nil  // it never answered: the ask decides below
+            default:
+                pendingSince = nil
+                restoredAt = now()
+            }
+        }
         // Every connection seen reaches the gate: after a restore it moves to
         // "up" as soon as the daemon answers, so the next outage asks again.
         let ask = gate.evaluate(state, now: now(), onboardingPending: onboardingPending(),
@@ -233,7 +253,9 @@ public final class ServiceRecovery {
     public func nextCheck() -> TimeInterval? {
         guard !isRestoring else { return nil }
         let t = now()
-        return [gate.waitTime(now: t), policy.waitTime(now: t)].compactMap { $0 }.filter { $0 > 0 }.min()
+        var waits = [gate.waitTime(now: t), policy.waitTime(now: t)]
+        if let since = pendingSince { waits.append(ServiceRestorePolicy.grace - t.timeIntervalSince(since)) }
+        return waits.compactMap { $0 }.filter { $0 > 0 }.min()
     }
 
     /// "grantpin restored its background service." for a while after a restore.
