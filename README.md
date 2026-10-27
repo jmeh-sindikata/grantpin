@@ -56,7 +56,7 @@ make ci     # Go: build, vet, staticcheck, tests (also with the dev tag), covera
 make app    # dist/grantpin.app, unsigned: SwiftUI app plus the Go helper inside it
 ```
 
-A from-source build is not signed with a provisioning profile, so it cannot use the Secure Enclave and falls back to a Keychain-held key. [docs/RELEASE.md](docs/RELEASE.md) describes how the signed, notarized DMG is made. [docs/README.md](docs/README.md) is the detailed manual: install from source, the `grantpin` command line, policy files, grants and the audit log.
+A from-source build is not signed with a provisioning profile, so it cannot use the Secure Enclave and falls back to a Keychain-held key. [docs/RELEASE.md](docs/RELEASE.md) describes how the signed, notarized DMG is made. [grantpin.dev/docs](https://grantpin.dev/docs/) has the guides, and [docs/README.md](docs/README.md) is the detailed manual: install from source, the `grantpin` command line, policy files, grants and the audit log.
 
 ## Renamed from grantd
 
