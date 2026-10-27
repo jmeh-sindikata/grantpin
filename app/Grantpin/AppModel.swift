@@ -46,9 +46,10 @@ final class SystemLoginItem: LoginItemControl {
 /// Who may be changing the background service right now, so that only one
 /// thing does at a time (docs/UI-SPEC.md 3.1): the popover's Start, a
 /// Settings action, onboarding's Install, the open Uninstall sheet or the
-/// automatic restore. Each model asks whether anyone else is and refuses its
-/// own action meanwhile (`ServiceBusy`); the automatic restore does not start
-/// while anyone is. The models are created one after another and each one's
+/// automatic restore or restart (both `ServiceRecovery`, the `.restore` part).
+/// Each model asks whether anyone else is and refuses its own action meanwhile
+/// (`ServiceBusy`); the automatic restore and restart do not start while
+/// anyone is. The models are created one after another and each one's
 /// closure has to see the others, so this exists first and they are attached
 /// once they all exist.
 @MainActor
@@ -191,6 +192,8 @@ final class AppModel {
         let popoverModel = self.popover
         // Restores the service itself only when the person installed it before
         // (the `service.wanted` marker); otherwise it asks (ServiceAskGate).
+        // Restarts it after an update while nothing runs through it
+        // (ServiceRestartPolicy); otherwise it asks as well.
         self.serviceRecovery = ServiceRecovery(
             connection: { monitor.state }, location: location, isDevelopment: socket.isDevelopment,
             onboardingPending: { !UserDefaults.standard.bool(forKey: AppModel.onboardingDoneKey) },
@@ -202,7 +205,11 @@ final class AppModel {
                 // The same action as the Start button; what this run did, not
                 // the screen's `lastResult`, which may be dismissed meanwhile.
                 await popoverModel.perform(.startService)
-            })
+            },
+            // The helper's version as the popover knows it, determined once per launch below.
+            helperVersion: { AppModel.current?.helperVersion },
+            // The same action as the Restart button.
+            restart: { await popoverModel.perform(.restart) })
         serviceActivity.popover = popoverModel
         serviceActivity.settings = self.settings
         serviceActivity.onboarding = self.onboarding
@@ -303,18 +310,24 @@ final class AppModel {
     var isPopoverOpen: Bool { visibleSurfaces.contains("popover") }
 
     /// Brings the background service back by itself when the person had
-    /// installed it, and otherwise opens the "background service" window once
-    /// (see `ServiceRecovery`, `ServiceRestorePolicy` and `ServiceAskGate` for
-    /// when). Called on every connection change, when a service action ends,
-    /// when onboarding finishes, when `service status` changes (`MenuBarLabel`)
-    /// and again when the next decision is due. The service is never installed
+    /// installed it, restarts it after an update while nothing runs through
+    /// it, and otherwise opens the "background service" window once (see
+    /// `ServiceRecovery`, `ServiceRestorePolicy`, `ServiceRestartPolicy` and
+    /// `ServiceAskGate` for when). Called on every connection change, when a
+    /// service action ends, when onboarding finishes, when `service status`
+    /// changes, when the helper's version becomes known (`MenuBarLabel`) and
+    /// again when the next decision is due. The service is never installed
     /// here unless the marker says the person installed it before.
     func serviceRecoveryCheck() {
         recoveryTimer?.cancel()
         recoveryTimer = nil
         Task { [weak self] in
             guard let self else { return }
-            if await serviceRecovery.check() == .askNow { await presentServiceAsk() }
+            switch await serviceRecovery.check() {
+            case .askNow: await presentServiceAsk()
+            case .askRestart: presentRestartAsk()
+            case .nothing: break
+            }
             guard let wait = serviceRecovery.nextCheck() else { return }
             recoveryTimer?.cancel()
             recoveryTimer = Task { [weak self] in
@@ -329,6 +342,14 @@ final class AppModel {
         // Know which of "not set up" and "stopped" is true before the window shows.
         await serviceWatcher.poll()
         guard case .notRunning? = monitor.state, !isPopoverOpen else { return }
+        requestWindow(WindowID.serviceAsk)
+    }
+
+    /// The same window, with the "grantpin was updated" line and its Restart
+    /// button (the closing button reads "Later"); only while that is still
+    /// what the daemon's answer says.
+    private func presentRestartAsk() {
+        guard ServiceRestartPolicy.isMismatch(monitor.state, helperVersion: helperVersion), !isPopoverOpen else { return }
         requestWindow(WindowID.serviceAsk)
     }
 

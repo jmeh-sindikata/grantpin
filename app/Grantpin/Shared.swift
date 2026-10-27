@@ -35,6 +35,8 @@ struct MenuBarLabel: View {
             .onChange(of: app.serviceActivity.anyBusy) { _, busy in if !busy { app.serviceRecoveryCheck() } }
             .onChange(of: app.onboarding.finished) { _, done in if done { app.serviceRecoveryCheck() } }
             .onChange(of: app.serviceWatcher.diagnosis) { _, _ in app.serviceRecoveryCheck() }
+            // The helper's version arrives a moment after launch; only then can a mismatch be seen.
+            .onChange(of: app.helperVersion) { _, _ in app.serviceRecoveryCheck() }
     }
 }
 
