@@ -118,6 +118,13 @@ final class AppModel {
     let location: AppLocation
     /// The helper's `--version`, checked once per launch.
     private(set) var helperVersion: String?
+    /// What the menu-bar icon shows (`MenuBarIcon.from`, the one derivation).
+    /// Kept as a value and written only when it differs, by the Observation
+    /// loop that already reads the connection and the helper's version
+    /// (`recoveryTriggersChanged`): the label reads this and nothing else, so
+    /// a status answer that differs only in its counts or its runs in flight
+    /// does not re-evaluate the label.
+    private(set) var menuBarIcon = MenuBarIcon.from(nil)
     /// The helper as a service controller; nil without a helper.
     let serviceControl: HelperActions?
 
@@ -233,7 +240,14 @@ final class AppModel {
             forName: NSWindow.willCloseNotification, object: nil, queue: .main
         ) { [weak self] note in
             guard let window = note.object as? NSWindow, window.styleMask.contains(.titled) else { return }
-            Task { @MainActor in self?.windowDidClose(closing: window) }
+            Task { @MainActor in
+                // Not for the popover's own window: `closePopover()` runs right
+                // before a window opens, and going back to accessory mode in
+                // between would knock the app out of the activation
+                // `prepareToShowWindow()` just asked for.
+                guard let self, window !== self.popoverWindow else { return }
+                self.windowDidClose(closing: window)
+            }
         }
         observers.append(closed)
         // The recovery decision follows these facts for the app's lifetime,
@@ -292,6 +306,10 @@ final class AppModel {
         let now = currentRecoveryTriggers()
         lastRecoveryTriggers = now
         guard let previous, previous != now else { return }  // a write of the same value
+        // The icon is derived here, from the same facts, and written only when
+        // it differs, so the label is not re-evaluated for a change it does not show.
+        let icon = MenuBarIcon.from(now.state, helperVersion: now.helperVersion)
+        if icon != menuBarIcon { menuBarIcon = icon }
         var due = previous.state != now.state || previous.diagnosis != now.diagnosis || previous.helperVersion != now.helperVersion
         if previous.anyBusy && !now.anyBusy { due = true }
         if !previous.onboardingFinished && now.onboardingFinished { due = true }

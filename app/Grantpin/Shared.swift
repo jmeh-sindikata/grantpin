@@ -15,17 +15,21 @@ enum WindowID {
 /// view that always exists, so it opens the windows other parts of the app ask
 /// for (`WindowRequest`) and the Welcome window on first launch.
 ///
-/// The label depends on nothing but what the icon shows and the window
-/// requests. The recovery decision's triggers live in `AppModel`
-/// (`watchRecoveryTriggers`), not here: a `.window`-style `MenuBarExtra` whose
-/// label re-evaluates for unrelated state can leave the popover standing when
-/// a row hands over to a new window.
+/// The label must read nothing but `app.menuBarIcon` (and the window
+/// requests it exists to serve). Not the monitor's state: a status answer
+/// that differs only in its counts or its runs in flight is a new state, and
+/// re-evaluating the label for it, often while the popover is open, is what a
+/// `.window`-style `MenuBarExtra` does not tolerate (it can leave the popover
+/// standing when a row hands over to a new window). `AppModel` derives the
+/// icon from the state and the helper's version and writes it only when it
+/// differs; the recovery decision's triggers live there too
+/// (`watchRecoveryTriggers`), not here.
 struct MenuBarLabel: View {
     let app: AppModel
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        let icon = MenuBarIcon.from(app.monitor.state, helperVersion: app.helperVersion)
+        let icon = app.menuBarIcon
         MenuBarIconView(icon: icon)
             .equatable()
             .accessibilityLabel(Text(verbatim: icon.label))
