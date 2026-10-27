@@ -268,6 +268,45 @@ func TestRunNotFound(t *testing.T) {
 	}
 }
 
+// An expired secret refuses show and run, and update fixes it: a new expiry
+// or --clear-expires lifts the refusal without touching the value (the
+// troubleshooting advice for secret_expired).
+func TestUpdateFixesAnExpiredSecret(t *testing.T) {
+	for name, patch := range map[string]func(e *env) *proto.Request{
+		"new expiry": func(e *env) *proto.Request {
+			t := e.now.Add(30 * 24 * time.Hour)
+			return &proto.Request{Op: proto.OpUpdate, Name: "OLD", Expires: &t}
+		},
+		"clear expiry": func(*env) *proto.Request {
+			return &proto.Request{Op: proto.OpUpdate, Name: "OLD", Clear: []string{"expires"}}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			exp := e.now.Add(time.Hour)
+			if err := e.v.Set(context.Background(), vault.Meta{Name: "OLD", ExpiresAt: &exp}, []byte("old-secret-value"), false); err != nil {
+				t.Fatal(err)
+			}
+			e.advance(2 * time.Hour)
+			wantFail(t, e.do(e.run([]string{"OLD"}, "true")), proto.ErrRefused, proto.ReasonSecretExpired)
+			s := showReq(e)
+			s.Name = "OLD"
+			wantFail(t, e.do(s), proto.ErrRefused, proto.ReasonSecretExpired)
+
+			wantOK(t, e.do(patch(e)))
+
+			wantOK(t, e.do(e.run([]string{"OLD"}, "true")))
+			s = showReq(e)
+			s.Name = "OLD"
+			w := e.do(s)
+			wantOK(t, w)
+			if v := decode[proto.ShowResult](t, w).Value; v != "old-secret-value" {
+				t.Errorf("value changed by update")
+			}
+		})
+	}
+}
+
 func TestRunExpiredSecret(t *testing.T) {
 	e := newEnv(t)
 	exp := e.now.Add(time.Hour)
