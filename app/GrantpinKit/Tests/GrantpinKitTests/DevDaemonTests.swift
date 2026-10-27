@@ -32,6 +32,7 @@ final class DevDaemonOpsTests: DevDaemonCase {
         try initVault()
         s = try await client.status()
         XCTAssertTrue(s.vaultInitialized)
+        XCTAssertEqual(s.inFlightRuns, 0, "this daemon reports its runs in flight, and nothing runs")
         XCTAssertEqual(s.keystoreTier, "none")  // the insecure dev backend
         XCTAssertEqual(s.approverTier, "none")
         XCTAssertEqual(s.secrets, 0)

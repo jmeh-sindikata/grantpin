@@ -41,12 +41,19 @@ public struct StatusResult: Decodable, Equatable, Sendable {
     public var activeGrants: Int
     public var tamperedGrants: Int
     public var socket: String
+    /// `run` requests the daemon has accepted and not answered yet, a run
+    /// waiting on the approval dialog included (docs/PROTOCOL.md `status`).
+    /// Nil when the daemon predates the field (a 0.2.4 daemon still running
+    /// during the first upgrade to 0.2.5): the app then cannot tell whether
+    /// anything runs through the service.
+    public var inFlightRuns: Int?
 
     enum CodingKeys: String, CodingKey {
         case version, protoV = "proto_v", pid, startedAt = "started_at"
         case vaultInitialized = "vault_initialized", vaultLocked = "vault_locked", vaultLockedError = "vault_locked_error"
         case keystoreTier = "keystore_tier", approverTier = "approver_tier"
         case secrets, activeGrants = "active_grants", tamperedGrants = "tampered_grants", socket
+        case inFlightRuns = "in_flight_runs"
     }
 
     public init(from decoder: Decoder) throws {
@@ -64,6 +71,7 @@ public struct StatusResult: Decodable, Equatable, Sendable {
         activeGrants = try c.decodeIfPresent(Int.self, forKey: .activeGrants) ?? 0
         tamperedGrants = try c.decodeIfPresent(Int.self, forKey: .tamperedGrants) ?? 0
         socket = try c.decodeIfPresent(String.self, forKey: .socket) ?? ""
+        inFlightRuns = try c.decodeIfPresent(Int.self, forKey: .inFlightRuns)
     }
 
     /// For tests and previews.
@@ -71,12 +79,14 @@ public struct StatusResult: Decodable, Equatable, Sendable {
         version: String = "dev", protoV: Int = 1, pid: Int = 1, startedAt: Date? = nil,
         vaultInitialized: Bool = true, vaultLocked: Bool = false, vaultLockedError: String = "",
         keystoreTier: Tier = .vaultDefault, approverTier: Tier = .vaultDefault,
-        secrets: Int = 0, activeGrants: Int = 0, tamperedGrants: Int = 0, socket: String = ""
+        secrets: Int = 0, activeGrants: Int = 0, tamperedGrants: Int = 0, socket: String = "",
+        inFlightRuns: Int? = nil
     ) {
         self.version = version; self.protoV = protoV; self.pid = pid; self.startedAt = startedAt
         self.vaultInitialized = vaultInitialized; self.vaultLocked = vaultLocked; self.vaultLockedError = vaultLockedError
         self.keystoreTier = keystoreTier; self.approverTier = approverTier
         self.secrets = secrets; self.activeGrants = activeGrants; self.tamperedGrants = tamperedGrants; self.socket = socket
+        self.inFlightRuns = inFlightRuns
     }
 }
 
