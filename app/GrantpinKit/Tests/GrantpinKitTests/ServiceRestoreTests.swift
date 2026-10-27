@@ -179,15 +179,11 @@ final class ServiceRecoveryTests: XCTestCase {
         func advance(_ s: TimeInterval) { t = t.addingTimeInterval(s) }
     }
 
-    /// No real 10-minute timer in tests: the expiry Task ends at once and leaves the notice up.
-    static let noExpiry: @Sendable (TimeInterval) async throws -> Void = { _ in throw CancellationError() }
-
     func recovery(_ w: World, location: AppLocation = .ok, dev: Bool = false) -> ServiceRecovery {
         ServiceRecovery(
             connection: { w.state }, location: location, isDevelopment: dev,
             onboardingPending: { w.onboarding }, popoverOpen: { w.popover }, suspended: { w.suspended },
             markerPresent: { w.marker }, vaultExists: { w.vault }, now: { w.t },
-            sleep: Self.noExpiry,
             diagnose: { w.diagnoses += 1; return w.diagnosis },
             restore: { w.restores += 1; return w.restoreResult })
     }
@@ -217,7 +213,7 @@ final class ServiceRecoveryTests: XCTestCase {
         XCTAssertEqual(r.restoredAt, w.t)
         XCTAssertEqual(r.noticeText, "grantpin restored its background service.")
         XCTAssertEqual(ServiceRecovery.restoredNotice, "grantpin restored its background service.")
-        XCTAssertNil(r.nextCheck())
+        XCTAssertEqual(r.nextCheck(), ServiceRecovery.noticeDuration, "the notice expires by the clock")
     }
 
     func testARestoredDaemonThatDiesAgainSoonIsAskedAbout() async {
@@ -265,27 +261,25 @@ final class ServiceRecoveryTests: XCTestCase {
         XCTAssertNil(r.noticeText)
     }
 
-    func testTheNoticeExpiresByItselfAfterTenMinutes() async throws {
-        let w = World()
-        let rec = SleepRecorder(), release = ManagedFlag()
-        let r = ServiceRecovery(
-            connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
-            markerPresent: { true }, vaultExists: { true }, now: { w.t },
-            sleep: { seconds in
-                try await rec.sleep(seconds)
-                while !release.value { try await Task.sleep(nanoseconds: 1_000_000) }
-            },
-            diagnose: { .notInstalled }, restore: { ActionResult(outcome: .succeeded, summary: "ok") })
+    func testTheNoticeExpiresByItselfAfterTenMinutes() async {
+        // No timer of its own: the expiry is read off the injected clock through nextCheck() and check().
+        let w = World(), r = recovery(w)
         _ = await r.check(); w.advance(10); _ = await r.check()
         w.state = .ready(StatusResult()); _ = await r.check()
         XCTAssertEqual(r.noticeText, ServiceRecovery.restoredNotice)
-        for _ in 0..<200 where rec.count < 1 { try await Task.sleep(nanoseconds: 10_000_000) }
-        XCTAssertEqual(rec.delays, [ServiceRecovery.noticeDuration])
+        XCTAssertEqual(r.nextCheck(), ServiceRecovery.noticeDuration)
+        w.advance(ServiceRecovery.noticeDuration - 1)
+        _ = await r.check()
         XCTAssertEqual(r.noticeText, ServiceRecovery.restoredNotice, "still there while the ten minutes run")
-        release.set()
-        for _ in 0..<200 where r.noticeText != nil { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertEqual(r.nextCheck(), 1)
+        w.advance(1)
+        _ = await r.check()
         XCTAssertNil(r.noticeText)
+        XCTAssertNil(r.nextCheck(), "nothing time-based is left")
         XCTAssertNotNil(r.restoredAt, "Settings still says when")
+        // a later look changes nothing
+        w.advance(3600); _ = await r.check()
+        XCTAssertNil(r.noticeText)
     }
 
     func testFailureFallsBackToTheAskWindowExactlyOnce() async {
@@ -324,7 +318,7 @@ final class ServiceRecoveryTests: XCTestCase {
         let up = await r.check()
         XCTAssertEqual(up, .nothing)
         XCTAssertEqual(r.restoredAt, w.t)
-        XCTAssertNil(r.nextCheck())
+        XCTAssertEqual(r.nextCheck(), ServiceRecovery.noticeDuration, "the notice expires by the clock")
         // a later outage asks as usual; the one attempt is used
         w.advance(120); w.state = .notRunning; _ = await r.check(); w.advance(10)
         let later = await r.check()
@@ -338,7 +332,6 @@ final class ServiceRecoveryTests: XCTestCase {
         let r = ServiceRecovery(
             connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
             markerPresent: { true }, vaultExists: { true }, now: { w.t },
-            sleep: Self.noExpiry,
             refresh: { refreshes += 1; w.state = .ready(StatusResult()) },
             diagnose: { .notInstalled }, restore: { ActionResult(outcome: .startedNotAnswering, summary: "started") })
         _ = await r.check(); w.advance(10); _ = await r.check()
@@ -350,7 +343,7 @@ final class ServiceRecoveryTests: XCTestCase {
         XCTAssertEqual(refreshes, 1)
         XCTAssertEqual(r.restoredAt, w.t)
         XCTAssertEqual(r.noticeText, ServiceRecovery.restoredNotice)
-        XCTAssertNil(r.nextCheck())
+        XCTAssertEqual(r.nextCheck(), ServiceRecovery.noticeDuration, "the notice expires by the clock")
     }
 
     func testAPendingRestoreStillDownAfterThePollIsAsked() async {
@@ -359,7 +352,6 @@ final class ServiceRecoveryTests: XCTestCase {
         let r = ServiceRecovery(
             connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
             markerPresent: { true }, vaultExists: { true }, now: { w.t },
-            sleep: Self.noExpiry,
             refresh: { refreshes += 1 },
             diagnose: { .notInstalled }, restore: { ActionResult(outcome: .succeeded, summary: "ok") })
         _ = await r.check(); w.advance(10); _ = await r.check()
@@ -456,7 +448,6 @@ final class ServiceRecoveryTests: XCTestCase {
         r = ServiceRecovery(
             connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
             markerPresent: { true }, vaultExists: { true }, now: { w.t },
-            sleep: Self.noExpiry,
             diagnose: { .notInstalled },
             restore: {
                 // the socket answers before `service install` exits: the monitor's look comes first
@@ -468,7 +459,7 @@ final class ServiceRecoveryTests: XCTestCase {
         let verdict = await r.check()
         XCTAssertEqual(verdict, .nothing)
         XCTAssertEqual(r.restoredAt, w.t)
-        XCTAssertNil(r.nextCheck())
+        XCTAssertEqual(r.nextCheck(), ServiceRecovery.noticeDuration, "the notice expires by the clock")
         // hours later the daemon dies: a new outage, asked about after the grace
         w.advance(3600); w.state = .notRunning
         let down = await r.check()
@@ -565,7 +556,6 @@ final class ServiceRecoveryTests: XCTestCase {
         r = ServiceRecovery(
             connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
             markerPresent: { true }, vaultExists: { true }, now: { w.t },
-            sleep: Self.noExpiry,
             diagnose: { .notInstalled },
             restore: {
                 // a second look at the same moment, as a state change would cause

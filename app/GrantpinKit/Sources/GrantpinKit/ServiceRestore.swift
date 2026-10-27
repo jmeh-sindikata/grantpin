@@ -152,8 +152,12 @@ public final class ServiceRecovery {
     /// `restoredNotice` for the status header: from the restore (the moment
     /// the restored daemon is seen answering) for `noticeDuration`, or until
     /// it stops again (a red headline must not carry a green "restored"
-    /// line). Nil otherwise.
+    /// line). Nil otherwise. The expiry is read off the clock: `check()`
+    /// clears it once `noticeDuration` has passed and `nextCheck()` says how
+    /// long that is, so no timer of its own runs here.
     public private(set) var noticeText: String?
+    /// When `noticeText` was shown; nil while there is none.
+    @ObservationIgnored private var noticeSince: Date?
     /// An automatic restore is running.
     public private(set) var isRestoring = false
 
@@ -166,10 +170,8 @@ public final class ServiceRecovery {
     @ObservationIgnored private var pendingSince: Date?
     /// The monitor is being asked before a pending restore is given up.
     @ObservationIgnored private var refreshingForPending = false
-    @ObservationIgnored private var noticeExpiry: Task<Void, Never>?
     @ObservationIgnored private let connection: @MainActor () -> ConnectionState?
     @ObservationIgnored private let now: () -> Date
-    @ObservationIgnored private let sleep: @Sendable (TimeInterval) async throws -> Void
     @ObservationIgnored private let markerPresent: () -> Bool
     @ObservationIgnored private let vaultExists: () -> Bool
     @ObservationIgnored private let location: AppLocation
@@ -186,7 +188,7 @@ public final class ServiceRecovery {
     @ObservationIgnored private let restore: @MainActor () async -> ActionResult?
 
     /// - Parameters:
-    ///   - sleep: waits for the notice to expire; tests pass their own.
+    ///   - now: the clock; tests pass their own.
     ///   - refresh: polls the daemon now (the monitor), so that a pending
     ///     restore is judged on the current state, not on a poll from before.
     ///   - diagnose: asks the helper what `service status` says now.
@@ -200,9 +202,6 @@ public final class ServiceRecovery {
         markerPresent: @escaping () -> Bool = { ServiceMarker.isPresent() },
         vaultExists: @escaping () -> Bool = { ServiceMarker.vaultExists() },
         now: @escaping () -> Date = Date.init,
-        sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
-            try await Task.sleep(nanoseconds: UInt64(max(seconds, 0) * 1_000_000_000))
-        },
         refresh: @escaping @MainActor () async -> Void = {},
         diagnose: @escaping @MainActor () async -> ServiceDiagnosis?,
         restore: @escaping @MainActor () async -> ActionResult?
@@ -210,7 +209,7 @@ public final class ServiceRecovery {
         self.connection = connection; self.location = location; self.isDevelopment = isDevelopment
         self.restorePossible = !isDevelopment && location.isOK
         self.onboardingPending = onboardingPending; self.popoverOpen = popoverOpen; self.suspended = suspended
-        self.markerPresent = markerPresent; self.vaultExists = vaultExists; self.now = now; self.sleep = sleep
+        self.markerPresent = markerPresent; self.vaultExists = vaultExists; self.now = now
         self.refresh = refresh; self.diagnose = diagnose; self.restore = restore
     }
 
@@ -290,38 +289,41 @@ public final class ServiceRecovery {
     }
 
     /// Seconds until `check()` should run again, nil when nothing time-based
-    /// is pending. Never zero: a decision that is due now was taken by the
-    /// `check()` just made, and only a later moment is worth a timer.
+    /// is pending (a grace, or the notice's expiry). Never zero: a decision
+    /// that is due now was taken by the `check()` just made, and only a later
+    /// moment is worth a timer.
     public func nextCheck() -> TimeInterval? {
         guard !isRestoring else { return nil }
         let t = now()
         var waits = [gate.waitTime(now: t), policy.waitTime(now: t)]
         if let since = pendingSince { waits.append(ServiceRestorePolicy.grace - t.timeIntervalSince(since)) }
+        if noticeText != nil, let since = noticeSince { waits.append(Self.noticeDuration - t.timeIntervalSince(since)) }
         return waits.compactMap { $0 }.filter { $0 > 0 }.min()
     }
 
     /// The restore is done: the daemon the app started has been seen
-    /// answering. The notice shows and expires `noticeDuration` from now, and
-    /// the gate starts a fresh period so that the next trouble asks.
+    /// answering. The notice shows for `noticeDuration` from now, and the gate
+    /// starts a fresh period so that the next trouble asks.
     private func recordRestore() {
         let t = now()
         restoredAt = t
         gate.restoredNow(now: t)
-        noticeText = Self.restoredNotice
-        noticeExpiry?.cancel()
-        let sleep = self.sleep
-        noticeExpiry = Task { [weak self] in
-            do { try await sleep(Self.noticeDuration) } catch { return }
-            guard !Task.isCancelled else { return }
-            self?.noticeText = nil
-        }
+        showNotice(Self.restoredNotice, at: t)
     }
 
-    /// A restored daemon that stops again takes the notice away for good.
+    private func showNotice(_ text: String, at t: Date) {
+        noticeText = text
+        noticeSince = t
+    }
+
+    /// The notice goes once `noticeDuration` has passed, and for good when the
+    /// restored daemon stops again (a red headline must not carry it).
     private func updateNotice(_ state: ConnectionState?) {
-        guard case .notRunning? = state, noticeText != nil else { return }
+        guard noticeText != nil, let since = noticeSince else { return }
+        var expired = now().timeIntervalSince(since) >= Self.noticeDuration
+        if case .notRunning? = state { expired = true }
+        guard expired else { return }
         noticeText = nil
-        noticeExpiry?.cancel()
-        noticeExpiry = nil
+        noticeSince = nil
     }
 }
