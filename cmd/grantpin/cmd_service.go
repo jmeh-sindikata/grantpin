@@ -4,12 +4,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/jmeh-sindikata/grantpin/internal/client"
 	"github.com/jmeh-sindikata/grantpin/internal/daemon"
 	"github.com/jmeh-sindikata/grantpin/internal/service"
+	"github.com/jmeh-sindikata/grantpin/internal/vault"
 )
 
 // Exit codes for `grantpin service status`.
@@ -22,6 +24,16 @@ var (
 	serviceExit       = os.Exit
 	daemonStatus      = client.Status
 )
+
+// serviceDataDir is the grantpin data directory (the one holding vault.db),
+// where the service.wanted marker lives.
+func serviceDataDir() (string, error) {
+	p, err := vault.DefaultPath()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(p), nil
+}
 
 func newServiceCmd() *cobra.Command {
 	c := &cobra.Command{
@@ -63,6 +75,16 @@ func newServiceCmd() *cobra.Command {
 			if notReady != nil && !errors.Is(notReady, service.ErrNotReady) {
 				return notReady
 			}
+			// The job is installed and loaded (a not-ready daemon is only a
+			// warning): remember that the user wants it, so it can be restored
+			// after a package manager removes the launchd definition.
+			dataDir, err := serviceDataDir()
+			if err != nil {
+				return err
+			}
+			if err := service.SetWanted(dataDir, true); err != nil {
+				return err
+			}
 			st, err := m.Status(cmd.Context())
 			if err != nil {
 				return err
@@ -102,7 +124,13 @@ func newServiceCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := m.Uninstall(cmd.Context()); err != nil {
+			// Whatever launchctl says, the user no longer wants the service.
+			uerr := m.Uninstall(cmd.Context())
+			dataDir, err := serviceDataDir()
+			if err == nil {
+				err = service.SetWanted(dataDir, false)
+			}
+			if err := errors.Join(uerr, err); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), "service stopped and removed")
@@ -124,6 +152,7 @@ func newServiceCmd() *cobra.Command {
 				return err
 			}
 			printServiceStatus(cmd, st)
+			printServiceWanted(cmd)
 			if !st.Installed {
 				serviceExit(exitServiceNotInstalled)
 			}
@@ -160,5 +189,20 @@ func printServiceStatus(cmd *cobra.Command, st service.Status) {
 	}
 	if st.ExeMissing {
 		fmt.Fprintf(w, "warning:   executable no longer exists; re-run `grantpin service install`\n")
+	}
+}
+
+// printServiceWanted appends the "wanted:" line (the service.wanted marker).
+// It comes last, also when the service is not installed, so the lines above
+// keep their names and order.
+func printServiceWanted(cmd *cobra.Command) {
+	wanted := false
+	if dir, err := serviceDataDir(); err == nil {
+		wanted = service.Wanted(dir)
+	}
+	if wanted {
+		fmt.Fprintf(cmd.OutOrStdout(), "wanted:    yes\n")
+	} else {
+		fmt.Fprintf(cmd.OutOrStdout(), "wanted:    no\n")
 	}
 }

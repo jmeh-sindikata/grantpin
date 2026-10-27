@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,6 +34,9 @@ var statusErr error
 
 func runService(t *testing.T, m *fakeMgr, mkErr error, args ...string) (string, int, error) {
 	t.Helper()
+	if os.Getenv("GRANTPIN_HOME") == "" {
+		t.Setenv("GRANTPIN_HOME", t.TempDir())
+	}
 	oldNew, oldExit, oldStatus := newServiceManager, serviceExit, daemonStatus
 	defer func() { newServiceManager, serviceExit, daemonStatus = oldNew, oldExit, oldStatus }()
 	daemonStatus = func(_ context.Context, socket string) (*proto.StatusResult, error) {
@@ -165,5 +170,139 @@ func TestServiceInstallRecordsNonDefaultSocket(t *testing.T) {
 	m = &fakeMgr{st: service.Status{Label: "l", Installed: true}}
 	if _, _, err = runService(t, m, nil, "install", "--socket", "/s.sock"); err != nil || m.opts.Socket != "/s.sock" {
 		t.Errorf("flag: socket=%q err=%v", m.opts.Socket, err)
+	}
+}
+
+func markerPath(t *testing.T) string {
+	t.Helper()
+	dir, err := serviceDataDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(dir, service.WantedFile)
+}
+
+func TestServiceDataDirFollowsGrantpinHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GRANTPIN_HOME", home)
+	if dir, err := serviceDataDir(); err != nil || dir != home {
+		t.Errorf("dir = %q %v", dir, err)
+	}
+}
+
+func TestServiceInstallWritesMarkerOnlyOnSuccess(t *testing.T) {
+	t.Setenv("GRANTPIN_HOME", t.TempDir())
+	boom := errors.New("boom")
+	if _, _, err := runService(t, &fakeMgr{installErr: boom}, nil, "install"); !errors.Is(err, boom) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Lstat(markerPath(t)); !os.IsNotExist(err) {
+		t.Errorf("failed install left a marker: %v", err)
+	}
+	if _, _, err := runService(t, &fakeMgr{}, service.ErrUnsupported, "install"); err == nil {
+		t.Fatal("ctor error ignored")
+	}
+	if _, err := os.Lstat(markerPath(t)); !os.IsNotExist(err) {
+		t.Errorf("unsupported install left a marker: %v", err)
+	}
+
+	m := &fakeMgr{st: service.Status{Label: "l", Installed: true}}
+	for i := 0; i < 2; i++ { // idempotent
+		if _, _, err := runService(t, m, nil, "install"); err != nil {
+			t.Fatal(err)
+		}
+		fi, err := os.Lstat(markerPath(t))
+		if err != nil || fi.Mode().Perm() != 0o600 || fi.Size() != 0 {
+			t.Fatalf("marker: %v %v", fi, err)
+		}
+	}
+}
+
+func TestServiceInstallNotReadyStillWritesMarker(t *testing.T) {
+	t.Setenv("GRANTPIN_HOME", t.TempDir())
+	m := &fakeMgr{st: service.Status{Label: "l", Installed: true}, installErr: fmt.Errorf("%w within 10s", service.ErrNotReady)}
+	if _, _, err := runService(t, m, nil, "install"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(markerPath(t)); err != nil {
+		t.Errorf("no marker after installed-but-not-ready: %v", err)
+	}
+}
+
+func TestServiceInstallRefusesSymlinkMarker(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GRANTPIN_HOME", home)
+	outside := filepath.Join(t.TempDir(), "target")
+	if err := os.Symlink(outside, markerPath(t)); err != nil {
+		t.Fatal(err)
+	}
+	m := &fakeMgr{st: service.Status{Label: "l", Installed: true}}
+	if _, _, err := runService(t, m, nil, "install"); err == nil {
+		t.Error("install followed a symlink marker")
+	}
+	if _, err := os.Lstat(outside); !os.IsNotExist(err) {
+		t.Errorf("symlink target created: %v", err)
+	}
+}
+
+func TestServiceUninstallRemovesMarker(t *testing.T) {
+	t.Setenv("GRANTPIN_HOME", t.TempDir())
+	// present
+	if err := service.SetWanted(filepath.Dir(markerPath(t)), true); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runService(t, &fakeMgr{}, nil, "uninstall"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(markerPath(t)); !os.IsNotExist(err) {
+		t.Errorf("marker remains: %v", err)
+	}
+	// absent (job missing too: the fake reports success for "not loaded")
+	if _, _, err := runService(t, &fakeMgr{}, nil, "uninstall"); err != nil {
+		t.Fatalf("absent: %v", err)
+	}
+	// the launchctl step fails: the user still no longer wants the service
+	if err := service.SetWanted(filepath.Dir(markerPath(t)), true); err != nil {
+		t.Fatal(err)
+	}
+	boom := errors.New("boom")
+	if _, _, err := runService(t, &fakeMgr{err: boom}, nil, "uninstall"); !errors.Is(err, boom) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Lstat(markerPath(t)); !os.IsNotExist(err) {
+		t.Errorf("marker remains after failed uninstall: %v", err)
+	}
+}
+
+func TestServiceStatusReportsWanted(t *testing.T) {
+	t.Setenv("GRANTPIN_HOME", t.TempDir())
+	dir := filepath.Dir(markerPath(t))
+	installed := &fakeMgr{st: service.Status{Label: "l", Installed: true, Loaded: true, Running: true, PID: 7, PlistPath: "/p", ExePath: "/e"}}
+
+	out, code, err := runService(t, installed, nil, "status")
+	if err != nil || code != 0 || !strings.HasSuffix(out, "wanted:    no\n") {
+		t.Errorf("installed, not wanted: %q %v %d", out, err, code)
+	}
+	if err := service.SetWanted(dir, true); err != nil {
+		t.Fatal(err)
+	}
+	out, _, _ = runService(t, installed, nil, "status")
+	if !strings.HasSuffix(out, "exe:       /e\nwanted:    yes\n") {
+		t.Errorf("installed, wanted: %q", out)
+	}
+	// Wanted but the definition is gone (the Homebrew case): still exit 3,
+	// the old lines first, the new one appended.
+	out, code, _ = runService(t, &fakeMgr{}, nil, "status")
+	if code != 3 || out != "label:     \ninstalled: no\nwanted:    yes\n" {
+		t.Errorf("not installed, wanted: %q %d", out, code)
+	}
+	// A symlink at the marker path does not count.
+	os.Remove(markerPath(t))
+	if err := os.Symlink(t.TempDir(), markerPath(t)); err != nil {
+		t.Fatal(err)
+	}
+	out, _, _ = runService(t, installed, nil, "status")
+	if !strings.HasSuffix(out, "wanted:    no\n") {
+		t.Errorf("symlink: %q", out)
 	}
 }
