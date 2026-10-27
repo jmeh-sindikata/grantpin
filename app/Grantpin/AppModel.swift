@@ -240,12 +240,16 @@ final class AppModel {
             forName: NSWindow.willCloseNotification, object: nil, queue: .main
         ) { [weak self] note in
             guard let window = note.object as? NSWindow, window.styleMask.contains(.titled) else { return }
+            // Not for the popover's own window: `closePopover()` runs right
+            // before a window opens, and going back to accessory mode in
+            // between would knock the app out of the activation
+            // `prepareToShowWindow()` just asked for. Decided here, on the main
+            // queue, not in the task below: closing may detach the popover's
+            // view and drop the weak `popoverWindow` before the task runs.
+            let isPopover = MainActor.assumeIsolated { window === self?.popoverWindow }
+            guard !isPopover else { return }
             Task { @MainActor in
-                // Not for the popover's own window: `closePopover()` runs right
-                // before a window opens, and going back to accessory mode in
-                // between would knock the app out of the activation
-                // `prepareToShowWindow()` just asked for.
-                guard let self, window !== self.popoverWindow else { return }
+                guard let self else { return }
                 self.windowDidClose(closing: window)
             }
         }
