@@ -174,21 +174,62 @@ final class ServiceRecoveryTests: XCTestCase {
         let first = await r.check()
         XCTAssertEqual(first, .nothing)
         XCTAssertEqual(r.nextCheck(), ServiceRestorePolicy.grace)
-        XCTAssertNil(r.noticeText())
+        XCTAssertNil(r.noticeText)
         w.advance(10)
         let second = await r.check()
         XCTAssertEqual(second, .nothing, "restored: no ask window")
         XCTAssertEqual(w.restores, 1)
         XCTAssertEqual(r.restoredAt, w.t)
-        XCTAssertEqual(r.noticeText(), "grantpin restored its background service.")
+        XCTAssertNil(r.noticeText, "not under a red headline: the monitor has not seen the daemon yet")
         // the monitor has not caught up yet: the ask must stay quiet
         w.advance(30)
         let third = await r.check()
         XCTAssertEqual(third, .nothing)
         XCTAssertEqual(w.restores, 1)
         XCTAssertNil(r.nextCheck())
-        // the notice goes after a while
-        XCTAssertNil(r.noticeText(at: w.t.addingTimeInterval(ServiceRecovery.noticeDuration + 1)))
+        // the daemon answers: the notice shows
+        w.state = .ready(StatusResult())
+        _ = await r.check()
+        XCTAssertEqual(r.noticeText, "grantpin restored its background service.")
+        XCTAssertEqual(ServiceRecovery.restoredNotice, "grantpin restored its background service.")
+        XCTAssertNil(r.nextCheck())
+    }
+
+    func testTheNoticeGoesWhenTheRestoredDaemonStopsAgain() async {
+        let w = World(), r = recovery(w)
+        _ = await r.check(); w.advance(10); _ = await r.check()
+        w.state = .ready(StatusResult()); _ = await r.check()
+        XCTAssertEqual(r.noticeText, ServiceRecovery.restoredNotice)
+        w.advance(30); w.state = .notRunning
+        _ = await r.check()
+        XCTAssertNil(r.noticeText, "a red headline with a green 'restored' line under it would lie")
+        XCTAssertEqual(r.restoredAt, w.t.addingTimeInterval(-30), "Settings still says when")
+        // answering again does not bring it back
+        w.state = .ready(StatusResult()); _ = await r.check()
+        XCTAssertNil(r.noticeText)
+    }
+
+    func testTheNoticeExpiresByItselfAfterTenMinutes() async throws {
+        let w = World()
+        let rec = SleepRecorder(), release = ManagedFlag()
+        let r = ServiceRecovery(
+            connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
+            markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            sleep: { seconds in
+                try await rec.sleep(seconds)
+                while !release.value { try await Task.sleep(nanoseconds: 1_000_000) }
+            },
+            diagnose: { .notInstalled }, restore: { ActionResult(outcome: .succeeded, summary: "ok") })
+        _ = await r.check(); w.advance(10); _ = await r.check()
+        w.state = .ready(StatusResult()); _ = await r.check()
+        XCTAssertEqual(r.noticeText, ServiceRecovery.restoredNotice)
+        for _ in 0..<200 where rec.count < 1 { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertEqual(rec.delays, [ServiceRecovery.noticeDuration])
+        XCTAssertEqual(r.noticeText, ServiceRecovery.restoredNotice, "still there while the ten minutes run")
+        release.set()
+        for _ in 0..<200 where r.noticeText != nil { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertNil(r.noticeText)
+        XCTAssertNotNil(r.restoredAt, "Settings still says when")
     }
 
     func testFailureFallsBackToTheAskWindowExactlyOnce() async {
@@ -200,7 +241,7 @@ final class ServiceRecoveryTests: XCTestCase {
         XCTAssertEqual(failed, .askNow)
         XCTAssertEqual(w.restores, 1)
         XCTAssertNil(r.restoredAt)
-        XCTAssertNil(r.noticeText())
+        XCTAssertNil(r.noticeText)
         w.advance(30)
         for _ in 0..<3 {
             let again = await r.check()

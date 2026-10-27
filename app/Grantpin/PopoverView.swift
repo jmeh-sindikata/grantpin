@@ -104,7 +104,7 @@ struct StatusHeader: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if let restored = app.serviceRecovery.noticeText() {
+            if let restored = app.serviceRecovery.noticeText {
                 Label {
                     Text(verbatim: restored).fixedSize(horizontal: false, vertical: true)
                 } icon: {

@@ -138,8 +138,14 @@ public final class ServiceRecovery {
     /// How long the notice stays in the status header.
     public nonisolated static let noticeDuration: TimeInterval = 600
 
-    /// When the last automatic restore succeeded in this launch.
+    /// When the last automatic restore succeeded in this launch (Settings >
+    /// General shows it).
     public private(set) var restoredAt: Date?
+    /// `restoredNotice` for the status header: from the moment the restored
+    /// daemon is seen answering until `noticeDuration` after the restore, or
+    /// until it stops again (a red headline must not carry a green "restored"
+    /// line). Nil otherwise.
+    public private(set) var noticeText: String?
     /// An automatic restore is running.
     public private(set) var isRestoring = false
 
@@ -149,8 +155,13 @@ public final class ServiceRecovery {
     /// `service install` returned (docs/UI-SPEC.md 2.5): since when the
     /// decision waits for it, a fresh grace long.
     @ObservationIgnored private var pendingSince: Date?
+    /// A restore is recent (within `noticeDuration`): the notice shows once
+    /// the daemon is seen answering.
+    @ObservationIgnored private var noticeArmed = false
+    @ObservationIgnored private var noticeExpiry: Task<Void, Never>?
     @ObservationIgnored private let connection: @MainActor () -> ConnectionState?
     @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private let sleep: @Sendable (TimeInterval) async throws -> Void
     @ObservationIgnored private let markerPresent: () -> Bool
     @ObservationIgnored private let vaultExists: () -> Bool
     @ObservationIgnored private let location: AppLocation
@@ -166,6 +177,7 @@ public final class ServiceRecovery {
     @ObservationIgnored private let restore: @MainActor () async -> ActionResult?
 
     /// - Parameters:
+    ///   - sleep: waits for the notice to expire; tests pass their own.
     ///   - diagnose: asks the helper what `service status` says now.
     ///   - restore: runs what the Start button runs; nil when nothing ran.
     public init(
@@ -177,13 +189,16 @@ public final class ServiceRecovery {
         markerPresent: @escaping () -> Bool = { ServiceMarker.isPresent() },
         vaultExists: @escaping () -> Bool = { ServiceMarker.vaultExists() },
         now: @escaping () -> Date = Date.init,
+        sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
+            try await Task.sleep(nanoseconds: UInt64(max(seconds, 0) * 1_000_000_000))
+        },
         diagnose: @escaping @MainActor () async -> ServiceDiagnosis?,
         restore: @escaping @MainActor () async -> ActionResult?
     ) {
         self.connection = connection; self.location = location; self.isDevelopment = isDevelopment
         self.restorePossible = !isDevelopment && location.isOK
         self.onboardingPending = onboardingPending; self.popoverOpen = popoverOpen; self.suspended = suspended
-        self.markerPresent = markerPresent; self.vaultExists = vaultExists; self.now = now
+        self.markerPresent = markerPresent; self.vaultExists = vaultExists; self.now = now; self.sleep = sleep
         self.diagnose = diagnose; self.restore = restore
     }
 
@@ -214,7 +229,7 @@ public final class ServiceRecovery {
                         policy.observe(state, now: now())
                         switch result?.outcome {
                         case .succeeded?:
-                            restoredAt = now()
+                            recordRestore()
                             gate.resolve()
                         case .startedNotAnswering?:
                             // launchd has the job; the daemon gets a fresh grace to answer.
@@ -235,9 +250,10 @@ public final class ServiceRecovery {
                 pendingSince = nil  // it never answered: the ask decides below
             default:
                 pendingSince = nil
-                restoredAt = now()
+                recordRestore()
             }
         }
+        updateNotice(state)
         // Every connection seen reaches the gate: after a restore it moves to
         // "up" as soon as the daemon answers, so the next outage asks again.
         let ask = gate.evaluate(state, now: now(), onboardingPending: onboardingPending(),
@@ -258,9 +274,38 @@ public final class ServiceRecovery {
         return waits.compactMap { $0 }.filter { $0 > 0 }.min()
     }
 
-    /// "grantpin restored its background service." for a while after a restore.
-    public func noticeText(at date: Date? = nil) -> String? {
-        guard let restoredAt, (date ?? now()).timeIntervalSince(restoredAt) < Self.noticeDuration else { return nil }
-        return Self.restoredNotice
+    /// The restore is done: the daemon the app started answers, or will in a
+    /// moment. The notice is armed and expires `noticeDuration` from now.
+    private func recordRestore() {
+        restoredAt = now()
+        noticeArmed = true
+        noticeExpiry?.cancel()
+        let sleep = self.sleep
+        noticeExpiry = Task { [weak self] in
+            do { try await sleep(Self.noticeDuration) } catch { return }
+            guard !Task.isCancelled else { return }
+            self?.noticeArmed = false
+            self?.noticeText = nil
+        }
+    }
+
+    /// Shows the armed notice once the daemon answers; a daemon that stops
+    /// again takes it away for good.
+    private func updateNotice(_ state: ConnectionState?) {
+        switch state {
+        case nil:
+            break
+        case .notRunning?:
+            if noticeText != nil { clearNotice() }
+        default:
+            if noticeArmed { noticeText = Self.restoredNotice }
+        }
+    }
+
+    private func clearNotice() {
+        noticeArmed = false
+        noticeText = nil
+        noticeExpiry?.cancel()
+        noticeExpiry = nil
     }
 }
