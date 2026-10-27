@@ -179,11 +179,15 @@ final class ServiceRecoveryTests: XCTestCase {
         func advance(_ s: TimeInterval) { t = t.addingTimeInterval(s) }
     }
 
+    /// No real 10-minute timer in tests: the expiry Task ends at once and leaves the notice up.
+    static let noExpiry: @Sendable (TimeInterval) async throws -> Void = { _ in throw CancellationError() }
+
     func recovery(_ w: World, location: AppLocation = .ok, dev: Bool = false) -> ServiceRecovery {
         ServiceRecovery(
             connection: { w.state }, location: location, isDevelopment: dev,
             onboardingPending: { w.onboarding }, popoverOpen: { w.popover }, suspended: { w.suspended },
             markerPresent: { w.marker }, vaultExists: { w.vault }, now: { w.t },
+            sleep: Self.noExpiry,
             diagnose: { w.diagnoses += 1; return w.diagnosis },
             restore: { w.restores += 1; return w.restoreResult })
     }
@@ -334,6 +338,7 @@ final class ServiceRecoveryTests: XCTestCase {
         let r = ServiceRecovery(
             connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
             markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            sleep: Self.noExpiry,
             refresh: { refreshes += 1; w.state = .ready(StatusResult()) },
             diagnose: { .notInstalled }, restore: { ActionResult(outcome: .startedNotAnswering, summary: "started") })
         _ = await r.check(); w.advance(10); _ = await r.check()
@@ -354,6 +359,7 @@ final class ServiceRecoveryTests: XCTestCase {
         let r = ServiceRecovery(
             connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
             markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            sleep: Self.noExpiry,
             refresh: { refreshes += 1 },
             diagnose: { .notInstalled }, restore: { ActionResult(outcome: .succeeded, summary: "ok") })
         _ = await r.check(); w.advance(10); _ = await r.check()
@@ -450,6 +456,7 @@ final class ServiceRecoveryTests: XCTestCase {
         r = ServiceRecovery(
             connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
             markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            sleep: Self.noExpiry,
             diagnose: { .notInstalled },
             restore: {
                 // the socket answers before `service install` exits: the monitor's look comes first
@@ -558,6 +565,7 @@ final class ServiceRecoveryTests: XCTestCase {
         r = ServiceRecovery(
             connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
             markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            sleep: Self.noExpiry,
             diagnose: { .notInstalled },
             restore: {
                 // a second look at the same moment, as a state change would cause
