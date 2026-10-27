@@ -40,6 +40,7 @@ public final class SecretsViewModel {
     @ObservationIgnored private var maskedFor: String?
     /// The banner says the list could not be loaded; a good load clears it.
     @ObservationIgnored private var bannerIsFromLoad = false
+    @ObservationIgnored private let loads = LoadCoalescer()
 
     @ObservationIgnored private let service: SecretsService
     @ObservationIgnored private let pasteboard: PasteboardAccess?
@@ -114,8 +115,13 @@ public final class SecretsViewModel {
 
     /// Loads the list. A failure while the daemon is not usable is left to the
     /// disabled state; any other failure becomes the banner.
+    /// When a load is already in flight, this waits for it and for one more
+    /// pass, so `hasLoaded` and `secrets` are current when it returns.
     public func refresh() async {
-        guard !isLoading else { return }
+        await loads.run { await loadOnce() }
+    }
+
+    private func loadOnce() async {
         isLoading = true
         defer { isLoading = false }
         do {

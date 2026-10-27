@@ -19,9 +19,19 @@ final class FakeGrants: GrantsService, @unchecked Sendable {
     private(set) var addCancelled = false
     var addResult: GrantInfo?
 
+    /// If set, called with the 1-based call number after `listGrants` has read the
+    /// list and before it returns it, so a test can hold a load in flight.
+    var duringList: (@Sendable (Int) async -> Void)?
+    private(set) var listCalls = 0
+
     func listGrants() async throws -> [GrantInfo] {
         if let e = lock.withLock({ listFailure }) { throw e }
-        return lock.withLock { grants }
+        let (snapshot, n, hook) = lock.withLock { () -> ([GrantInfo], Int, (@Sendable (Int) async -> Void)?) in
+            listCalls += 1
+            return (grants, listCalls, duringList)
+        }
+        await hook?(n)
+        return snapshot
     }
     func revokeGrant(id: String) async throws {
         lock.withLock { revoked.append(id) }

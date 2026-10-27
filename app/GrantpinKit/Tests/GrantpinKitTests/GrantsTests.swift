@@ -120,6 +120,36 @@ final class GrantsViewModelTests: XCTestCase {
         XCTAssertTrue(m.hasLoaded)
     }
 
+    /// `connectionChanged` starts a load; a `refresh()` that arrives while it is in flight must
+    /// not return before a load has finished, and must show what changed after that load began.
+    func testRefreshDuringTheLoadStartedByConnectionChangedWaitsForItAndSeesLaterChanges() async {
+        let f = FakeGrants()
+        f.grants = [g("a", in: 100)]
+        let (started, startedC) = AsyncStream.makeStream(of: Void.self)
+        let (gate, gateC) = AsyncStream.makeStream(of: Void.self)
+        f.duringList = { n in
+            guard n == 1 else { return }
+            startedC.yield()
+            for await _ in gate { break }
+        }
+        let m = model(f)
+        for await _ in started { break }
+        XCTAssertFalse(m.hasLoaded, "the first load is held in flight")
+        XCTAssertTrue(m.isLoading)
+        f.grants = [g("a", in: 100), g("b", in: 200)]
+        let second = Task { @MainActor in
+            await m.refresh()
+            return (m.hasLoaded, m.rows.map(\.id))
+        }
+        await Task.yield()
+        gateC.yield()
+        let (loaded, ids) = await second.value
+        XCTAssertTrue(loaded, "refresh() returned before any load had finished")
+        XCTAssertEqual(ids, ["a", "b"], "the list read before the change was returned as the answer")
+        XCTAssertFalse(m.isLoading)
+        XCTAssertTrue(m.hasLoaded)
+    }
+
     func testEmptyState() async {
         let m = model(FakeGrants())
         XCTAssertFalse(m.isEmpty, "not before the first load")

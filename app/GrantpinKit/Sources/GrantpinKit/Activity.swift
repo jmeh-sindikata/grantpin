@@ -237,8 +237,15 @@ public final class ActivityViewModel {
         await load(limit: min(loadedLimit + Self.pageSize, Self.maximum))
     }
 
+    /// When a load is already in flight, this waits for it and for one more
+    /// pass (with the largest limit asked for meanwhile), so `hasLoaded` and
+    /// `entries` are current when it returns.
     private func load(limit: Int) async {
-        guard !isLoading else { return }
+        wantedLimit = loads.isRunning ? max(wantedLimit, limit) : limit
+        await loads.run { await loadOnce(limit: wantedLimit) }
+    }
+
+    private func loadOnce(limit: Int) async {
         isLoading = true
         defer { isLoading = false }
         do {
@@ -259,6 +266,8 @@ public final class ActivityViewModel {
     }
 
     @ObservationIgnored private var bannerIsFromLoad = false
+    @ObservationIgnored private let loads = LoadCoalescer()
+    @ObservationIgnored private var wantedLimit = 0
 
     // MARK: verify
 

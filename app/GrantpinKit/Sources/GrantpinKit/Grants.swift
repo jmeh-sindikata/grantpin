@@ -153,6 +153,7 @@ public final class GrantsViewModel {
     @ObservationIgnored private let service: GrantsService
     @ObservationIgnored private let clock: () -> Date
     @ObservationIgnored private var bannerIsFromLoad = false
+    @ObservationIgnored private let loads = LoadCoalescer()
 
     public init(service: GrantsService, now: @escaping () -> Date = Date.init) {
         self.service = service
@@ -208,8 +209,14 @@ public final class GrantsViewModel {
         grants.filter { selection.contains($0.id) }
     }
 
+    /// Loads the list. When a load is already in flight (the one
+    /// `connectionChanged` starts), this waits for it and for one more pass,
+    /// so `hasLoaded` and `grants` are current when it returns.
     public func refresh() async {
-        guard !isLoading else { return }
+        await loads.run { await loadOnce() }
+    }
+
+    private func loadOnce() async {
         isLoading = true
         defer { isLoading = false }
         do {
