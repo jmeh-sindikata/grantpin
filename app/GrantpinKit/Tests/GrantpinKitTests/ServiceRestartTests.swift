@@ -2,6 +2,39 @@ import Foundation
 import XCTest
 @testable import GrantpinKit
 
+final class ReleaseVersionTests: XCTestCase {
+    func testParsesTaggedVersionsAndNothingElse() {
+        XCTAssertEqual(ReleaseVersion("0.2.5")?.parts, [0, 2, 5])
+        XCTAssertEqual(ReleaseVersion("v0.2.5")?.parts, [0, 2, 5])
+        XCTAssertEqual(ReleaseVersion(" v1.10.0 ")?.parts, [1, 10, 0])
+        for text in ["dev", "", "v", "0.2", "0.2.5.1", "0.2.5-3-gabc1234", "v0.2.5-dirty", "0.2.x", "0..5", "a.b.c", "55c4e71-dirty", "V0.2.5", "٠.٢.٥"] {
+            XCTAssertNil(ReleaseVersion(text), text)
+        }
+    }
+
+    func testOrdersNumericallyNotTextually() {
+        XCTAssertTrue(ReleaseVersion("0.2.4")! < ReleaseVersion("0.2.5")!)
+        XCTAssertTrue(ReleaseVersion("0.2.9")! < ReleaseVersion("0.2.10")!)
+        XCTAssertTrue(ReleaseVersion("0.9.9")! < ReleaseVersion("1.0.0")!)
+        XCTAssertFalse(ReleaseVersion("0.2.5")! < ReleaseVersion("0.2.5")!)
+        XCTAssertEqual(ReleaseVersion("v0.2.5"), ReleaseVersion("0.2.5"))
+    }
+
+    func testOnlyAnOlderReleaseDaemonIsAnUpgrade() {
+        XCTAssertTrue(ReleaseVersion.isUpgrade(from: "0.2.4", to: "0.2.5"))
+        XCTAssertTrue(ReleaseVersion.isUpgrade(from: "v0.2.4", to: "0.2.5"), "with and without the v")
+        XCTAssertTrue(ReleaseVersion.isUpgrade(from: "0.2.4", to: "v0.3.0"))
+        XCTAssertFalse(ReleaseVersion.isUpgrade(from: "0.2.5", to: "0.2.5"), "equal")
+        XCTAssertFalse(ReleaseVersion.isUpgrade(from: "v0.2.5", to: "0.2.5"), "equal but for the v")
+        XCTAssertFalse(ReleaseVersion.isUpgrade(from: "0.2.6", to: "0.2.5"), "the daemon is the newer one")
+        XCTAssertFalse(ReleaseVersion.isUpgrade(from: "dev", to: "0.2.5"), "a from-source daemon")
+        XCTAssertFalse(ReleaseVersion.isUpgrade(from: "0.2.4", to: "dev"), "a from-source app")
+        XCTAssertFalse(ReleaseVersion.isUpgrade(from: "0.2.4-3-gabc1234", to: "0.2.5"), "a suffix is not a release")
+        XCTAssertFalse(ReleaseVersion.isUpgrade(from: "0.2.4", to: "0.2.5-dirty"))
+        XCTAssertFalse(ReleaseVersion.isUpgrade(from: "0.2.4", to: "0.2.5-3-gabc1234"))
+    }
+}
+
 final class ServiceRestartPolicyTests: XCTestCase {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     let helper = "0.2.5"
@@ -27,6 +60,27 @@ final class ServiceRestartPolicyTests: XCTestCase {
         XCTAssertTrue(p.attempted)
         XCTAssertEqual(p.mismatchSince, t0)
         XCTAssertEqual(p.evaluate(old(0), helperVersion: helper, idle, now: t0.addingTimeInterval(1)), .nothing, "the attempt is used")
+    }
+
+    func testANewerOrUnnumberedDaemonIsAskedAboutNeverRestarted() {
+        for (name, version) in [("newer daemon", "0.2.6"), ("from-source daemon", "dev"), ("suffixed daemon", "0.2.4-3-gabc1234"), ("same but for the v", "v0.2.5")] {
+            var p = ServiceRestartPolicy()
+            let state = ConnectionState.ready(StatusResult(version: version, inFlightRuns: 0))
+            if version == "v0.2.5" {
+                XCTAssertTrue(ServiceRestartPolicy.isMismatch(state, helperVersion: helper), name)
+            }
+            XCTAssertFalse(ServiceRestartPolicy.isUpgrade(state, helperVersion: helper), name)
+            XCTAssertFalse(p.decisionDue(state, helperVersion: helper, idle, now: t0), name)
+            XCTAssertEqual(p.evaluate(state, helperVersion: helper, idle, now: t0), .nothing, name)
+            XCTAssertFalse(p.attempted, name)
+            XCTAssertEqual(p.waitTime(now: t0), ServiceRestartPolicy.grace, name)
+            XCTAssertTrue(p.decisionDue(state, helperVersion: helper, idle, now: t0.addingTimeInterval(10)), name)
+            XCTAssertEqual(p.evaluate(state, helperVersion: helper, idle, now: t0.addingTimeInterval(10)), .ask, "\(name): told, not restarted")
+            XCTAssertEqual(p.evaluate(state, helperVersion: helper, idle, now: t0.addingTimeInterval(600)), .nothing, name)
+            XCTAssertFalse(p.attempted, name)
+        }
+        XCTAssertTrue(ServiceRestartPolicy.isUpgrade(old(0), helperVersion: helper))
+        XCTAssertTrue(ServiceRestartPolicy.isUpgrade(.ready(StatusResult(version: "v0.2.4")), helperVersion: "v0.2.5"), "tagged builds carry the v on both sides")
     }
 
     func testOnlyAKnownZeroIsIdle() {
@@ -336,10 +390,10 @@ final class ServiceRestartRecoveryTests: XCTestCase {
     }
 
     func testARestartWhoseJobNeverAnswersAgainHandsOverToTheMissingServiceLogic() async {
+        // The safe path restarts seconds after launch: the gate has seen the
+        // daemon up for less than its stableUp, which must not make the dead
+        // restarted job "the same trouble" that is never asked about.
         let w = World(), r = recovery(w)
-        // the daemon has been up for a while when the update lands (the helper's version arrives later)
-        w.helper = nil
-        _ = await r.check(); w.advance(120); w.helper = "0.2.5"
         _ = await r.check()
         XCTAssertEqual(w.restarts, 1)
         w.advance(ServiceRestartPolicy.grace); w.state = .notRunning
@@ -351,6 +405,20 @@ final class ServiceRestartRecoveryTests: XCTestCase {
         await expectCheck(r, .askNow)
         XCTAssertEqual(w.restores, 0, "the job is installed but stopped: not restored")
         XCTAssertEqual(w.diagnoses, 1)
+        XCTAssertEqual(w.restarts, 1)
+    }
+
+    func testADaemonThatDiesThirtySecondsAfterASuccessfulRestartIsAskedAbout() async {
+        let w = World(), r = recovery(w)
+        _ = await r.check(); w.advance(3); w.new(); _ = await r.check()
+        XCTAssertEqual(r.restartedAt, w.t)
+        w.advance(30); w.state = .notRunning
+        await expectCheck(r, .nothing, "grace first")
+        XCTAssertNil(r.noticeText)
+        XCTAssertEqual(r.nextCheck(), ServiceAskGate.grace)
+        w.advance(10)
+        await expectCheck(r, .askNow, "the person saw no window for the restart, so this outage asks")
+        XCTAssertEqual(w.restores, 0)
         XCTAssertEqual(w.restarts, 1)
     }
 
@@ -455,6 +523,28 @@ final class ServiceRestartRecoveryTests: XCTestCase {
         await expectCheck(r, .nothing)
         XCTAssertNil(r.noticeText, "a restart the person made is not announced as automatic")
         XCTAssertNil(r.restartedAt)
+    }
+
+    func testANewerDaemonIsNeverRePointedAtTheOlderHelper() async {
+        let w = World(), r = recovery(w)
+        w.state = .ready(StatusResult(version: "0.2.6", inFlightRuns: 0))
+        await expectCheck(r, .nothing)
+        XCTAssertEqual(w.restarts, 0)
+        XCTAssertEqual(w.refreshes, 0)
+        XCTAssertEqual(r.nextCheck(), ServiceRestartPolicy.grace)
+        w.advance(10)
+        await expectCheck(r, .askRestart, "the line and the window, with the same wording; no automatic restart")
+        XCTAssertEqual(w.restarts, 0)
+        w.advance(600)
+        await expectCheck(r, .nothing)
+        XCTAssertEqual(w.restarts, 0)
+        XCTAssertNil(r.noticeText)
+        // the same for a daemon built from source
+        let d = World(), rd = recovery(d)
+        d.state = .ready(StatusResult(version: "dev", inFlightRuns: 0))
+        await expectCheck(rd, .nothing); d.advance(10)
+        await expectCheck(rd, .askRestart)
+        XCTAssertEqual(d.restarts, 0)
     }
 
     func testAMismatchThatClearsByItselfEndsThePeriodQuietly() async {

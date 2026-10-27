@@ -127,16 +127,55 @@ public struct ServiceRestorePolicy: Sendable {
     }
 }
 
+/// A release version `X.Y.Z`, with or without a leading `v`, as `grantpin
+/// --version` and `status.version` print it for a tagged build (docs/RELEASE.md
+/// "Version"). Anything else, `dev`, a bare commit hash, or a tagged version
+/// with git describe's `-N-gHASH` or `-dirty` suffix, is not a release version
+/// and compares with nothing: the app never restarts a daemon by itself on
+/// the strength of such a string.
+public struct ReleaseVersion: Equatable, Comparable, Sendable {
+    /// Major, minor, patch.
+    public let parts: [Int]
+
+    public init?(_ text: String) {
+        var s = Substring(text.trimmingCharacters(in: .whitespaces))
+        if s.hasPrefix("v") { s = s.dropFirst() }
+        let fields = s.split(separator: ".", omittingEmptySubsequences: false)
+        guard fields.count == 3 else { return nil }
+        var parts = [Int]()
+        for f in fields {
+            guard !f.isEmpty, f.allSatisfy({ $0.isASCII && $0.isNumber }), let n = Int(f) else { return nil }
+            parts.append(n)
+        }
+        self.parts = parts
+    }
+
+    public static func < (a: ReleaseVersion, b: ReleaseVersion) -> Bool {
+        a.parts.lexicographicallyPrecedes(b.parts)
+    }
+
+    /// The daemon's version is an older release than the helper's: the one
+    /// case the app may fix by itself. False when either is not a release
+    /// version or the daemon is the newer one (a from-source or newer CLI
+    /// install must not be re-pointed at an older bundled helper).
+    public static func isUpgrade(from daemon: String, to helper: String) -> Bool {
+        guard let d = ReleaseVersion(daemon), let h = ReleaseVersion(helper) else { return false }
+        return d < h
+    }
+}
+
 /// When the app may restart the background service by itself after an update
 /// (docs/UI-SPEC.md 3.1 "Updated, restart needed"): the daemon answers with a
 /// version other than the helper's (the old daemon kept running through a
-/// `brew upgrade` or a replaced app), it reports that no run is in progress,
-/// and nothing about the situation is unusual. At most one attempt per app
-/// launch, so a failure never turns into a loop. A mismatch the app may not
-/// fix by itself opens the visible ask once per mismatch period: a run in
-/// progress or a daemon too old to report its runs (both after `grace`, so a
-/// command that finishes in a moment never opens a window), a failed attempt,
-/// or an old daemon still answering after the restart.
+/// `brew upgrade` or a replaced app), that version is an older release than
+/// the helper's (`ReleaseVersion.isUpgrade`), it reports that no run is in
+/// progress, and nothing about the situation is unusual. At most one attempt
+/// per app launch, so a failure never turns into a loop. A mismatch the app
+/// may not fix by itself opens the visible ask once per mismatch period: a run
+/// in progress or a daemon too old to report its runs, a daemon that is newer
+/// than the helper or whose version is not a release number (all after
+/// `grace`, so a command that finishes in a moment never opens a window), a
+/// failed attempt, or an old daemon still answering after the restart.
 ///
 /// A mismatch period starts when the daemon is first seen answering with
 /// another version than the helper's and ends when the versions agree again
@@ -227,6 +266,14 @@ public struct ServiceRestartPolicy: Sendable {
         return s.version == h
     }
 
+    /// The daemon answers with an older release version than the helper's:
+    /// the mismatch the app may fix by itself. Any other mismatch (a newer
+    /// daemon, `dev`, a suffixed version) only shows the line and asks.
+    public static func isUpgrade(_ state: ConnectionState?, helperVersion: String?) -> Bool {
+        guard case .ready(let s)? = state, let h = helperVersion else { return false }
+        return ReleaseVersion.isUpgrade(from: s.version, to: h)
+    }
+
     /// Follows the connection without deciding anything. A restart in progress
     /// is judged by `resolvePending` instead, so the moment the job is down
     /// while it restarts does not end the period.
@@ -266,7 +313,7 @@ public struct ServiceRestartPolicy: Sendable {
     public func decisionDue(_ state: ConnectionState?, helperVersion: String?, _ inputs: Inputs, now: Date) -> Bool {
         guard Self.isMismatch(state, helperVersion: helperVersion), pendingSince == nil, inputs.permitsDecision,
               !attemptFailed else { return false }
-        if !attempted, inputs.isIdle { return true }
+        if !attempted, inputs.isIdle, Self.isUpgrade(state, helperVersion: helperVersion) { return true }
         guard !asked else { return false }
         return now.timeIntervalSince(mismatchSince ?? now) >= Self.grace
     }
@@ -277,13 +324,14 @@ public struct ServiceRestartPolicy: Sendable {
         observe(state, helperVersion: helperVersion, now: now)
         guard let since = mismatchSince, pendingSince == nil, inputs.permitsDecision,
               Self.isMismatch(state, helperVersion: helperVersion) else { return .nothing }
-        if !attempted, inputs.isIdle {
+        if !attempted, inputs.isIdle, Self.isUpgrade(state, helperVersion: helperVersion) {
             attempted = true
             return .restart
         }
-        // No restart now: a run in progress, a daemon that cannot say, the
-        // attempt used or failed. The person is told, once per period, after
-        // a grace for a run to finish; a failed attempt is told at once.
+        // No restart now: a run in progress, a daemon that cannot say, a
+        // daemon that is not an older release than the helper, the attempt
+        // used or failed. The person is told, once per period, after a grace
+        // for a run to finish; a failed attempt is told at once.
         guard !asked else { return .nothing }
         if attemptFailed || now.timeIntervalSince(since) >= Self.grace {
             asked = true
@@ -476,8 +524,13 @@ public final class ServiceRecovery {
                 return .nothing
             case .fixed?:
                 recordRestart()
-            case .persists?, .lost?, nil:
-                break  // persists: the ask decides below; lost: the missing-service logic does
+            case .lost?:
+                // The restarted job is not answering: the missing-service
+                // logic decides below, and this outage is a new period for the
+                // gate (the person saw no window for the restart).
+                gate.restoredNow(now: now())
+            case .persists?, nil:
+                break  // persists: the ask decides below
             }
         }
         if restorePossible {
@@ -558,6 +611,7 @@ public final class ServiceRecovery {
                 guard !isRestoring else { return .nothing }
                 state = connection()
                 inputs.inFlightRuns = Self.inFlightRuns(state)
+                inputs.onboardingPending = onboardingPending()
                 inputs.suspended = suspended()
             }
             var verdict = restartPolicy.evaluate(state, helperVersion: helper, inputs, now: now())
@@ -569,8 +623,13 @@ public final class ServiceRecovery {
                 switch result?.outcome {
                 case .succeeded?, .startedNotAnswering?:
                     // launchd restarted the job; it counts once the monitor
-                    // sees the daemon answer with the new version.
+                    // sees the daemon answer with the new version. The gate
+                    // starts a fresh period now, as after a restore: a job
+                    // that dies after this restart must be asked about, and
+                    // the gate would otherwise still hold the up phase from
+                    // the first answer it saw, maybe seconds ago at launch.
                     restartPolicy.noteRestartStarted(now: now())
+                    gate.restoredNow(now: now())
                 case .failed?, nil:
                     restartPolicy.noteRestartFailed()
                 }
