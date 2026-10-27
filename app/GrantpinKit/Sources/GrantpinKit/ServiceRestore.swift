@@ -48,7 +48,8 @@ public struct ServiceRestorePolicy: Sendable {
         public var location: AppLocation
         public var vaultExists: Bool
         /// Something else is changing the service or the vault right now (the
-        /// Uninstall sheet, a Settings action, the Start button).
+        /// Uninstall sheet, a Settings action, onboarding's Install, the
+        /// popover's Start).
         public var suspended: Bool
 
         public init(markerPresent: Bool, diagnosis: ServiceDiagnosis?, onboardingPending: Bool = false, isDevelopment: Bool = false,
@@ -250,6 +251,11 @@ public final class ServiceRecovery {
             }
         }
         updateNotice(state)
+        // While something else is changing the service nothing is decided
+        // (docs/UI-SPEC.md 3.1): no restore, and no window over the Uninstall
+        // sheet or a running Settings action. The end of that action brings
+        // the next look.
+        if restorePossible, suspended() { return .nothing }
         // Every connection seen reaches the gate, so a later outage asks again.
         let ask = gate.evaluate(state, now: now(), onboardingPending: onboardingPending(),
                                 isDevelopment: isDevelopment, popoverOpen: popoverOpen())

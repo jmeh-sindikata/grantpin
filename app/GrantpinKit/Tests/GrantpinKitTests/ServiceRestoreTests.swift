@@ -420,7 +420,6 @@ final class ServiceRecoveryTests: XCTestCase {
         for (name, setup) in [
             ("no marker", { (w: World) in w.marker = false }),
             ("stopped job", { (w: World) in w.diagnosis = .notRunning }),
-            ("suspended", { (w: World) in w.suspended = true }),
         ] as [(String, (World) -> Void)] {
             let w = World(), r = recovery(w)
             setup(w)
@@ -440,12 +439,12 @@ final class ServiceRecoveryTests: XCTestCase {
 
     func testOnceAskedNothingIsRestoredBehindThePersonsBackInTheSameOutage() async {
         let w = World(), r = recovery(w)
-        w.suspended = true  // the Uninstall sheet is open when the grace ends
+        w.diagnosis = .notRunning  // the job is there but stopped when the grace ends
         _ = await r.check(); w.advance(10)
         let verdict = await r.check()
         XCTAssertEqual(verdict, .askNow)
-        // the sheet is cancelled and the app looks again: nothing is installed
-        w.suspended = false
+        // the job goes missing while the window is up and the app looks again: nothing is installed
+        w.diagnosis = .notInstalled
         let after = await r.check()
         XCTAssertEqual(after, .nothing)
         XCTAssertEqual(w.restores, 0)
@@ -459,19 +458,31 @@ final class ServiceRecoveryTests: XCTestCase {
         XCTAssertEqual(w.restores, 1)
     }
 
-    func testASuspensionThatEndsWithoutAnAskStillLetsTheRestoreHappen() async {
+    func testWhileSomethingElseChangesTheServiceNothingIsDecided() async {
+        // the Uninstall sheet is open when the grace ends: no restore, and no window over the sheet
         let w = World(), r = recovery(w)
-        w.suspended = true; w.popover = true  // the person pressed Start in the popover
+        w.suspended = true
         _ = await r.check(); w.advance(10)
         let during = await r.check()
-        XCTAssertEqual(during, .nothing, "no window while the person looks at the popover")
+        XCTAssertEqual(during, .nothing)
         XCTAssertEqual(w.restores, 0)
+        XCTAssertEqual(w.diagnoses, 0)
         XCTAssertNil(r.nextCheck(), "nothing time-based: the app looks again when the action ends")
-        // their Start did not bring the daemon back and the popover closed
-        w.suspended = false; w.popover = false
+        // the sheet is cancelled: the restore goes ahead
+        w.suspended = false
         let after = await r.check()
         XCTAssertEqual(after, .nothing)
         XCTAssertEqual(w.restores, 1)
+        // without a marker the window opens then instead
+        let bare = World(), rb = recovery(bare)
+        bare.marker = false; bare.suspended = true
+        _ = await rb.check(); bare.advance(10)
+        let bareDuring = await rb.check()
+        XCTAssertEqual(bareDuring, .nothing)
+        bare.suspended = false
+        let bareAfter = await rb.check()
+        XCTAssertEqual(bareAfter, .askNow)
+        XCTAssertEqual(bare.restores, 0)
     }
 
     func testAnAnsweringDaemonDoesNothing() async {
