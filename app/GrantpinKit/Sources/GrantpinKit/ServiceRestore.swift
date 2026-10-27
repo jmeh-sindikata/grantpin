@@ -141,9 +141,9 @@ public final class ServiceRecovery {
     /// When the last automatic restore succeeded in this launch (Settings >
     /// General shows it).
     public private(set) var restoredAt: Date?
-    /// `restoredNotice` for the status header: from the moment the restored
-    /// daemon is seen answering until `noticeDuration` after the restore, or
-    /// until it stops again (a red headline must not carry a green "restored"
+    /// `restoredNotice` for the status header: from the restore (the moment
+    /// the restored daemon is seen answering) for `noticeDuration`, or until
+    /// it stops again (a red headline must not carry a green "restored"
     /// line). Nil otherwise.
     public private(set) var noticeText: String?
     /// An automatic restore is running.
@@ -151,13 +151,11 @@ public final class ServiceRecovery {
 
     @ObservationIgnored private var policy = ServiceRestorePolicy()
     @ObservationIgnored private var gate = ServiceAskGate()
-    /// The restore started the job but the daemon had not answered when
-    /// `service install` returned (docs/UI-SPEC.md 2.5): since when the
-    /// decision waits for it, a fresh grace long.
+    /// `service install` ran and said the job is up, or started but not
+    /// answering yet (docs/UI-SPEC.md 2.5): since when the decision waits for
+    /// the daemon to be seen answering, a fresh grace long. Only that counts
+    /// as a restore; a job that dies before it is seen gets the ask.
     @ObservationIgnored private var pendingSince: Date?
-    /// A restore is recent (within `noticeDuration`): the notice shows once
-    /// the daemon is seen answering.
-    @ObservationIgnored private var noticeArmed = false
     @ObservationIgnored private var noticeExpiry: Task<Void, Never>?
     @ObservationIgnored private let connection: @MainActor () -> ConnectionState?
     @ObservationIgnored private let now: () -> Date
@@ -228,11 +226,9 @@ public final class ServiceRecovery {
                         state = connection()
                         policy.observe(state, now: now())
                         switch result?.outcome {
-                        case .succeeded?:
-                            recordRestore()
-                            gate.resolve()
-                        case .startedNotAnswering?:
-                            // launchd has the job; the daemon gets a fresh grace to answer.
+                        case .succeeded?, .startedNotAnswering?:
+                            // launchd has the job; the restore counts once the
+                            // monitor sees the daemon answer, within a fresh grace.
                             pendingSince = now()
                         case .failed?, nil:
                             break  // the ask decides below
@@ -254,8 +250,7 @@ public final class ServiceRecovery {
             }
         }
         updateNotice(state)
-        // Every connection seen reaches the gate: after a restore it moves to
-        // "up" as soon as the daemon answers, so the next outage asks again.
+        // Every connection seen reaches the gate, so a later outage asks again.
         let ask = gate.evaluate(state, now: now(), onboardingPending: onboardingPending(),
                                 isDevelopment: isDevelopment, popoverOpen: popoverOpen())
         // Asked and restored are alternatives: no silent restore later in this outage.
@@ -274,36 +269,26 @@ public final class ServiceRecovery {
         return waits.compactMap { $0 }.filter { $0 > 0 }.min()
     }
 
-    /// The restore is done: the daemon the app started answers, or will in a
-    /// moment. The notice is armed and expires `noticeDuration` from now.
+    /// The restore is done: the daemon the app started has been seen
+    /// answering. The notice shows and expires `noticeDuration` from now, and
+    /// the gate starts a fresh period so that the next trouble asks.
     private func recordRestore() {
-        restoredAt = now()
-        noticeArmed = true
+        let t = now()
+        restoredAt = t
+        gate.restoredNow(now: t)
+        noticeText = Self.restoredNotice
         noticeExpiry?.cancel()
         let sleep = self.sleep
         noticeExpiry = Task { [weak self] in
             do { try await sleep(Self.noticeDuration) } catch { return }
             guard !Task.isCancelled else { return }
-            self?.noticeArmed = false
             self?.noticeText = nil
         }
     }
 
-    /// Shows the armed notice once the daemon answers; a daemon that stops
-    /// again takes it away for good.
+    /// A restored daemon that stops again takes the notice away for good.
     private func updateNotice(_ state: ConnectionState?) {
-        switch state {
-        case nil:
-            break
-        case .notRunning?:
-            if noticeText != nil { clearNotice() }
-        default:
-            if noticeArmed { noticeText = Self.restoredNotice }
-        }
-    }
-
-    private func clearNotice() {
-        noticeArmed = false
+        guard case .notRunning? = state, noticeText != nil else { return }
         noticeText = nil
         noticeExpiry?.cancel()
         noticeExpiry = nil

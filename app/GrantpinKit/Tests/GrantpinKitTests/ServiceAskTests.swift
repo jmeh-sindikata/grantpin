@@ -93,6 +93,15 @@ final class ServiceAskGateTests: XCTestCase {
         XCTAssertFalse(ask(.notRunning, at: 20, popover: false))
     }
 
+    func testAnAutomaticRestoreMakesTheNextTroubleANewPeriod() {
+        XCTAssertFalse(ask(.notRunning, at: 0))
+        gate.restoredNow(now: t0.addingTimeInterval(12))
+        XCTAssertFalse(ask(ready, at: 12))
+        XCTAssertFalse(ask(.notRunning, at: 30), "down again within stableUp, but nobody saw a window: grace first")
+        XCTAssertEqual(gate.waitTime(now: t0.addingTimeInterval(30)), ServiceAskGate.grace)
+        XCTAssertTrue(ask(.notRunning, at: 40))
+    }
+
     func testAnUnknownStateChangesNothing() {
         XCTAssertFalse(ask(.notRunning, at: 0))
         XCTAssertFalse(ask(nil, at: 5))

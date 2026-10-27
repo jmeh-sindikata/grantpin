@@ -112,10 +112,13 @@ public struct ServiceAskGate: Sendable {
         }
     }
 
-    /// The not-running period in progress is dealt with (the service was
-    /// restored): it is not asked about. A later outage asks again.
-    public mutating func resolve() {
-        if case .down(let since, _) = phase { phase = .down(since: since, handled: true) }
+    /// The app restored the service itself and the daemon answers: the next
+    /// trouble must ask. The person saw no window for the automatic restore,
+    /// so the usual rule that a daemon down again within `stableUp` is the
+    /// same trouble would hide a service that keeps stopping right after its
+    /// restore. The up phase therefore starts `stableUp` ago.
+    public mutating func restoredNow(now: Date) {
+        phase = .up(since: now.addingTimeInterval(-Self.stableUp))
     }
 
     /// How long until `evaluate` should be called again for a decision, nil
