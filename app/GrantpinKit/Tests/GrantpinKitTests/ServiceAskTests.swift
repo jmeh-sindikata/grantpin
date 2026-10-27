@@ -93,6 +93,19 @@ final class ServiceAskGateTests: XCTestCase {
         XCTAssertFalse(ask(.notRunning, at: 20, popover: false))
     }
 
+    func testObservingFollowsTheDaemonWithoutDeciding() {
+        gate.observe(.notRunning, now: t0)
+        gate.observe(.notRunning, now: t0.addingTimeInterval(20))
+        XCTAssertEqual(gate.waitTime(now: t0.addingTimeInterval(20)), 0, "due, but nothing decided yet")
+        XCTAssertTrue(ask(.notRunning, at: 21), "the outage counts from when it began")
+        gate.observe(ready, now: t0.addingTimeInterval(100))
+        gate.observe(.notRunning, now: t0.addingTimeInterval(120))
+        XCTAssertFalse(ask(.notRunning, at: 200), "down again within stableUp: the same trouble, never asked twice")
+        gate.observe(ready, now: t0.addingTimeInterval(300))
+        gate.observe(.notRunning, now: t0.addingTimeInterval(400))
+        XCTAssertTrue(ask(.notRunning, at: 410), "a new period after a stable up")
+    }
+
     func testAnAutomaticRestoreMakesTheNextTroubleANewPeriod() {
         XCTAssertFalse(ask(.notRunning, at: 0))
         gate.restoredNow(now: t0.addingTimeInterval(12))

@@ -88,28 +88,35 @@ public struct ServiceAskGate: Sendable {
 
     public init() {}
 
+    /// Follows the connection without deciding anything: the phase keeps up
+    /// with the daemon while no decision may be made (something else is
+    /// changing the service), so that the decision made afterwards counts the
+    /// outage from when it began. `evaluate` does this first.
+    public mutating func observe(_ state: ConnectionState?, now: Date) {
+        guard let state else { return }
+        guard case .notRunning = state else {
+            if case .up = phase {} else { phase = .up(since: now) }
+            return
+        }
+        switch phase {
+        case .unknown: phase = .down(since: now, handled: false)
+        case .up(let since): phase = .down(since: now, handled: now.timeIntervalSince(since) < Self.stableUp)
+        case .down: break
+        }
+    }
+
     /// Call on every connection change and again when `waitTime` has passed.
     /// Returns true exactly when the window should open now.
     public mutating func evaluate(
         _ state: ConnectionState?, now: Date, onboardingPending: Bool, isDevelopment: Bool, popoverOpen: Bool
     ) -> Bool {
         guard !isDevelopment, let state else { return false }
-        guard case .notRunning = state else {
-            if case .up = phase {} else { phase = .up(since: now) }
+        observe(state, now: now)
+        guard case .notRunning = state, case .down(let since, false) = phase, now.timeIntervalSince(since) >= Self.grace else {
             return false
         }
-        switch phase {
-        case .unknown:
-            phase = .down(since: now, handled: false)
-            return false
-        case .up(let since):
-            phase = .down(since: now, handled: now.timeIntervalSince(since) < Self.stableUp)
-            return false
-        case .down(let since, let handled):
-            guard !handled, now.timeIntervalSince(since) >= Self.grace else { return false }
-            phase = .down(since: since, handled: true)
-            return !onboardingPending && !popoverOpen
-        }
+        phase = .down(since: since, handled: true)
+        return !onboardingPending && !popoverOpen
     }
 
     /// The app restored the service itself and the daemon answers: the next

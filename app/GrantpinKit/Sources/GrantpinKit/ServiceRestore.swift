@@ -258,12 +258,14 @@ public final class ServiceRecovery {
             }
         }
         updateNotice(state)
+        // Every connection seen reaches the gate, decided on or not, so an
+        // outage is counted from when it began and a later one asks again.
+        gate.observe(state, now: now())
         // While something else is changing the service nothing is decided
         // (docs/UI-SPEC.md 3.1): no restore, and no window over the Uninstall
         // sheet or a running Settings action. The end of that action brings
         // the next look.
         if restorePossible, suspended() { return .nothing }
-        // Every connection seen reaches the gate, so a later outage asks again.
         let ask = gate.evaluate(state, now: now(), onboardingPending: onboardingPending(),
                                 isDevelopment: isDevelopment, popoverOpen: popoverOpen())
         // Asked and restored are alternatives: no silent restore later in this outage.
