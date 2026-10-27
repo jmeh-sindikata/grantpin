@@ -328,6 +328,43 @@ final class ServiceRecoveryTests: XCTestCase {
         XCTAssertEqual(w.restores, 1)
     }
 
+    func testTheMonitorIsPolledBeforeAPendingRestoreIsGivenUp() async {
+        let w = World()
+        var refreshes = 0
+        let r = ServiceRecovery(
+            connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
+            markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            refresh: { refreshes += 1; w.state = .ready(StatusResult()) },
+            diagnose: { .notInstalled }, restore: { ActionResult(outcome: .startedNotAnswering, summary: "started") })
+        _ = await r.check(); w.advance(10); _ = await r.check()
+        XCTAssertEqual(refreshes, 0, "within the grace the monitor's own polls are enough")
+        // the background poll is 15 s apart: the state is still the one from before the install
+        w.advance(ServiceRestorePolicy.grace)
+        let verdict = await r.check()
+        XCTAssertEqual(verdict, .nothing, "the daemon answers when asked: restored, no window")
+        XCTAssertEqual(refreshes, 1)
+        XCTAssertEqual(r.restoredAt, w.t)
+        XCTAssertEqual(r.noticeText, ServiceRecovery.restoredNotice)
+        XCTAssertNil(r.nextCheck())
+    }
+
+    func testAPendingRestoreStillDownAfterThePollIsAsked() async {
+        let w = World()
+        var refreshes = 0
+        let r = ServiceRecovery(
+            connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
+            markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            refresh: { refreshes += 1 },
+            diagnose: { .notInstalled }, restore: { ActionResult(outcome: .succeeded, summary: "ok") })
+        _ = await r.check(); w.advance(10); _ = await r.check()
+        w.advance(ServiceRestorePolicy.grace)
+        let verdict = await r.check()
+        XCTAssertEqual(verdict, .askNow)
+        XCTAssertEqual(refreshes, 1)
+        XCTAssertNil(r.restoredAt)
+        XCTAssertNil(r.noticeText)
+    }
+
     func testStartedButNotAnsweringAsksOnceTheFreshGraceIsOver() async {
         let w = World(), r = recovery(w)
         w.restoreResult = ActionResult(outcome: .startedNotAnswering, summary: "started")

@@ -164,6 +164,8 @@ public final class ServiceRecovery {
     /// the daemon to be seen answering, a fresh grace long. Only that counts
     /// as a restore; a job that dies before it is seen gets the ask.
     @ObservationIgnored private var pendingSince: Date?
+    /// The monitor is being asked before a pending restore is given up.
+    @ObservationIgnored private var refreshingForPending = false
     @ObservationIgnored private var noticeExpiry: Task<Void, Never>?
     @ObservationIgnored private let connection: @MainActor () -> ConnectionState?
     @ObservationIgnored private let now: () -> Date
@@ -179,11 +181,14 @@ public final class ServiceRecovery {
     @ObservationIgnored private let onboardingPending: @MainActor () -> Bool
     @ObservationIgnored private let popoverOpen: @MainActor () -> Bool
     @ObservationIgnored private let suspended: @MainActor () -> Bool
+    @ObservationIgnored private let refresh: @MainActor () async -> Void
     @ObservationIgnored private let diagnose: @MainActor () async -> ServiceDiagnosis?
     @ObservationIgnored private let restore: @MainActor () async -> ActionResult?
 
     /// - Parameters:
     ///   - sleep: waits for the notice to expire; tests pass their own.
+    ///   - refresh: polls the daemon now (the monitor), so that a pending
+    ///     restore is judged on the current state, not on a poll from before.
     ///   - diagnose: asks the helper what `service status` says now.
     ///   - restore: runs what the Start button runs; nil when nothing ran.
     public init(
@@ -198,6 +203,7 @@ public final class ServiceRecovery {
         sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { seconds in
             try await Task.sleep(nanoseconds: UInt64(max(seconds, 0) * 1_000_000_000))
         },
+        refresh: @escaping @MainActor () async -> Void = {},
         diagnose: @escaping @MainActor () async -> ServiceDiagnosis?,
         restore: @escaping @MainActor () async -> ActionResult?
     ) {
@@ -205,7 +211,7 @@ public final class ServiceRecovery {
         self.restorePossible = !isDevelopment && location.isOK
         self.onboardingPending = onboardingPending; self.popoverOpen = popoverOpen; self.suspended = suspended
         self.markerPresent = markerPresent; self.vaultExists = vaultExists; self.now = now; self.sleep = sleep
-        self.diagnose = diagnose; self.restore = restore
+        self.refresh = refresh; self.diagnose = diagnose; self.restore = restore
     }
 
     /// One look at the situation. Restores the service when allowed (once per
@@ -248,6 +254,16 @@ public final class ServiceRecovery {
         // Another check may have started a restore while this one waited.
         guard !isRestoring else { return .nothing }
         if let since = pendingSince {
+            // A look while the poll below runs would judge the same stale state.
+            guard !refreshingForPending else { return .nothing }
+            if now().timeIntervalSince(since) >= ServiceRestorePolicy.grace, state == nil || state == .notRunning {
+                // With nothing visible the monitor polls every 15 seconds, longer
+                // than this grace: ask it now rather than give up on a poll from before.
+                refreshingForPending = true
+                await refresh()
+                refreshingForPending = false
+                state = connection()
+            }
             switch state {
             case .notRunning?, nil:
                 if now().timeIntervalSince(since) < ServiceRestorePolicy.grace { return .nothing }

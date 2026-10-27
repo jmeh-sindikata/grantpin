@@ -196,6 +196,7 @@ final class AppModel {
             onboardingPending: { !UserDefaults.standard.bool(forKey: AppModel.onboardingDoneKey) },
             popoverOpen: { AppModel.current?.isPopoverOpen ?? false },
             suspended: { serviceActivity.busy(besides: [.restore]) },
+            refresh: refresh,
             diagnose: { await watcher.poll(); return watcher.diagnosis },
             restore: {
                 // The same action as the Start button; what this run did, not
