@@ -41,7 +41,7 @@ struct PopoverView: View {
             MenuRow(title: "All Secrets…") { open(WindowID.secrets) }
             MenuRow(title: grantsRowTitle(activeGrants: status?.activeGrants)) { open(WindowID.grants) }
             MenuRow(title: "Activity…") { open(WindowID.activity) }
-            MenuRow(title: "Settings…", shortcut: "⌘,") { app.showSettings(.general) }
+            MenuRow(title: "Settings…", shortcut: "⌘,") { app.closePopover(); app.showSettings(.general) }
                 .keyboardShortcut(",")
             Divider().padding(.vertical, 6)
             MenuRow(title: "Quit grantpin", shortcut: "⌘Q") { NSApplication.shared.terminate(nil) }
@@ -50,10 +50,12 @@ struct PopoverView: View {
         }
         .padding(.vertical, 8)
         .frame(width: 320, alignment: .leading)
-        .background(WindowKeyObserver { key in
+        .background(WindowKeyObserver(onChange: { key in
             isOpen = key
             if key { app.surfaceAppeared("popover") } else { app.surfaceDisappeared("popover") }
-        })
+        }, onWindow: { window in
+            app.popoverWindow = window
+        }))
         .task(id: "\(isOpen)-\(isReady(state))") {
             // The newest events and secrets, every 5 seconds while the popover is open (2.4).
             guard isOpen, isReady(state) else { return }
@@ -70,7 +72,13 @@ struct PopoverView: View {
         return false
     }
 
+    /// Every row and button that opens a window goes through here: the popover
+    /// closes first, then the app comes to the front and the window opens, so
+    /// the window becomes key (docs/UI-SPEC.md 3.1). The service action
+    /// buttons (Start, Repair, Restart, Create vault) run in place and keep
+    /// the popover open for their spinner and result line.
     private func open(_ id: String) {
+        app.closePopover()
         app.prepareToShowWindow()
         openWindow(id: id)
     }
@@ -233,10 +241,12 @@ struct ActionButton: View {
             await popover.perform(button)
         case .setUp:
             app.onboarding.go(to: .vault)
+            app.closePopover()
             app.requestWindow(WindowID.onboarding)
         case .review:
-            openWindow(WindowID.grants)
+            openWindow(WindowID.grants)  // the popover's `open`, which closes it first
         case .openLogs:
+            app.closePopover()
             app.openLogsFolder()
         }
     }

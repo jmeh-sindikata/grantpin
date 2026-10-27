@@ -371,6 +371,23 @@ final class AppModel {
     /// Whether the menu bar popover is the key window right now.
     var isPopoverOpen: Bool { visibleSurfaces.contains("popover") }
 
+    /// The window that hosts the popover's content, handed over by the
+    /// popover's `WindowKeyObserver` while it is in one.
+    @ObservationIgnored weak var popoverWindow: NSWindow?
+
+    /// Closes the popover (docs/UI-SPEC.md 3.1): a row or button that opens a
+    /// window or Finder calls this first, so the new window becomes key
+    /// instead of appearing behind the popover. SwiftUI offers no way to
+    /// dismiss a `.window`-style `MenuBarExtra` from its content, so this goes
+    /// to the hosting `NSWindow`. Nothing happens when the popover is not
+    /// showing. The key observer's `didResignKey`/`willClose` notifications
+    /// still report the popover as gone (`surfaceDisappeared`).
+    func closePopover() {
+        guard let window = popoverWindow, window.isVisible else { return }
+        window.close()
+        if window.isVisible { window.orderOut(nil) }
+    }
+
     /// Brings the background service back by itself when the person had
     /// installed it, restarts it after an update while nothing runs through
     /// it, and otherwise opens the "background service" window once (see
@@ -471,16 +488,24 @@ struct SystemPasteboard: PasteboardAccess {
 /// activity refresh depend on whether the person is looking (docs/UI-SPEC.md 2.4).
 struct WindowKeyObserver: NSViewRepresentable {
     let onChange: (Bool) -> Void
+    /// Also hands over the hosting window itself (nil when the view leaves
+    /// it); the popover uses it to close itself (`AppModel.closePopover`).
+    var onWindow: ((NSWindow?) -> Void)? = nil
 
-    func makeNSView(context: Context) -> NSView { Tracker(onChange: onChange) }
-    func updateNSView(_ nsView: NSView, context: Context) { (nsView as? Tracker)?.onChange = onChange }
+    func makeNSView(context: Context) -> NSView { Tracker(onChange: onChange, onWindow: onWindow) }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? Tracker)?.onChange = onChange
+        (nsView as? Tracker)?.onWindow = onWindow
+    }
 
     final class Tracker: NSView {
         var onChange: (Bool) -> Void
+        var onWindow: ((NSWindow?) -> Void)?
         private var observers = [NSObjectProtocol]()
 
-        init(onChange: @escaping (Bool) -> Void) {
+        init(onChange: @escaping (Bool) -> Void, onWindow: ((NSWindow?) -> Void)?) {
             self.onChange = onChange
+            self.onWindow = onWindow
             super.init(frame: .zero)
         }
         required init?(coder: NSCoder) { nil }
@@ -490,6 +515,7 @@ struct WindowKeyObserver: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             observers.forEach(NotificationCenter.default.removeObserver)
             observers = []
+            onWindow?(window)
             guard let window else { onChange(false); return }
             let center = NotificationCenter.default
             observers.append(center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
