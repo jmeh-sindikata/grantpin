@@ -280,4 +280,31 @@ final class PopoverModelTests: XCTestCase {
         await m.start()
         XCTAssertNil(m.lastResult)
     }
+
+    func testPerformAnswersWhatThisRunDidAndNilWhenNothingRan() async throws {
+        let actions = FakeActions()
+        let m = PopoverModel(audit: FakeService(), actions: actions)
+        let first = await m.perform(.startService)
+        XCTAssertEqual(first, actions.startResult)
+        XCTAssertEqual(m.lastResult, first)
+        // a button that only opens something: nothing ran, and the screen's result stays
+        let opened = await m.perform(.openLogs)
+        XCTAssertNil(opened)
+        XCTAssertEqual(m.lastResult, first)
+        // a second press while one runs: nil, not the other run's result
+        actions.delayNanos = 100_000_000
+        async let slow = m.perform(.startService)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let refused = await m.perform(.restart)
+        XCTAssertNil(refused)
+        let slowResult = await slow
+        XCTAssertEqual(slowResult, actions.startResult)
+        XCTAssertEqual(actions.started, 2)
+        // the buttons are off: nil, whatever lastResult says
+        let off = PopoverModel(audit: FakeService(), actions: actions, location: .elsewhere)
+        let offResult = await off.perform(.startService)
+        XCTAssertNil(offResult)
+        let noHelper = await PopoverModel(audit: FakeService(), actions: nil).perform(.startService)
+        XCTAssertNil(noHelper)
+    }
 }

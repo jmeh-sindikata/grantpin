@@ -155,9 +155,9 @@ final class AppModel {
             },
             diagnose: { await watcher.poll(); return watcher.diagnosis },
             restore: {
-                // The same action as the Start button.
+                // The same action as the Start button; what this run did, not
+                // the screen's `lastResult`, which may be dismissed meanwhile.
                 await popoverModel.perform(.startService)
-                return popoverModel.lastResult
             })
 
         AppModel.current = self

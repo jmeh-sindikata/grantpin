@@ -281,21 +281,25 @@ public final class PopoverModel {
     }
 
     /// The Start button: `service install` through the helper.
-    public func start() async { await run(.startService) }
+    public func start() async { _ = await run(.startService) }
 
     /// The Create vault button: `init` through the helper.
-    public func createVault() async { await run(.createVault) }
+    public func createVault() async { _ = await run(.createVault) }
 
     /// Any of the status line's buttons that run the helper (Start, Repair,
     /// Restart, Create vault). The others (Set Up, Review, Open Logs Folder)
-    /// only open a window or a folder and are handled by the view.
-    public func perform(_ button: StatusLine.Button) async { await run(button) }
+    /// only open a window or a folder and are handled by the view. Returns
+    /// what this run did, or nil when nothing ran (a button is already
+    /// running, the buttons are off, or the button does not run the helper);
+    /// `lastResult` is for the screen and may already have been dismissed.
+    @discardableResult
+    public func perform(_ button: StatusLine.Button) async -> ActionResult? { await run(button) }
 
-    private func run(_ button: StatusLine.Button) async {
-        guard running == nil else { return }
-        guard buttonsDisabledReason == nil, let actions else { return }
+    private func run(_ button: StatusLine.Button) async -> ActionResult? {
+        guard running == nil else { return nil }
+        guard buttonsDisabledReason == nil, let actions else { return nil }
         switch button {
-        case .setUp, .review, .openLogs: return
+        case .setUp, .review, .openLogs: return nil
         default: break
         }
         running = button
@@ -304,11 +308,12 @@ public final class PopoverModel {
         switch button {
         case .startService, .repair, .restart: result = await actions.startService()
         case .createVault: result = await actions.createVault()
-        case .setUp, .review, .openLogs: return
+        case .setUp, .review, .openLogs: return nil
         }
         lastResult = result
         running = nil
         await onActionFinished()
+        return result
     }
 
     public func dismissResult() { lastResult = nil }
