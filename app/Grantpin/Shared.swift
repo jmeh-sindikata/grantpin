@@ -11,9 +11,15 @@ enum WindowID {
 }
 
 /// The menu bar icon (docs/UI-SPEC.md 3.1): the grantpin glyph, with a badge
-/// when the daemon is down (see `MenuBarIconImage`). It is also the one view that always exists, so it
-/// opens the windows other parts of the app ask for (`WindowRequest`) and
-/// the Welcome window on first launch.
+/// when something needs attention (see `MenuBarIconImage`). It is also the one
+/// view that always exists, so it opens the windows other parts of the app ask
+/// for (`WindowRequest`) and the Welcome window on first launch.
+///
+/// The label depends on nothing but what the icon shows and the window
+/// requests. The recovery decision's triggers live in `AppModel`
+/// (`watchRecoveryTriggers`), not here: a `.window`-style `MenuBarExtra` whose
+/// label re-evaluates for unrelated state can leave the popover standing when
+/// a row hands over to a new window.
 struct MenuBarLabel: View {
     let app: AppModel
     @Environment(\.openWindow) private var openWindow
@@ -21,22 +27,13 @@ struct MenuBarLabel: View {
     var body: some View {
         let icon = MenuBarIcon.from(app.monitor.state, helperVersion: app.helperVersion)
         MenuBarIconView(icon: icon)
+            .equatable()
             .accessibilityLabel(Text(verbatim: icon.label))
             .help(Text(verbatim: icon.label))
             .onChange(of: app.windowRequest) { _, request in
                 if let request { openWindow(id: request.id) }
             }
             .task { await app.openOnboardingIfNeeded() }
-            .onChange(of: app.monitor.state, initial: true) { _, _ in app.serviceRecoveryCheck() }
-            // What the restore may do also changes with these: a service action
-            // ending (the Uninstall sheet closing, a Settings, popover or
-            // onboarding action finishing, the restore itself), onboarding
-            // finishing, and what `service status` says.
-            .onChange(of: app.serviceActivity.anyBusy) { _, busy in if !busy { app.serviceRecoveryCheck() } }
-            .onChange(of: app.onboarding.finished) { _, done in if done { app.serviceRecoveryCheck() } }
-            .onChange(of: app.serviceWatcher.diagnosis) { _, _ in app.serviceRecoveryCheck() }
-            // The helper's version arrives a moment after launch; only then can a mismatch be seen.
-            .onChange(of: app.helperVersion) { _, _ in app.serviceRecoveryCheck() }
     }
 }
 

@@ -140,6 +140,8 @@ final class AppModel {
     @ObservationIgnored private var visibleSurfaces = Set<String>()
     @ObservationIgnored private var recoveryTimer: Task<Void, Never>?
     @ObservationIgnored private var observers = [NSObjectProtocol]()
+    /// The facts the recovery decision was last told about (`watchRecoveryTriggers`).
+    @ObservationIgnored private var lastRecoveryTriggers: RecoveryTriggers?
 
     init() {
         let socket = self.socket
@@ -234,6 +236,66 @@ final class AppModel {
             Task { @MainActor in self?.windowDidClose(closing: window) }
         }
         observers.append(closed)
+        // The recovery decision follows these facts for the app's lifetime,
+        // starting with one look now (the first state is not in yet, so this
+        // is the "checking" look; the first poll brings the next).
+        watchRecoveryTriggers()
+        serviceRecoveryCheck()
+    }
+
+    // MARK: the recovery decision's triggers
+
+    /// What `serviceRecoveryCheck()` is driven by: the connection, whether a
+    /// service action is running (`ServiceActivity`), onboarding being done,
+    /// what `service status` says and the helper's version.
+    private struct RecoveryTriggers: Equatable {
+        var state: ConnectionState?
+        var anyBusy: Bool
+        var onboardingFinished: Bool
+        var diagnosis: ServiceDiagnosis?
+        var helperVersion: String?
+    }
+
+    /// Reads the triggers; inside `withObservationTracking` that also records
+    /// which observable properties they depend on.
+    private func currentRecoveryTriggers() -> RecoveryTriggers {
+        RecoveryTriggers(state: monitor.state, anyBusy: serviceActivity.anyBusy, onboardingFinished: onboarding.finished,
+                         diagnosis: serviceWatcher.diagnosis, helperVersion: helperVersion)
+    }
+
+    /// Watches the triggers with the Observation framework instead of
+    /// `onChange` modifiers on the menu-bar label: the label must depend only
+    /// on what the icon shows, because a `.window`-style `MenuBarExtra` whose
+    /// label re-evaluates while the popover is open, or at the moment a popover
+    /// row hands over to a new window, can leave the popover standing (the
+    /// 0.2.4 regression). `withObservationTracking` fires once, before the
+    /// change is applied, so the work is deferred to the main actor's next
+    /// turn, compared with the facts last seen and re-armed.
+    private func watchRecoveryTriggers() {
+        let seen = withObservationTracking {
+            currentRecoveryTriggers()
+        } onChange: {
+            // Called before the change lands, from any thread, and not Sendable
+            // safe for `self`: the running instance is reached as the delegate does.
+            Task { @MainActor in AppModel.current?.recoveryTriggersChanged() }
+        }
+        if lastRecoveryTriggers == nil { lastRecoveryTriggers = seen }
+    }
+
+    /// The same rules the label's `onChange` modifiers had: every change of
+    /// the connection, of `service status` or of the helper's version looks
+    /// again; a service action ending (busy going false) and onboarding
+    /// finishing (finished going true) do too; nothing else does.
+    private func recoveryTriggersChanged() {
+        let previous = lastRecoveryTriggers
+        watchRecoveryTriggers()  // re-arm first: a change made by the check itself must be seen
+        let now = currentRecoveryTriggers()
+        lastRecoveryTriggers = now
+        guard let previous, previous != now else { return }  // a write of the same value
+        var due = previous.state != now.state || previous.diagnosis != now.diagnosis || previous.helperVersion != now.helperVersion
+        if previous.anyBusy && !now.anyBusy { due = true }
+        if !previous.onboardingFinished && now.onboardingFinished { due = true }
+        if due { serviceRecoveryCheck() }
     }
 
     /// While the daemon does not answer, asks the helper what the service is
@@ -315,8 +377,8 @@ final class AppModel {
     /// `ServiceRecovery`, `ServiceRestorePolicy`, `ServiceRestartPolicy` and
     /// `ServiceAskGate` for when). Called on every connection change, when a
     /// service action ends, when onboarding finishes, when `service status`
-    /// changes, when the helper's version becomes known (`MenuBarLabel`) and
-    /// again when the next decision is due. The service is never installed
+    /// changes, when the helper's version becomes known (`watchRecoveryTriggers`)
+    /// and again when the next decision is due. The service is never installed
     /// here unless the marker says the person installed it before.
     func serviceRecoveryCheck() {
         recoveryTimer?.cancel()

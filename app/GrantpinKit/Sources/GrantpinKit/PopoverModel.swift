@@ -203,8 +203,8 @@ public struct StatusLine: Equatable, Sendable {
 /// badge is a template image (the menu bar tints it for light, dark and the
 /// wallpaper-tinted bar); a badge needs colour, so those states are drawn as a
 /// non-template composite that tints the glyph itself to the bar's appearance.
-public struct MenuBarIcon: Equatable, Sendable {
-    public enum Badge: Equatable, Sendable {
+public struct MenuBarIcon: Hashable, Sendable {
+    public enum Badge: Hashable, Sendable {
         case none
         /// Orange dot: needs attention, nothing is down.
         case warning
