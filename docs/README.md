@@ -2,7 +2,7 @@
 
 grantpin is a local secrets broker for AI coding agents. It lets an agent (Claude Code, Codex, Cursor, anything with a shell or MCP) run a command that needs credentials without the agent ever receiving the credential, and without any release happening unless a human approves it at that moment. You store secrets once in an encrypted vault. The agent asks for "run this command with these secret names". A background daemon shows you the exact command in a native macOS dialog, then a Touch ID prompt. If you approve, the daemon starts the command with the secrets in its environment, returns the output with every injected value replaced by `[REDACTED:NAME]`, and writes an audit record. There is no operation that returns a secret to the agent; the only way a human sees a value is `grantpin show`, which is presence-gated and prints to a terminal.
 
-It is a single Go binary, Apache-2.0, local only (no cloud, no accounts). v0.1 supports macOS only.
+It is a single Go binary, Apache-2.0, local only (no cloud, no accounts). v0.2 supports macOS only.
 
 ## Architecture
 
@@ -63,7 +63,7 @@ install -m 0755 bin/grantpin ~/.local/bin/grantpin   # or any permanent director
 
 **For a from-source build on current macOS, create the vault with `grantpin init --keychain-fallback`** (next section). Plain `grantpin init` is the path for a properly signed build, where the Secure Enclave is available.
 
-**Signed bundle (restores the Secure Enclave).** With an Apple Developer account you can build `dist/grantpin.app`, sign it, and run the daemon from it; the daemon inside the bundle can then create the Secure Enclave key (`keystore tier: hardware`). It needs Xcode. The app is two bundles: the outer `grantpin.app` is the SwiftUI menu-bar app (a stub so far: menu bar icon, a status line, Quit), and the Go binary lives in its own nested bundle, `grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin`, because the provisioning profile is only honoured for a bundle's main executable. The binary is built for macOS 14.0 or newer (`minos 14.0`; `make helper` checks it).
+**Signed bundle (restores the Secure Enclave).** With an Apple Developer account you can build `dist/grantpin.app`, sign it, and run the daemon from it; the daemon inside the bundle can then create the Secure Enclave key (`keystore tier: hardware`). It needs Xcode. The app is two bundles: the outer `grantpin.app` is the SwiftUI menu-bar app (menu bar status, onboarding, a secrets list with add, edit, delete and `.env` import, grants, an activity view, settings and an uninstall sheet), and the Go binary lives in its own nested bundle, `grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin`, because the provisioning profile is only honoured for a bundle's main executable. The binary is built for macOS 14.0 or newer (`minos 14.0`; `make helper` checks it).
 
 ```sh
 make bundle                                   # xcodebuild + the Go helper -> dist/grantpin.app (unsigned)
@@ -266,6 +266,7 @@ Available Commands:
   help        Help about any command
   import      Import secrets from a .env file
   init        Create the vault and wrap its data key in the KeyStore
+  keystore    Manage the key material that protects the vault
   list        List secret names and metadata (never values)
   masked      Show a secret's masked form (last 4 characters only)
   mcp         Run the stdio MCP server (thin shim over the daemon socket)
@@ -274,6 +275,7 @@ Available Commands:
   set         Store a secret (value from stdin or hidden prompt)
   show        Print a secret to the terminal (presence-gated, TTY only)
   status      Show daemon, vault and backend status
+  update      Change a secret's metadata without touching its value
 
 Flags:
   -h, --help      help for grantpin
@@ -367,7 +369,7 @@ Flags:
 
 ### `grantpin update`
 
-Changes a secret's metadata without touching its value: any subset of `--tags`, `--url`, `--notes`, `--expires` and `--min-tier`. Fields you leave out stay as they are. An empty `--tags ""`, `--url ""` or `--notes ""` clears that field and `--clear-expires` removes the expiry. `--expires 30d` is counted from now. Changing `--min-tier` re-encrypts the stored value (the protection level is part of its authenticated data). `none` means the vault default. Fails with `secret_not_found` if the name is absent. **Not presence-gated**, audited as `allowed_once` with reason `update`, except that **lowering** `--min-tier` (for example `hardware` to `dialog`) asks first: a "Lower the protection of NAME from hardware to dialog?" dialog (Cancel / Lower) and then Touch ID, and the audit reason is `update: lower min_tier`. Raising the level never asks.
+Changes a secret's metadata without touching its value: any subset of `--tags`, `--url`, `--notes`, `--expires` and `--min-tier`. Fields you leave out stay as they are. An empty `--tags ""`, `--url ""` or `--notes ""` clears that field and `--clear-expires` removes the expiry. `--expires 30d` is counted from now. Changing `--min-tier` re-encrypts the stored value (the protection level is part of its authenticated data). `none` means the vault default. Fails with `secret_not_found` if the name is absent. It also works on a secret that has already expired: `--expires 30d` (counted from now) or `--clear-expires` makes it usable again, so this is the fix for `secret_expired`. **Not presence-gated**, audited as `allowed_once` with reason `update`, except that **lowering** `--min-tier` (for example `hardware` to `dialog`) asks first: a "Lower the protection of NAME from hardware to dialog?" dialog (Cancel / Lower) and then Touch ID, and the audit reason is `update: lower min_tier`. Raising the level never asks.
 
 ```
 Change the tags, URL, notes, expiry or minimum presence tier of an existing secret. The value is never read or sent. Give any subset of the flags; fields you leave out stay as they are. An empty --tags, --url or --notes clears that field, and --clear-expires removes the expiry. Changing --min-tier re-encrypts the stored value; lowering it asks for confirmation (dialog and Touch ID).
@@ -594,17 +596,24 @@ Flags:
 
 ### `grantpin import`
 
-Reads `KEY=value` lines (`export` prefix, quotes, `#` comments; no `${VAR}` expansion; keys must match `[A-Za-z_][A-Za-z0-9_]*`). `FILE` may be `-`. Empty values are skipped. Duplicate keys: the last wins. **Not atomic**: the CLI sends one `set` per key, so a daemon error midway leaves a partial import.
+Reads `KEY=value` lines (`export` prefix, quotes, `#` comments; no `${VAR}` expansion; keys must match `[A-Za-z_][A-Za-z0-9_]*`). `FILE` may be `-`. Empty values are skipped. Duplicate keys: the last wins. `--namespace NAME` stores each key as `NAME/KEY` (for example `grantpin import .env --namespace shop` turns `STRIPE_KEY` into `shop/STRIPE_KEY`); without it, keys keep their bare names. `NAME` must be non-empty and made of the secret-name characters (`A-Z a-z 0-9 _ / . -`), must not start or end with `/`, contain `//` or `..`, or have a `.` segment, and `NAME/KEY` must be a valid secret name (at most 256 bytes). An invalid `NAME` is refused before the file is read or anything is written. `--dry-run` prints the final names, and `--on-conflict` is checked against them, so importing the same file under two namespaces never conflicts. **Not atomic**: the CLI sends one `set` per key, so a daemon error midway leaves a partial import.
 
 ```
 Import KEY=value pairs from a .env file (FILE may be - for stdin). Each key becomes a secret with default metadata. The file is parsed here; values go to the daemon one `set` at a time. Names are validated and conflicts detected before anything is written, but a daemon error midway can leave a partial import.
 
+With --namespace NAME each key is stored as NAME/KEY (for example --namespace shop turns STRIPE_KEY into shop/STRIPE_KEY). NAME must be a valid secret name: only A-Z a-z 0-9 _ / . -, not starting or ending with /, no //, no .. and no . segment. --dry-run and --on-conflict work on the final names.
+
 Usage:
   grantpin import FILE [flags]
+
+Examples:
+  grantpin import .env
+  grantpin import .env --namespace shop --dry-run
 
 Flags:
       --dry-run              show what would be imported without writing
   -h, --help                 help for import
+      --namespace string     store each key as NAME/KEY (NAME: A-Z a-z 0-9 _ / . -, no leading or trailing /, no //)
       --on-conflict string   when a name already exists: skip, overwrite or error (default "error")
       --socket string        socket path (default: $GRANTPIN_SOCKET or the platform default)
 ```
@@ -626,7 +635,7 @@ Flags:
 
 ### `grantpin service`
 
-macOS only in v0.1.
+macOS only in v0.2.
 
 ```
 Manage the background service (launchd / systemd --user / Windows task)
@@ -724,7 +733,11 @@ Flags:
 Deletes the key material that protects the vault, for uninstalling. **Afterwards the vault can never be opened again and its secrets cannot be recovered.** `--fallback` removes the Keychain item that holds the key-encryption key of a vault created with `grantpin init --keychain-fallback`; `--hardware` removes the Secure Enclave key. Give exactly one, and `--yes` (there is no prompt; without it the command refuses). It refuses as well while a daemon still answers on the socket, unless `--force`; stop the service first (`grantpin service uninstall`). The macOS app's Uninstall calls exactly `grantpin keystore delete --fallback --yes` or `--hardware --yes`, because `security delete-generic-password` cannot reach the data-protection keychain where the fallback item lives. Exit status: 0 deleted, 3 there was no such key material, 2 refused, 1 any other failure. On stdout it prints nothing; stderr carries the warning. On platforms without a key store of this kind it prints `unsupported` and exits 1.
 
 ```
-Delete the vault's key material (the vault becomes permanently unreadable)
+Delete the key material that protects the vault, for uninstalling. Afterwards the vault file can never be opened again, and nothing can recover its secrets.
+
+--fallback removes the Keychain item that holds the key-encryption key of a vault created with the Keychain fallback. --hardware removes the Secure Enclave key reference. Give exactly one. --yes is required; there is no prompt.
+
+Exit status: 0 deleted; 3 there was no such key material; 2 refused (no --yes, or the daemon is still answering on its socket, unless --force); 1 any other failure. Nothing is printed on stdout.
 
 Usage:
   grantpin keystore delete (--fallback | --hardware) --yes [flags]

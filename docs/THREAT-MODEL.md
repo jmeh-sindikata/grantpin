@@ -1,6 +1,6 @@
 # Threat model
 
-This document says what grantpin defends, against whom, how, and where it stops working. It describes the code as it is in v0.1 (macOS only). Where a claim rests on something I could not verify, it says so. File references are to this repository.
+This document says what grantpin defends, against whom, how, and where it stops working. It describes the code as it is in v0.2 (macOS only). Where a claim rests on something I could not verify, it says so. File references are to this repository.
 
 The one-sentence version: grantpin keeps secret values out of an AI agent's context and makes every release visible to a human; the single real security boundary is **human presence at release time**, and that boundary is enforced by the daemon's own logic, not by cryptography, so it holds against an agent that has a shell and a socket (including one that edits the vault file: grant rows are MAC'd), and does not hold against code that can act as the daemon, replace its binary or service definition, or otherwise control your account.
 
