@@ -52,7 +52,9 @@ public final class OnboardingModel {
         "Your secrets stay on this Mac, encrypted.",
     ]
     public static let serviceText =
-        "grantpin needs a small background service so agents can reach it. macOS may tell you a background item was added; that is this."
+        "grantpin needs a small background service so agents can reach it."
+    /// The background-item notice under the service text (`BackgroundItemNotice`).
+    public nonisolated static var serviceNotice: String { BackgroundItemNotice.full() }
     public static let vaultText =
         "Your vault is where secrets are kept. Its key lives in this Mac's Secure Enclave and can't be copied off. "
         + "You'll use Touch ID when an agent asks to use a secret. Saving a secret here doesn't need it."

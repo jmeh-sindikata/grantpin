@@ -64,21 +64,49 @@ final class StatusLineTests: XCTestCase {
 }
 
 final class MenuBarIconTests: XCTestCase {
-    func testSymbolsPerState() {
-        XCTAssertEqual(MenuBarIcon.from(.ready(StatusResult(keystoreTier: .hardware))).symbol, "lock.shield.fill")
-        XCTAssertEqual(MenuBarIcon.from(.locked(lastError: nil)).symbol, "lock.shield")
-        XCTAssertTrue(MenuBarIcon.from(.locked(lastError: nil)).subdued)
-        XCTAssertEqual(MenuBarIcon.from(nil).symbol, "lock.shield")
-        for s in [ConnectionState.notRunning, .notInitialized, .ready(StatusResult(tamperedGrants: 1))] {
-            XCTAssertEqual(MenuBarIcon.from(s).symbol, "lock.trianglebadge.exclamationmark", "\(s)")
-            XCTAssertFalse(MenuBarIcon.from(s).subdued)
+    private func icon(_ s: ConnectionState?) -> MenuBarIcon { MenuBarIcon.from(s) }
+
+    func testEveryStateMapsToItsVariantAndLabel() {
+        let cases: [(String, ConnectionState?, MenuBarIcon.Badge, Bool, String)] = [
+            ("checking", nil, .none, true, "grantpin: checking"),
+            ("not running", .notRunning, .error, true, "grantpin: not running"),
+            ("locked", .locked(lastError: nil), .none, true, "grantpin: vault locked"),
+            ("locked with error", .locked(lastError: "x"), .none, true, "grantpin: vault locked"),
+            ("no vault", .notInitialized, .warning, false, "grantpin: no vault yet"),
+            ("ready", .ready(StatusResult(keystoreTier: .hardware)), .none, false, "grantpin"),
+            ("ready, keychain only", .ready(StatusResult(keystoreTier: .dialog)), .none, false, "grantpin"),
+            ("tampered", .ready(StatusResult(tamperedGrants: 1)), .warning, false, "grantpin: grants failed verification"),
+        ]
+        for (name, state, badge, subdued, label) in cases {
+            let i = icon(state)
+            XCTAssertEqual(i.badge, badge, name)
+            XCTAssertEqual(i.subdued, subdued, name)
+            XCTAssertEqual(i.label, label, name)
         }
-        XCTAssertFalse(MenuBarIcon.from(.ready(StatusResult())).subdued)
+    }
+
+    func testOnlyAHealthyDaemonLooksPlain() {
+        let plainAndBright = [ConnectionState.ready(StatusResult(keystoreTier: .hardware))]
+        for s in plainAndBright {
+            XCTAssertEqual(icon(s), MenuBarIcon(subdued: false, badge: .none, label: "grantpin"))
+        }
+        XCTAssertNotEqual(icon(.notRunning), icon(.ready(StatusResult())), "a missing service must not look like a running one")
+        XCTAssertEqual(icon(.notRunning).badge, .error)
+        XCTAssertEqual(icon(.notRunning).label, "grantpin: not running")
+    }
+
+    func testBadgesNeedAColouredImageAndPlainStatesStayTemplates() {
+        XCTAssertTrue(icon(.ready(StatusResult())).usesTemplateImage)
+        XCTAssertTrue(icon(.locked(lastError: nil)).usesTemplateImage)
+        XCTAssertTrue(icon(nil).usesTemplateImage)
+        XCTAssertFalse(icon(.notRunning).usesTemplateImage)
+        XCTAssertFalse(icon(.notInitialized).usesTemplateImage)
+        XCTAssertFalse(icon(.ready(StatusResult(tamperedGrants: 2))).usesTemplateImage)
     }
 
     func testEveryStateHasAnAccessibilityLabel() {
         for s in [nil, ConnectionState.notRunning, .notInitialized, .locked(lastError: nil), .ready(StatusResult())] {
-            XCTAssertTrue(MenuBarIcon.from(s).label.hasPrefix("grantpin"))
+            XCTAssertTrue(icon(s).label.hasPrefix("grantpin"))
         }
     }
 }

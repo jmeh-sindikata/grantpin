@@ -117,7 +117,7 @@ public enum ServiceDiagnosis: Equatable, Sendable {
         switch self {
         case .notInstalled: return "grantpin is not set up to run in the background"
         case .exeMissing: return "The background service points to a file that no longer exists"
-        case .notRunning: return "grantpin is not running"
+        case .notRunning: return "grantpin's background service is stopped"
         case .notAnswering: return "grantpin is running but not answering"
         case .keepsStopping: return "grantpin keeps stopping"
         }
@@ -127,7 +127,7 @@ public enum ServiceDiagnosis: Equatable, Sendable {
         switch self {
         case .notInstalled: return "Start it to use your secrets."
         case .exeMissing: return "The app was moved or replaced. Repair points the service at this app."
-        case .notRunning: return "The service is installed but stopped. Start it to use your secrets."
+        case .notRunning: return "Start it to use your secrets."
         case .notAnswering: return "Restart the service. If it happens again, the log folder has the reason."
         case .keepsStopping: return "The service started and stopped again and again. The log folder has the reason."
         }

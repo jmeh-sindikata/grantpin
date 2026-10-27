@@ -52,6 +52,9 @@ public struct StatusLine: Equatable, Sendable {
     public var activeGrants: Int?
     /// `tampered_grants` of the daemon, when above zero.
     public var tamperedGrants: Int?
+    /// One short line under the detail: what macOS will say when the
+    /// background service is installed (only in the not-set-up state).
+    public var note: String?
 
     /// The warning shown under the counts when grants failed verification.
     public var tamperedWarning: String? {
@@ -76,7 +79,10 @@ public struct StatusLine: Equatable, Sendable {
             if let service {
                 var line = StatusLine(level: .error, headline: service.headline, detail: service.detail)
                 switch service {
-                case .notInstalled, .notRunning: line.button = .startService
+                case .notInstalled:
+                    line.button = .startService
+                    line.note = BackgroundItemNotice.short()
+                case .notRunning: line.button = .startService
                 case .exeMissing: line.button = .repair
                 case .notAnswering: line.button = .restart; line.secondButton = .openLogs
                 case .keepsStopping: line.button = .openLogs
@@ -125,31 +131,50 @@ public struct StatusLine: Equatable, Sendable {
     }
 }
 
-/// The menu-bar icon for a state (docs/UI-SPEC.md 3.1): a template SF Symbol,
-/// plain when healthy, a quieter outline while the vault is locked or being
-/// checked, and a warning badge when the daemon is down, there is no vault, or
-/// grants failed verification.
+/// The menu-bar icon for a state (docs/UI-SPEC.md 3.1): the grantpin glyph,
+/// plain when healthy, dimmed while the vault is locked or being checked, and
+/// with a badge when something needs attention. The badge is what makes a
+/// daemon that is not running visible at a glance: a red dot (error) when the
+/// daemon does not answer, an orange one (warning) when there is no vault yet
+/// or grants failed verification.
+///
+/// This type only decides what to show. The app draws it: a state without a
+/// badge is a template image (the menu bar tints it for light, dark and the
+/// wallpaper-tinted bar); a badge needs colour, so those states are drawn as a
+/// non-template composite that tints the glyph itself to the bar's appearance.
 public struct MenuBarIcon: Equatable, Sendable {
-    public var symbol: String
-    /// Draw dimmed: the state is not a problem, just not active.
+    public enum Badge: Equatable, Sendable {
+        case none
+        /// Orange dot: needs attention, nothing is down.
+        case warning
+        /// Red dot: grantpin cannot work until the person acts.
+        case error
+    }
+
+    /// Draw the glyph dimmed.
     public var subdued: Bool
+    public var badge: Badge
+    /// The accessibility label and the tooltip.
     public var label: String
+
+    /// Plain states stay template images; a badge needs a coloured image.
+    public var usesTemplateImage: Bool { badge == .none }
 
     public static func from(_ state: ConnectionState?) -> MenuBarIcon {
         switch state {
         case nil:
-            return MenuBarIcon(symbol: "lock.shield", subdued: true, label: "grantpin: checking")
+            return MenuBarIcon(subdued: true, badge: .none, label: "grantpin: checking")
         case .notRunning?:
-            return MenuBarIcon(symbol: "lock.trianglebadge.exclamationmark", subdued: false, label: "grantpin: not running")
+            return MenuBarIcon(subdued: true, badge: .error, label: "grantpin: not running")
         case .notInitialized?:
-            return MenuBarIcon(symbol: "lock.trianglebadge.exclamationmark", subdued: false, label: "grantpin: no vault yet")
+            return MenuBarIcon(subdued: false, badge: .warning, label: "grantpin: no vault yet")
         case .locked?:
-            return MenuBarIcon(symbol: "lock.shield", subdued: true, label: "grantpin: vault locked")
+            return MenuBarIcon(subdued: true, badge: .none, label: "grantpin: vault locked")
         case .ready(let s)?:
             if s.tamperedGrants > 0 {
-                return MenuBarIcon(symbol: "lock.trianglebadge.exclamationmark", subdued: false, label: "grantpin: grants failed verification")
+                return MenuBarIcon(subdued: false, badge: .warning, label: "grantpin: grants failed verification")
             }
-            return MenuBarIcon(symbol: "lock.shield.fill", subdued: false, label: "grantpin")
+            return MenuBarIcon(subdued: false, badge: .none, label: "grantpin")
         }
     }
 }

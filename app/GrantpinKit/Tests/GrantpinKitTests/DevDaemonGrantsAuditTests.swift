@@ -149,7 +149,7 @@ final class DevDaemonGrantsAuditTests: DevDaemonCase {
         let line = StatusLine.from(.ready(status))
         XCTAssertEqual(line.button, .review)
         XCTAssertEqual(line.tamperedWarning, "TAMPERED: 3 grants failed verification. Open Grants to review.")
-        XCTAssertEqual(MenuBarIcon.from(.ready(status)).symbol, "lock.trianglebadge.exclamationmark")
+        XCTAssertEqual(MenuBarIcon.from(.ready(status)).badge, .warning)
 
         // Remove one tampered row; the confirmation is the Remove text
         XCTAssertEqual(m.revokeConfirmation(for: "forged1")?.title, "Remove this grant?")

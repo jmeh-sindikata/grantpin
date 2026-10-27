@@ -82,7 +82,7 @@ final class ServiceDiagnosisTests: XCTestCase {
         XCTAssertEqual(line(.notInstalled).button, .startService)
         XCTAssertEqual(line(.exeMissing).headline, "The background service points to a file that no longer exists")
         XCTAssertEqual(line(.exeMissing).button, .repair)
-        XCTAssertEqual(line(.notRunning).headline, "grantpin is not running")
+        XCTAssertEqual(line(.notRunning).headline, "grantpin's background service is stopped")
         XCTAssertEqual(line(.notRunning).button, .startService)
         XCTAssertEqual(line(.notAnswering(pid: 5)).headline, "grantpin is running but not answering")
         XCTAssertEqual(line(.notAnswering(pid: 5)).button, .restart)
@@ -93,6 +93,18 @@ final class ServiceDiagnosisTests: XCTestCase {
             XCTAssertEqual(line(d).level, .error)
             XCTAssertFalse(d.detail.isEmpty)
         }
+    }
+
+    func testOnlyTheNotSetUpStateCarriesTheBackgroundItemNote() {
+        func line(_ d: ServiceDiagnosis) -> StatusLine { StatusLine.from(.notRunning, service: d) }
+        XCTAssertEqual(line(.notInstalled).note, BackgroundItemNotice.short())
+        XCTAssertEqual(line(.notInstalled).detail, "Start it to use your secrets.")
+        XCTAssertEqual(line(.notRunning).detail, "Start it to use your secrets.")
+        for d in [ServiceDiagnosis.notRunning, .exeMissing, .notAnswering(pid: 1), .keepsStopping] {
+            XCTAssertNil(line(d).note, "\(d)")
+        }
+        XCTAssertNil(StatusLine.from(.notRunning).note)
+        XCTAssertNil(StatusLine.from(.ready(StatusResult())).note)
     }
 
     func testUnknownServiceStateKeepsTheGenericLine() {
