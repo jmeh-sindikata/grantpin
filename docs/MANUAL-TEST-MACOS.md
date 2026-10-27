@@ -646,7 +646,15 @@ part of 7 need the real install and a spare account or a Mac you can reset.
     agent running `php --version` or another Homebrew tool works after an install from
     a Finder-launched app; Version shows `{version} · protocol 1`, and after replacing
     the app with a newer build Settings and the popover say "grantpin was updated.
-    Restart the background service to finish." with **Restart**.
+    Restart the background service to finish." with **Restart**, the menu-bar icon
+    gets an orange dot ("grantpin: updated, restart needed"), and within a status poll
+    the app restarts the service by itself when `grantpin status` says `runs: 0 in
+    flight`, then shows "grantpin restarted its background service after the update."
+    (Settings > General says when); with a `grantpin run -- sleep 60` in flight it waits
+    and, after ten seconds, opens the "grantpin background service" window with
+    **Restart** and **Later**, and restarts once the run has ended. Any popover row
+    that opens a window (Settings, All Secrets, a secret, Grants, Activity) closes the
+    popover first, and the menu-bar icon's highlight is released.
 22. Connect: both Copy buttons put exactly the displayed text on the clipboard;
     running the command in a new terminal registers the server; `/mcp` in Claude Code
     lists `secret_list`, `secret_exists`, `secret_masked`, `secret_run`; repeat with
