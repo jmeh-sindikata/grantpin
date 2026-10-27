@@ -19,7 +19,7 @@ struct MenuBarLabel: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        let icon = MenuBarIcon.from(app.monitor.state)
+        let icon = MenuBarIcon.from(app.monitor.state, helperVersion: app.helperVersion)
         MenuBarIconView(icon: icon)
             .accessibilityLabel(Text(verbatim: icon.label))
             .help(Text(verbatim: icon.label))
