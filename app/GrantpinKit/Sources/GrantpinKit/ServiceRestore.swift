@@ -73,8 +73,12 @@ public struct ServiceRestorePolicy: Sendable {
     /// The ask window opened for the not-running period in progress: the
     /// person has been shown the situation, so the service is not restored
     /// behind their back later in the same period (the two are alternatives).
-    /// Cleared when the daemon answers.
+    /// Cleared once the daemon has answered for `ServiceAskGate.stableUp`,
+    /// the point from which the gate counts the next trouble as a new period;
+    /// a shorter up is the same trouble to both.
     public private(set) var asked = false
+    /// Since when the daemon has answered, nil while it is down.
+    private var upSince: Date?
 
     public init() {}
 
@@ -84,9 +88,12 @@ public struct ServiceRestorePolicy: Sendable {
         guard let state else { return }
         if case .notRunning = state {
             if downSince == nil { downSince = now }
+            if let up = upSince, now.timeIntervalSince(up) >= ServiceAskGate.stableUp { asked = false }
+            upSince = nil
         } else {
             downSince = nil
-            asked = false
+            if upSince == nil { upSince = now }
+            if let up = upSince, now.timeIntervalSince(up) >= ServiceAskGate.stableUp { asked = false }
         }
     }
 

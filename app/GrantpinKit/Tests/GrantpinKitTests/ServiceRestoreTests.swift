@@ -117,8 +117,27 @@ final class ServiceRestorePolicyTests: XCTestCase {
         XCTAssertFalse(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(10)))
         XCTAssertNil(p.waitTime(now: t0.addingTimeInterval(3)))
         XCTAssertFalse(p.attempted, "the attempt is kept for a later outage")
-        // the daemon answers and goes down again: a new period
+        // the daemon answers for a good while and goes down again: a new period
         p.observe(.ready(StatusResult()), now: t0.addingTimeInterval(100))
+        p.observe(.notRunning, now: t0.addingTimeInterval(200))
+        XCTAssertFalse(p.asked)
+        XCTAssertTrue(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(210)))
+    }
+
+    func testAShortUpKeepsTheAskedPeriodAsTheGateDoes() {
+        var p = ServiceRestorePolicy()
+        p.observe(.notRunning, now: t0)
+        p.noteAsked()
+        // the person's own Start brings it up at 15 and it dies at 30: the gate calls that the same trouble
+        p.observe(.ready(StatusResult()), now: t0.addingTimeInterval(15))
+        XCTAssertTrue(p.asked)
+        p.observe(.notRunning, now: t0.addingTimeInterval(30))
+        XCTAssertTrue(p.asked)
+        XCTAssertFalse(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(40)), "no silent restore in an asked period")
+        XCTAssertNil(p.waitTime(now: t0.addingTimeInterval(35)))
+        // up for stableUp: the next down is a new period
+        p.observe(.ready(StatusResult()), now: t0.addingTimeInterval(50))
+        p.observe(.ready(StatusResult()), now: t0.addingTimeInterval(50 + ServiceAskGate.stableUp))
         XCTAssertFalse(p.asked)
         p.observe(.notRunning, now: t0.addingTimeInterval(200))
         XCTAssertTrue(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(210)))
