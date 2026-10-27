@@ -174,12 +174,21 @@ final class PopoverModelTests: XCTestCase {
     func testStartRunsTheActionAndKeepsTheResult() async {
         let actions = FakeActions()
         var polled = 0
-        let m = PopoverModel(audit: FakeService(), actions: actions, onActionFinished: { polled += 1 })
+        var runningDuringPoll: StatusLine.Button?
+        var resultDuringPoll: ActionResult?
+        var m: PopoverModel!
+        m = PopoverModel(audit: FakeService(), actions: actions, onActionFinished: {
+            polled += 1
+            runningDuringPoll = m.running
+            resultDuringPoll = m.lastResult
+        })
         await m.start()
         XCTAssertEqual(actions.started, 1)
         XCTAssertEqual(m.lastResult?.summary, "grantpin is running in the background.")
         XCTAssertNil(m.running)
         XCTAssertEqual(polled, 1, "status is polled right away")
+        XCTAssertEqual(runningDuringPoll, .startService, "the buttons stay off until the new state is known")
+        XCTAssertEqual(resultDuringPoll?.summary, "grantpin is running in the background.")
         m.dismissResult()
         XCTAssertNil(m.lastResult)
     }

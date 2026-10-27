@@ -200,7 +200,8 @@ public final class PopoverModel {
     public private(set) var activityLoaded = false
     /// The six most recently updated secrets (docs/UI-SPEC.md 3.1), newest first.
     public private(set) var quickSecrets: [SecretInfo] = []
-    /// The button that is running now, if any.
+    /// The button that is running now, if any, through the status poll that
+    /// follows the action: the buttons stay off until the new state is known.
     public private(set) var running: StatusLine.Button?
     /// The result of the last button press, shown under the status line.
     public private(set) var lastResult: ActionResult?
@@ -317,8 +318,8 @@ public final class PopoverModel {
         case .setUp, .review, .openLogs: return nil
         }
         lastResult = result
-        running = nil
         await onActionFinished()
+        running = nil
         return result
     }
 
