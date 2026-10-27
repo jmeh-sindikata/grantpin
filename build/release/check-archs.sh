@@ -2,7 +2,7 @@
 # Fails unless every given Mach-O has exactly the expected architectures.
 #
 #   usage: build/release/check-archs.sh "<archs>" <macho>...
-#   e.g.   build/release/check-archs.sh "x86_64 arm64" dist/grantpin.app/Contents/MacOS/grantpin-app
+#   e.g.   build/release/check-archs.sh "x86_64 arm64" dist/stage.noindex/grantpin.app/Contents/MacOS/grantpin-app
 #
 # Order does not matter ("arm64 x86_64" equals "x86_64 arm64"). Used by make bundle
 # (UNIVERSAL=1), build/release/verify-signing.sh and make verify-release.

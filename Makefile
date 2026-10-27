@@ -44,9 +44,14 @@ BUNDLE_VERSION := $(or $(VERSION_NUM),$(VERSION))
 BUNDLE_ID      ?= dev.grantpin.app
 KEYCHAIN_GROUP ?= dev.grantpin
 MIN_MACOS      ?= 14.0
-APP            := dist/grantpin.app
+# Every directory that holds an unsigned or intermediate .app ends in .noindex, so
+# Spotlight skips it: those copies share the installed app's bundle ID, and macOS
+# may otherwise open the wrong one by bundle ID. `make clean-apps` deletes them.
+BUILD_XCODE    := build/xcode.noindex
+STAGE_DIR      := dist/stage.noindex
+APP            := $(STAGE_DIR)/grantpin.app
 HELPER_APP     := $(APP)/Contents/Helpers/grantpin-daemon.app
-APP_PRODUCT    := build/xcode/Build/Products/Release/grantpin-app.app
+APP_PRODUCT    := $(BUILD_XCODE)/Build/Products/Release/grantpin-app.app
 BUILD_NUMBER   ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 BUNDLE_BUILD   := $(or $(VERSION_NUM),$(BUILD_NUMBER))
 # codesign timestamp option; use CODESIGN_TIMESTAMP=--timestamp=none offline.
@@ -87,9 +92,9 @@ RELEASE_TEAM_ID  ?= MT2QHQX6PS
 NOTARY_PROFILE   ?= grantpin-notary
 NOTARIZE_ZIP     := dist/grantpin-notarize.zip
 DMG              := dist/grantpin-$(or $(DMG_VERSION),$(VERSION)).dmg
-DMG_STAGE        := dist/dmg-stage
+DMG_STAGE        := $(STAGE_DIR)/dmg-stage
 
-.PHONY: build helper helper-universal app icons bundle sign-bundle sign-release notarize dmg release release-check verify-release app-test ci-app app-dev-daemon dist-src sign test vet lint cover dev-test tools-check ci clean
+.PHONY: clean-apps build helper helper-universal app icons bundle sign-bundle sign-release notarize dmg release release-check verify-release app-test ci-app app-dev-daemon dist-src sign test vet lint cover dev-test tools-check ci clean
 
 build: ## Build bin/grantpin (production tags: no dev backends)
 	@echo "version: $(VERSION) ($(VERSION_SRC))"
@@ -136,19 +141,19 @@ helper-universal: ## Build a fat bin/grantpin (arm64 + x86_64, cgo cross-built, 
 	rm -f bin/grantpin-arm64 bin/grantpin-amd64; \
 	echo "bin/grantpin: $$(lipo -archs bin/grantpin), minos $(MIN_MACOS) in each slice"
 
-app: $(HELPER_DEP) ## Build dist/grantpin.app (unsigned) with xcodebuild: SwiftUI app + nested Go helper (macOS, Xcode); UNIVERSAL=1 for arm64 + x86_64
+app: $(HELPER_DEP) ## Build dist/stage.noindex/grantpin.app (unsigned) with xcodebuild: SwiftUI app + nested Go helper (macOS, Xcode); UNIVERSAL=1 for arm64 + x86_64
 	@command -v xcodebuild >/dev/null || { echo "make app: xcodebuild not found (install Xcode, then xcode-select it)" >&2; exit 2; }
-	rm -rf build/xcode/Build/Products
+	rm -rf $(BUILD_XCODE)/Build/Products
 	xcodebuild -project app/Grantpin.xcodeproj -scheme Grantpin -configuration Release \
-	  -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=NO ARCHS="$(APP_ARCHS)" \
+	  -derivedDataPath $(BUILD_XCODE) CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=NO ARCHS="$(APP_ARCHS)" \
 	  MACOSX_DEPLOYMENT_TARGET=$(MIN_MACOS) MARKETING_VERSION='$(BUNDLE_VERSION)' CURRENT_PROJECT_VERSION=$(BUNDLE_BUILD) \
 	  PRODUCT_BUNDLE_IDENTIFIER=$(BUNDLE_ID) DAEMON_BUNDLE_ID=$(BUNDLE_ID).daemon DAEMON_MIN_MACOS=$(MIN_MACOS) \
 	  build
 	rm -rf $(APP)
-	mkdir -p dist
+	mkdir -p $(STAGE_DIR)
 	ditto $(APP_PRODUCT) $(APP)
 
-bundle: app ## Assemble and check dist/grantpin.app (unsigned; macOS; see docs/MANUAL-TEST-MACOS.md 2c)
+bundle: app ## Assemble and check dist/stage.noindex/grantpin.app (unsigned; macOS; see docs/MANUAL-TEST-MACOS.md 2c)
 	@echo "bundle version: $(VERSION) ($(VERSION_SRC)); CFBundleShortVersionString $(BUNDLE_VERSION), CFBundleVersion $(BUNDLE_BUILD)"
 	@test -x $(APP)/Contents/MacOS/grantpin-app || { echo "make bundle: $(APP)/Contents/MacOS/grantpin-app missing"; exit 1; }
 	@test -x $(HELPER_APP)/Contents/MacOS/grantpin || { echo "make bundle: $(HELPER_APP)/Contents/MacOS/grantpin missing"; exit 1; }
@@ -166,7 +171,7 @@ bundle: app ## Assemble and check dist/grantpin.app (unsigned; macOS; see docs/M
 	@if [ -n "$(EXPECT_ARCHS)" ]; then build/release/check-archs.sh "$(EXPECT_ARCHS)" $(APP)/Contents/MacOS/grantpin-app $(HELPER_APP)/Contents/MacOS/grantpin; fi
 	@echo "built $(APP) (unsigned; run make sign-bundle to sign it, see docs/MANUAL-TEST-MACOS.md 2c)"
 
-sign-bundle: ## Sign dist/grantpin.app inside-out: make sign-bundle IDENTITY="Developer ID Application: Name (TEAMID)" PROFILE=/path/x.provisionprofile TEAM_ID=TEAMID
+sign-bundle: ## Sign dist/stage.noindex/grantpin.app inside-out: make sign-bundle IDENTITY="Developer ID Application: Name (TEAMID)" PROFILE=/path/x.provisionprofile TEAM_ID=TEAMID
 	@missing=""; \
 	[ -n "$(IDENTITY)" ] || missing="$$missing IDENTITY"; \
 	[ -n "$(PROFILE)" ]  || missing="$$missing PROFILE"; \
@@ -222,7 +227,7 @@ sign-bundle: ## Sign dist/grantpin.app inside-out: make sign-bundle IDENTITY="De
 	@echo "check that the entitlements above show $(TEAM_ID).$(BUNDLE_ID) and $(TEAM_ID).$(KEYCHAIN_GROUP), then:"
 	@echo "  GRANTPIN_HOME=\$$(mktemp -d) $(HELPER_APP)/Contents/MacOS/grantpin init     # must print: keystore tier: hardware"
 
-sign-release: ## Developer ID, hardened-runtime signing of dist/grantpin.app: make sign-release PROFILE=/path/Developer_ID.provisionprofile
+sign-release: ## Developer ID, hardened-runtime signing of dist/stage.noindex/grantpin.app: make sign-release PROFILE=/path/Developer_ID.provisionprofile
 	@[ -n "$(PROFILE)" ] || { echo "make sign-release: PROFILE is required" >&2; echo "usage: make sign-release PROFILE=/path/to/Developer_ID.provisionprofile   (after make bundle; see docs/RELEASE.md)" >&2; exit 2; }
 	@[ "$(CODESIGN_TIMESTAMP)" = "--timestamp" ] || { echo "make sign-release: CODESIGN_TIMESTAMP is '$(CODESIGN_TIMESTAMP)'; a release needs a secure timestamp (--timestamp)" >&2; exit 2; }
 	@security find-identity -v -p codesigning | grep -qF '"$(RELEASE_IDENTITY)"' || { echo "make sign-release: identity '$(RELEASE_IDENTITY)' not found in the keychain (security find-identity -v -p codesigning)" >&2; exit 2; }
@@ -230,7 +235,7 @@ sign-release: ## Developer ID, hardened-runtime signing of dist/grantpin.app: ma
 	$(MAKE) sign-bundle IDENTITY="$(RELEASE_IDENTITY)" TEAM_ID=$(RELEASE_TEAM_ID) PROFILE="$(PROFILE)"
 	build/release/verify-signing.sh $(APP) $(HELPER_APP) $(RELEASE_TEAM_ID) $(if $(filter 1,$(RELEASE_UNIVERSAL)),"x86_64 arm64")
 
-notarize: ## Notarize dist/grantpin.app and staple the ticket (after sign-release): make notarize [NOTARY_PROFILE=grantpin-notary]
+notarize: ## Notarize dist/stage.noindex/grantpin.app and staple the ticket (after sign-release): make notarize [NOTARY_PROFILE=grantpin-notary]
 	@command -v xcrun >/dev/null || { echo "make notarize: xcrun not found (install Xcode)" >&2; exit 2; }
 	@codesign --verify --deep --strict $(APP) 2>/dev/null && codesign -dv $(APP) 2>&1 | grep -q 'runtime' || { echo "make notarize: $(APP) is missing or not signed with the hardened runtime; run make sign-release first" >&2; exit 2; }
 	rm -f $(NOTARIZE_ZIP)
@@ -271,7 +276,7 @@ release-check: ## Preflight for make release: PROFILE, identity, version, notary
 	@# a read-only call that fails fast when the stored credentials are missing or wrong
 	@xcrun notarytool history --keychain-profile $(NOTARY_PROFILE) >/dev/null || { echo "make release: no working notarytool credentials in keychain profile '$(NOTARY_PROFILE)'; see docs/RELEASE.md (one-time notary setup)" >&2; exit 2; }
 
-verify-release: ## Gatekeeper assessment of dist/grantpin.app and the DMG, the final check of make release
+verify-release: ## Gatekeeper assessment of dist/stage.noindex/grantpin.app and the DMG, the final check of make release
 	@if [ "$(RELEASE_UNIVERSAL)" = 1 ]; then build/release/check-archs.sh "x86_64 arm64" $(APP)/Contents/MacOS/grantpin-app $(HELPER_APP)/Contents/MacOS/grantpin; fi
 	xcrun stapler validate $(APP)
 	xcrun stapler validate $(DMG)
@@ -324,7 +329,10 @@ tools-check: ## Ensure pinned deps in internal/tools still compile
 ci: build vet lint test dev-test cover tools-check ## Everything CI runs
 
 clean:
-	rm -rf bin dist coverage.out build/xcode build/grantpin-dev app/GrantpinKit/.build
+	rm -rf bin dist coverage.out $(BUILD_XCODE) build/xcode build/grantpin-dev app/GrantpinKit/.build
 
 icons: ## Regenerate app/Grantpin/Assets.xcassets/AppIcon.appiconset from build/icon/grantpin-app-icon.png (macOS icon grid, transparent margin)
 	swift build/icon/make-iconset.swift build/icon/grantpin-app-icon.png app/Grantpin/Assets.xcassets/AppIcon.appiconset
+
+clean-apps: ## Delete the unsigned/intermediate app copies (everything under build/xcode.noindex and dist/stage.noindex, plus pre-.noindex leftovers); touches nothing outside the repo
+	rm -rf $(BUILD_XCODE) $(STAGE_DIR) build/xcode dist/grantpin.app dist/dmg-stage

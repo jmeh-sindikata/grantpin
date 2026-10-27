@@ -32,6 +32,7 @@ go.work.sum
 /VERSION
 
 # App build products (make app, make app-test)
+/build/xcode.noindex/
 /build/xcode/
 /build/grantpin-dev
 app/**/xcuserdata/

@@ -156,7 +156,7 @@ non-signing check of that part).
 Layout produced by `make bundle` (v0.2; see [UI-SPEC.md](UI-SPEC.md) section 2.1):
 
 ```
-dist/grantpin.app/Contents/
+dist/stage.noindex/grantpin.app/Contents/
   Info.plist                 from app/Grantpin/Info.plist; id dev.grantpin.app; CFBundleExecutable grantpin-app (the SwiftUI app)
   MacOS/grantpin-app           the menu-bar app (popover, Secrets, Grants, Activity, Welcome and Settings)
   embedded.provisionprofile  added by make sign-bundle
@@ -184,7 +184,7 @@ Info.plists pin `LSMinimumSystemVersion` 14.0 (`MIN_MACOS` in the Makefile).
 Check the bundled binary:
 
 ```sh
-otool -l dist/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin | grep -A3 LC_BUILD_VERSION   # minos 14.0
+otool -l dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin | grep -A3 LC_BUILD_VERSION   # minos 14.0
 ```
 
 **Version.** `make build` and `make bundle` print the version they use and where it came from. Order: `make VERSION=x` on the command line, then `git describe --tags --always --dirty`, then the contents of a `VERSION` file in the repo root, then `dev`. A tree from plain `git archive` has no `.git` and would report `dev`; run `make dist-src` in the checkout instead, which writes `dist/grantpin-src.tar.gz` containing a `VERSION` file with the hash, so building from the unpacked archive (`make bundle`) carries it.
@@ -200,7 +200,7 @@ there and in the portal.
 to run without `IDENTITY`, `PROFILE` and `TEAM_ID`; with an **Apple Development**
 identity and its macOS App Development profile (App ID `TEAMID.dev.grantpin.app`,
 keychain group `TEAMID.dev.grantpin`), `make bundle && make sign-bundle ...` signs
-both bundles, `codesign --verify --deep --strict dist/grantpin.app` passes, and
+both bundles, `codesign --verify --deep --strict dist/stage.noindex/grantpin.app` passes, and
 `GRANTPIN_HOME=$(mktemp -d) .../grantpin-daemon.app/Contents/MacOS/grantpin init`
 prints `keystore tier: hardware`. `codesign` embeds an entitlements file verbatim
 (it does **not** expand `$(TeamIdentifierPrefix)`, an Xcode build setting), which
@@ -271,16 +271,16 @@ on the helper bundle and then on the outer app (inside out, no `--deep`), then
 `--timestamp` contacts Apple's timestamp server, so you need network access
 (`make sign-bundle CODESIGN_TIMESTAMP=--timestamp=none` skips it). Signing may ask for access to the certificate's private key in
 your keychain: that is your own prompt, allow it. It prints `signed and
-verified: dist/grantpin.app` on success. Re-run `make bundle` before signing again
-(it starts from a clean `dist/grantpin.app`).
+verified: dist/stage.noindex/grantpin.app` on success. Re-run `make bundle` before signing again
+(it starts from a clean `dist/stage.noindex/grantpin.app`).
 
 #### (d) Check the entitlements
 
 ```sh
-codesign -d --entitlements - dist/grantpin.app
-codesign -d --entitlements - dist/grantpin.app/Contents/Helpers/grantpin-daemon.app
-codesign -dvv dist/grantpin.app 2>&1 | grep -E 'Identifier|Authority|TeamIdentifier|flags'
-codesign -dvv dist/grantpin.app/Contents/Helpers/grantpin-daemon.app 2>&1 | grep -E 'Identifier|Authority|TeamIdentifier|flags'
+codesign -d --entitlements - dist/stage.noindex/grantpin.app
+codesign -d --entitlements - dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app
+codesign -dvv dist/stage.noindex/grantpin.app 2>&1 | grep -E 'Identifier|Authority|TeamIdentifier|flags'
+codesign -dvv dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app 2>&1 | grep -E 'Identifier|Authority|TeamIdentifier|flags'
 ```
 
 Both bundles should show the entitlements below.
@@ -309,7 +309,7 @@ bundle with no profile, so it stays at outcome D. The check is the bundled
 Go binary (the helper's, not the SwiftUI app's), on a fresh vault:
 
 ```sh
-GRANTPIN_HOME=$(mktemp -d) dist/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin init
+GRANTPIN_HOME=$(mktemp -d) dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin init
 ```
 
 Expected: `vault created at ... (keystore tier: hardware)`, no prompt. This
@@ -336,9 +336,9 @@ Failure modes:
 #### (f) Run the daemon from the bundle
 
 ```sh
-H=dist/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin
+H=dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin
 $H service install --exe "$PWD/$H"
-# or, after cp -R dist/grantpin.app /Applications/ :
+# or, after cp -R dist/stage.noindex/grantpin.app /Applications/ :
 $H service install --exe /Applications/grantpin.app
 $H service status          # exe: .../grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin
 ```
@@ -520,7 +520,7 @@ Test keys are deleted by `t.Cleanup`; an interrupted run may leave
 
 ## 8. v0.2 app
 
-The menu-bar app (`dist/grantpin.app`, [UI-SPEC.md](UI-SPEC.md)) was compiled and
+The menu-bar app (`dist/stage.noindex/grantpin.app`, [UI-SPEC.md](UI-SPEC.md)) was compiled and
 rendered offscreen against the dev daemon, never opened on a screen. This is the
 first real look at it. Do items 1 to 4 with the signed bundle from 2c. For the
 screens, a development session is safer for items 10 to 20: `make app-dev-daemon`
@@ -531,12 +531,12 @@ part of 7 need the real install and a spare account or a Mac you can reset.
 
 1. `make helper`: `otool -l bin/grantpin | grep -A3 LC_BUILD_VERSION` shows `minos 14.0`.
 2. `make app && make sign-bundle IDENTITY=... PROFILE=... TEAM_ID=...`:
-   `codesign --verify --deep --strict dist/grantpin.app` passes;
-   `codesign -d --entitlements - dist/grantpin.app` and the same for
-   `dist/grantpin.app/Contents/Helpers/grantpin-daemon.app` show `TEAMID.dev.grantpin.app`
+   `codesign --verify --deep --strict dist/stage.noindex/grantpin.app` passes;
+   `codesign -d --entitlements - dist/stage.noindex/grantpin.app` and the same for
+   `dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app` show `TEAMID.dev.grantpin.app`
    and `TEAMID.dev.grantpin`; `LSMinimumSystemVersion` is `14.0` in both Info.plists;
    neither shows `get-task-allow` or `app-sandbox`.
-3. Helper alone: `GRANTPIN_HOME=$(mktemp -d) dist/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin init`
+3. Helper alone: `GRANTPIN_HOME=$(mktemp -d) dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin init`
    prints `keystore tier: hardware`.
 4. Negative control (documents the layout finding): a copy of the Go binary at
    `Contents/Helpers/grantpin`, signed the same way, exits 137 and the log says

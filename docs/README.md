@@ -63,14 +63,14 @@ install -m 0755 bin/grantpin ~/.local/bin/grantpin   # or any permanent director
 
 **For a from-source build on current macOS, create the vault with `grantpin init --keychain-fallback`** (next section). Plain `grantpin init` is the path for a properly signed build, where the Secure Enclave is available.
 
-**Signed bundle (restores the Secure Enclave).** With an Apple Developer account you can build `dist/grantpin.app`, sign it, and run the daemon from it; the daemon inside the bundle can then create the Secure Enclave key (`keystore tier: hardware`). It needs Xcode. The app is two bundles: the outer `grantpin.app` is the SwiftUI menu-bar app (menu bar status, onboarding, a secrets list with add, edit, delete and `.env` import, grants, an activity view, settings and an uninstall sheet), and the Go binary lives in its own nested bundle, `grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin`, because the provisioning profile is only honoured for a bundle's main executable. The binary is built for macOS 14.0 or newer (`minos 14.0`; `make helper` checks it).
+**Signed bundle (restores the Secure Enclave).** With an Apple Developer account you can build `dist/stage.noindex/grantpin.app`, sign it, and run the daemon from it; the daemon inside the bundle can then create the Secure Enclave key (`keystore tier: hardware`). It needs Xcode. The app is two bundles: the outer `grantpin.app` is the SwiftUI menu-bar app (menu bar status, onboarding, a secrets list with add, edit, delete and `.env` import, grants, an activity view, settings and an uninstall sheet), and the Go binary lives in its own nested bundle, `grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin`, because the provisioning profile is only honoured for a bundle's main executable. The binary is built for macOS 14.0 or newer (`minos 14.0`; `make helper` checks it).
 
 ```sh
-make bundle                                   # xcodebuild + the Go helper -> dist/grantpin.app (unsigned)
+make bundle                                   # xcodebuild + the Go helper -> dist/stage.noindex/grantpin.app (unsigned)
 make sign-bundle IDENTITY=... PROFILE=... TEAM_ID=...   # signs the helper, then the outer app
-H=dist/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin
+H=dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin
 GRANTPIN_HOME=$(mktemp -d) "$H" init            # must print: keystore tier: hardware
-cp -R dist/grantpin.app /Applications/
+cp -R dist/stage.noindex/grantpin.app /Applications/
 "$H" service install --exe /Applications/grantpin.app   # runs the helper's binary, never the UI
 ```
 

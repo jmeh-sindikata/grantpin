@@ -53,7 +53,7 @@ You need macOS 14 or later, Go 1.27 or newer, and Xcode (the app is built with `
 
 ```sh
 make ci     # Go: build, vet, staticcheck, tests (also with the dev tag), coverage
-make app    # dist/grantpin.app, unsigned: SwiftUI app plus the Go helper inside it
+make app    # dist/stage.noindex/grantpin.app, unsigned: SwiftUI app plus the Go helper inside it
 ```
 
 A from-source build is not signed with a provisioning profile, so it cannot use the Secure Enclave and falls back to a Keychain-held key. [docs/RELEASE.md](docs/RELEASE.md) describes how the signed, notarized DMG is made. [grantpin.dev/docs](https://grantpin.dev/docs/) has the guides, and [docs/README.md](docs/README.md) is the detailed manual: install from source, the `grantpin` command line, policy files, grants and the audit log.

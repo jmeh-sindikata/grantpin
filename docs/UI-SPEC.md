@@ -631,7 +631,7 @@ build/bundle/
   grantpin-app.entitlements  unchanged; used for both bundles
 ```
 
-Ignore in git: `/build/xcode`, `/build/grantpin-dev`, `app/**/xcuserdata`, `app/GrantpinKit/.build`.
+Ignore in git: `/build/xcode.noindex`, `/build/grantpin-dev`, `app/**/xcuserdata`, `app/GrantpinKit/.build`.
 
 ### 5.2 Targets
 
@@ -640,7 +640,7 @@ The names below are what the implementer adds to the Makefile (existing `build`,
 | Target | Does |
 |---|---|
 | `make helper` | `CGO_ENABLED=1 CGO_CFLAGS=-mmacosx-version-min=14.0 CGO_LDFLAGS=-mmacosx-version-min=14.0 go build -ldflags '-X main.version=$(VERSION)' -o bin/grantpin ./cmd/grantpin`. Then asserts `otool -l bin/grantpin` reports `minos 14.0`. |
-| `make app` | depends on `helper`. `xcodebuild -project app/Grantpin.xcodeproj -scheme Grantpin -configuration Release -derivedDataPath build/xcode CODE_SIGNING_ALLOWED=NO MACOSX_DEPLOYMENT_TARGET=14.0 MARKETING_VERSION=… CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build`, then copies the product to `dist/grantpin.app` (replacing it). Unsigned. |
+| `make app` | depends on `helper`. `xcodebuild -project app/Grantpin.xcodeproj -scheme Grantpin -configuration Release -derivedDataPath build/xcode.noindex CODE_SIGNING_ALLOWED=NO MACOSX_DEPLOYMENT_TARGET=14.0 MARKETING_VERSION=… CURRENT_PROJECT_VERSION=$(BUILD_NUMBER) build`, then copies the product to `dist/stage.noindex/grantpin.app` (replacing it). Unsigned. |
 | `make sign-bundle` | same variables as today (`IDENTITY`, `PROFILE`, `TEAM_ID`, `BUNDLE_ID`, `KEYCHAIN_GROUP`), new recipe in 5.3. |
 | `make app-test` | builds the dev daemon (`go build -tags grantpin_dev -o build/grantpin-dev ./cmd/grantpin`), then `GRANTPIN_DEV_BIN=$(PWD)/build/grantpin-dev swift test --package-path app/GrantpinKit`. |
 | `make app-dev-daemon` | runs the dev daemon on `/tmp/gd-dev/s.sock` with `GRANTPIN_HOME=/tmp/gd-dev` and `GRANTPIN_DEV_APPROVE=allow` for UI work (5.5). |
@@ -652,16 +652,16 @@ The names below are what the implementer adds to the Makefile (existing `build`,
 `make sign-bundle` (existing guards for `IDENTITY`, `PROFILE`, `TEAM_ID` stay) does, in this order:
 
 ```sh
-cp "$PROFILE" dist/grantpin.app/Contents/embedded.provisionprofile
-cp "$PROFILE" dist/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/embedded.provisionprofile
+cp "$PROFILE" dist/stage.noindex/grantpin.app/Contents/embedded.provisionprofile
+cp "$PROFILE" dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/embedded.provisionprofile
 # expand build/bundle/grantpin-app.entitlements into dist/grantpin-app.entitlements, as the current recipe does
 codesign --force --options runtime --timestamp --sign "$IDENTITY" \
-  --entitlements dist/grantpin-app.entitlements dist/grantpin.app/Contents/Helpers/grantpin-daemon.app
+  --entitlements dist/grantpin-app.entitlements dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app
 codesign --force --options runtime --timestamp --sign "$IDENTITY" \
-  --entitlements dist/grantpin-app.entitlements dist/grantpin.app
-codesign --verify --deep --strict --verbose=2 dist/grantpin.app
-codesign -d --entitlements - dist/grantpin.app
-codesign -d --entitlements - dist/grantpin.app/Contents/Helpers/grantpin-daemon.app
+  --entitlements dist/grantpin-app.entitlements dist/stage.noindex/grantpin.app
+codesign --verify --deep --strict --verbose=2 dist/stage.noindex/grantpin.app
+codesign -d --entitlements - dist/stage.noindex/grantpin.app
+codesign -d --entitlements - dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app
 ```
 
 Inner first, outer second, no `--deep` on the signing calls (the outer seal records the already-signed inner bundle). I ran the same sequence (without `--timestamp`) on a scratch bundle with this Mac's Apple Development identity: `codesign --verify --deep --strict` passed and both executables launched. The recipe ends by printing the smoke test the old recipe printed, pointed at the helper: `GRANTPIN_HOME=$(mktemp -d) …/grantpin-daemon.app/Contents/MacOS/grantpin init     # must print: keystore tier: hardware`. The profile must cover `keychain-access-groups` for `TEAMID.dev.grantpin` (the existing check in MANUAL-TEST-MACOS §2c(b) applies unchanged), and the same file serves both bundles.

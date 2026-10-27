@@ -68,11 +68,11 @@ make release PROFILE=/path/to/Developer_ID.provisionprofile
 | Step | Target | What it does |
 | --- | --- | --- |
 | 0 | `release-check` | PROFILE, identity, clean tree, notary credentials (a read-only `notarytool history`); no submission. |
-| 1 | `bundle` | Builds the Go helper for macOS 14 and `dist/grantpin.app` (unsigned), both universal (`UNIVERSAL=1`, see "Universal build"), and checks both Info.plists carry the version and both executables are `x86_64 arm64`. |
+| 1 | `bundle` | Builds the Go helper for macOS 14 and `dist/stage.noindex/grantpin.app` (unsigned), both universal (`UNIVERSAL=1`, see "Universal build"), and checks both Info.plists carry the version and both executables are `x86_64 arm64`. |
 | 2 | `sign-release` | Embeds the profile and signs inside out with `--options runtime --timestamp`: helper `.app`, then outer `.app` (which also seals each bundle's main executable). No `--deep`. Then `build/release/verify-signing.sh` checks both bundles, including `lipo -archs` of both main executables. |
 | 3 | `notarize` | `ditto -c -k --keepParent` of the app, `notarytool submit --wait`, on failure prints `notarytool log`, then `stapler staple` and `stapler validate` the app. |
-| 4 | `dmg` | Stages `grantpin.app`, an `Applications` symlink and the committed Finder layout (`.DS_Store`), `hdiutil create -volname grantpin -format UDZO`, signs the DMG, notarizes it, staples it. |
-| 5 | `verify-release` | `spctl -a -vv -t install dist/grantpin.app`, `spctl -a -vv -t exec dist/grantpin.app`, `spctl -a -vv -t open --context context:primary-signature dist/grantpin-<version>.dmg`, and `stapler validate` on both, plus `lipo -archs` of both executables. Each must say `accepted` with `source=Notarized Developer ID`. |
+| 4 | `dmg` | Stages `grantpin.app` (in `dist/stage.noindex/dmg-stage`), an `Applications` symlink and the committed Finder layout (`.DS_Store`), `hdiutil create -volname grantpin -format UDZO`, signs the DMG, notarizes it, staples it. |
+| 5 | `verify-release` | `spctl -a -vv -t install dist/stage.noindex/grantpin.app`, `spctl -a -vv -t exec dist/stage.noindex/grantpin.app`, `spctl -a -vv -t open --context context:primary-signature dist/grantpin-<version>.dmg`, and `stapler validate` on both, plus `lipo -archs` of both executables. Each must say `accepted` with `source=Notarized Developer ID`. |
 
 Each step is also a target, so a failed release resumes where it stopped:
 
@@ -86,6 +86,27 @@ make verify-release
 Output: `dist/grantpin-<version>.dmg`, plus `dist/grantpin-notarize.zip.notary.json`
 and `dist/grantpin-<version>.dmg.notary.json` (the notary submissions, with their IDs).
 Fetch a log later with `xcrun notarytool log <id> --keychain-profile grantpin-notary`.
+
+### Where the unsigned app copies live (`.noindex`)
+
+Builds leave unsigned, ad-hoc signed copies of the app that share the installed
+app's bundle ID `dev.grantpin.app`. Spotlight indexed them, and macOS can open the
+wrong copy by bundle ID (it did, after a `brew upgrade`, with the "Move grantpin to
+your Applications folder first" banner). macOS skips directories whose name ends in
+`.noindex`, so every directory that holds an app bundle now does:
+
+| Was | Now |
+| --- | --- |
+| `build/xcode/` (xcodebuild derived data) | `build/xcode.noindex/` |
+| `dist/grantpin.app` | `dist/stage.noindex/grantpin.app` |
+| `dist/dmg-stage/` | `dist/stage.noindex/dmg-stage/` |
+
+`dist/grantpin-<version>.dmg` and its `.notary.json` stay where they were. After a
+release, the signed and stapled app also stays in `dist/stage.noindex/`; run
+`make clean-apps` to delete everything under `build/xcode.noindex` and
+`dist/stage.noindex` (and any pre-`.noindex` leftovers at the old paths). It touches
+nothing outside the repo, never `/Applications`. Do not run an app from these folders
+for real use; install from the DMG.
 
 ### DMG window layout
 
@@ -156,7 +177,7 @@ host-only dry run (the architecture checks are then skipped).
   `grantpin-daemon.app/Contents/MacOS/grantpin` must be `x86_64 arm64`) runs at the end of
   `make bundle UNIVERSAL=1`, inside `verify-signing.sh` and in `make verify-release`.
 - **Testing the Intel slice** on an Apple Silicon Mac needs Rosetta:
-  `arch -x86_64 dist/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin --version`.
+  `arch -x86_64 dist/stage.noindex/grantpin.app/Contents/Helpers/grantpin-daemon.app/Contents/MacOS/grantpin --version`.
   Rosetta does not exercise the hardware keystore: only a real Intel Mac with a T2
   chip tests the Secure Enclave path on x86_64.
 - `lipo` output is a fat file, which `go build -o bin/grantpin` refuses to overwrite;
