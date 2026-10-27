@@ -112,6 +112,12 @@ struct OnboardingWindow: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Background service").font(.title2.weight(.semibold))
             Text(verbatim: OnboardingModel.serviceText).fixedSize(horizontal: false, vertical: true)
+            if !model.isDone(.service) {
+                Label {
+                    Text(verbatim: OnboardingModel.serviceNotice).fixedSize(horizontal: false, vertical: true)
+                } icon: { Image(systemName: "info.circle").foregroundStyle(.secondary) }
+                    .font(.callout)
+            }
             if model.isDone(.service) {
                 Label("The background service is running.", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
             } else {

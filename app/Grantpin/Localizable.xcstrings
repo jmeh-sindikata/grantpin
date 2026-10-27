@@ -364,6 +364,17 @@
         }
       }
     },
+    "Close" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Close"
+          }
+        }
+      }
+    },
     "Command" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -965,6 +976,17 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "None"
+          }
+        }
+      }
+    },
+    "Not Now" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Not Now"
           }
         }
       }
@@ -1977,6 +1999,17 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "delete"
+          }
+        }
+      }
+    },
+    "grantpin background service" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "grantpin background service"
           }
         }
       }

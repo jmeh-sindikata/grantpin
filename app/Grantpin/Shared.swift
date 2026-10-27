@@ -7,10 +7,11 @@ enum WindowID {
     static let grants = "grants"
     static let onboarding = "onboarding"
     static let settings = "settings"
+    static let serviceAsk = "service-ask"
 }
 
-/// The menu bar icon (docs/UI-SPEC.md 3.1): a template SF Symbol that follows
-/// the daemon's state. It is also the one view that always exists, so it
+/// The menu bar icon (docs/UI-SPEC.md 3.1): the grantpin glyph, with a badge
+/// when the daemon is down (see `MenuBarIconImage`). It is also the one view that always exists, so it
 /// opens the windows other parts of the app ask for (`WindowRequest`) and
 /// the Welcome window on first launch.
 struct MenuBarLabel: View {
@@ -19,14 +20,14 @@ struct MenuBarLabel: View {
 
     var body: some View {
         let icon = MenuBarIcon.from(app.monitor.state)
-        Image("MenuBarIcon")
-            .opacity(icon.subdued ? 0.6 : 1)
+        MenuBarIconView(icon: icon)
             .accessibilityLabel(Text(verbatim: icon.label))
             .help(Text(verbatim: icon.label))
             .onChange(of: app.windowRequest) { _, request in
                 if let request { openWindow(id: request.id) }
             }
             .task { await app.openOnboardingIfNeeded() }
+            .onChange(of: app.monitor.state, initial: true) { _, _ in app.serviceAskCheck() }
     }
 }
 

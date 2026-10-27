@@ -37,6 +37,11 @@ struct GrantpinApp: App {
         }
         .windowResizability(.contentSize)
 
+        Window("grantpin background service", id: WindowID.serviceAsk) {
+            ServiceAskWindow(app: app)
+        }
+        .windowResizability(.contentSize)
+
         // A Window scene, not `Settings { }`: `showSettingsWindow:` does not
         // reach a Settings scene from a MenuBarExtra app on macOS 14 and later.
         Window("Settings", id: WindowID.settings) {

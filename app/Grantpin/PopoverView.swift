@@ -77,7 +77,7 @@ struct PopoverView: View {
 }
 
 /// The coloured dot, the headline and what the person can do about it.
-private struct StatusHeader: View {
+struct StatusHeader: View {
     let app: AppModel
     let line: StatusLine
     let openWindow: (String) -> Void
@@ -101,6 +101,12 @@ private struct StatusHeader: View {
             if let detail = line.detail {
                 Text(verbatim: detail)
                     .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let note = line.note {
+                Text(verbatim: note)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -167,7 +173,7 @@ private struct StatusHeader: View {
 /// service install --exe <this app> --path <PATH>`, the one way the app
 /// starts the daemon (docs/UI-SPEC.md 2.2). Set Up opens the Welcome window at
 /// the vault step, Review opens Grants, Open Logs Folder opens the folder.
-private struct ActionButton: View {
+struct ActionButton: View {
     let app: AppModel
     let button: StatusLine.Button
     let prominent: Bool

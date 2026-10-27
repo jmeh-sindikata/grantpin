@@ -91,6 +91,8 @@ final class AppModel {
     let importRunner: ImportRunner?
 
     @ObservationIgnored private var visibleSurfaces = Set<String>()
+    @ObservationIgnored private var serviceAsk = ServiceAskGate()
+    @ObservationIgnored private var serviceAskTask: Task<Void, Never>?
     @ObservationIgnored private var observers = [NSObjectProtocol]()
 
     init() {
@@ -224,6 +226,38 @@ final class AppModel {
         guard monitor.state != nil else { return }
         onboarding.connectionChanged(monitor.state)
         requestWindow(WindowID.onboarding)
+    }
+
+    /// Whether the menu bar popover is the key window right now.
+    var isPopoverOpen: Bool { visibleSurfaces.contains("popover") }
+
+    /// The visible ask: when the background service is missing or has stopped,
+    /// opens the "background service" window once (see `ServiceAskGate` for
+    /// when). Called on every connection change and again once the grace
+    /// period of a fresh outage has passed. The service is never installed
+    /// from here; the window only offers the Start button.
+    func serviceAskCheck() {
+        serviceAskTask?.cancel()
+        serviceAskTask = nil
+        let onboardingPending = !UserDefaults.standard.bool(forKey: Self.onboardingDoneKey)
+        let now = Date()
+        if serviceAsk.evaluate(monitor.state, now: now, onboardingPending: onboardingPending,
+                               isDevelopment: socket.isDevelopment, popoverOpen: isPopoverOpen) {
+            Task { await presentServiceAsk() }
+        } else if let wait = serviceAsk.waitTime(now: now) {
+            serviceAskTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64((wait + 0.5) * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                self?.serviceAskCheck()
+            }
+        }
+    }
+
+    private func presentServiceAsk() async {
+        // Know which of "not set up" and "stopped" is true before the window shows.
+        await serviceWatcher.poll()
+        guard case .notRunning? = monitor.state, !isPopoverOpen else { return }
+        requestWindow(WindowID.serviceAsk)
     }
 
     func openLogsFolder() {

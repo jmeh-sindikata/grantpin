@@ -21,6 +21,8 @@
 		6650B86FB1B865485A24D611 /* ConnectPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40B0E8C361CCF06649E07210 /* ConnectPanel.swift */; };
 		289C8D3C22097DA2A314830F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2FA5F4F5D336DC8ECDF4BC3 /* SettingsView.swift */; };
 		DB02A0913F062C1925A5CF02 /* UninstallSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5CDC3A723274EC7827AF47 /* UninstallSheet.swift */; };
+		7A1D4C2E9B0F4E68A3C51D0A /* MenuBarIconImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1D4C2E9B0F4E68A3C51D09 /* MenuBarIconImage.swift */; };
+		7A1D4C2E9B0F4E68A3C51D08 /* ServiceAskWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1D4C2E9B0F4E68A3C51D07 /* ServiceAskWindow.swift */; };
 		FE0DEE0537977F1CEE05FA67 /* OnboardingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F95BDCB1329220F307BF1B4 /* OnboardingWindow.swift */; };
 		A1B2C3D4E5F60718293A4B5C /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* Localizable.xcstrings */; };
 		A1B2C3D4E5F60718293A4B6C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B6D /* Assets.xcassets */; };
@@ -42,6 +44,8 @@
 		40B0E8C361CCF06649E07210 /* ConnectPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectPanel.swift; sourceTree = "<group>"; };
 		A2FA5F4F5D336DC8ECDF4BC3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		3C5CDC3A723274EC7827AF47 /* UninstallSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UninstallSheet.swift; sourceTree = "<group>"; };
+		7A1D4C2E9B0F4E68A3C51D09 /* MenuBarIconImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarIconImage.swift; sourceTree = "<group>"; };
+		7A1D4C2E9B0F4E68A3C51D07 /* ServiceAskWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceAskWindow.swift; sourceTree = "<group>"; };
 		6F95BDCB1329220F307BF1B4 /* OnboardingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWindow.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5D /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B6D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -102,6 +106,8 @@
 				40B0E8C361CCF06649E07210 /* ConnectPanel.swift */,
 				A2FA5F4F5D336DC8ECDF4BC3 /* SettingsView.swift */,
 				3C5CDC3A723274EC7827AF47 /* UninstallSheet.swift */,
+				7A1D4C2E9B0F4E68A3C51D09 /* MenuBarIconImage.swift */,
+				7A1D4C2E9B0F4E68A3C51D07 /* ServiceAskWindow.swift */,
 				6F95BDCB1329220F307BF1B4 /* OnboardingWindow.swift */,
 			);
 			path = Grantpin;
@@ -223,6 +229,8 @@
 				6650B86FB1B865485A24D611 /* ConnectPanel.swift in Sources */,
 				289C8D3C22097DA2A314830F /* SettingsView.swift in Sources */,
 				DB02A0913F062C1925A5CF02 /* UninstallSheet.swift in Sources */,
+				7A1D4C2E9B0F4E68A3C51D0A /* MenuBarIconImage.swift in Sources */,
+				7A1D4C2E9B0F4E68A3C51D08 /* ServiceAskWindow.swift in Sources */,
 				FE0DEE0537977F1CEE05FA67 /* OnboardingWindow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
