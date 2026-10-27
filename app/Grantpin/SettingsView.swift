@@ -37,6 +37,7 @@ struct SettingsView: View {
         .task {
             await app.settings.refresh()
             await app.settings.loadPathIfNeeded()
+            await app.commandLine.refresh()
         }
     }
 }
@@ -72,6 +73,7 @@ private struct GeneralSettings: View {
             loginSection
             serviceSection
             pathSection
+            CommandLineSection(model: app.commandLine)
 
             Section("Menu") {
                 Toggle("Show recent activity in the menu", isOn: $showActivity)
@@ -224,6 +226,66 @@ struct ResultLine: View {
     }
 }
 
+// MARK: - Command line tool
+
+/// "Command line tool" in General: a link `~/.local/bin/grantpin` to the helper
+/// in this app. The logic is `CommandLineToolModel`; this only draws it.
+private struct CommandLineSection: View {
+    let model: CommandLineToolModel
+
+    var body: some View {
+        Section {
+            LabeledContent("Status") {
+                HStack(spacing: 6) {
+                    if model.statusIsOK { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).accessibilityHidden(true) }
+                    if model.statusIsProblem { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityHidden(true) }
+                    Text(verbatim: model.statusText)
+                        .font(model.statusIsProblem ? .callout : .caption.monospaced())
+                        .multilineTextAlignment(.trailing)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            if let note = model.statusNote { Hint(note, tint: .secondary) }
+            if let reason = model.disabledReason {
+                Label {
+                    Text(verbatim: reason).fixedSize(horizontal: false, vertical: true)
+                } icon: { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange) }
+            }
+            HStack {
+                Button("Install") { model.install() }
+                    .disabled(!model.canInstall)
+                    .help("Adds a link to grantpin in ~/.local/bin")
+                    .accessibilityLabel(Text("Install the grantpin command"))
+                if model.canRemove {
+                    Button("Remove") { model.remove() }
+                        .help("Removes the link from ~/.local/bin. The app is not changed.")
+                        .accessibilityLabel(Text("Remove the grantpin command"))
+                }
+            }
+            if let r = model.result {
+                Label {
+                    Text(verbatim: r.message).fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: r.isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(r.isSuccess ? Color.green : Color.red)
+                }
+            }
+            if model.pathMissing {
+                Hint(CommandLineToolModel.pathMissingText, tint: .orange)
+                Text(verbatim: model.pathSteps).font(.callout).fixedSize(horizontal: false, vertical: true)
+                CopyBox(text: model.pathLine, label: "Copy")
+                Hint(CommandLineToolModel.pathNever, tint: .secondary)
+            }
+        } header: {
+            Text("Command line tool")
+        } footer: {
+            Text(verbatim: CommandLineToolModel.help)
+        }
+    }
+}
+
 // MARK: - Security & data
 
 private struct SecuritySettings: View {
@@ -301,6 +363,7 @@ private struct UninstallSettings: View {
             keystoreTier: status?.keystoreTier, isDevelopment: app.socket.isDevelopment, vaultLocked: locked,
             keychain: app.serviceControl.map { HelperKeystore(helper: $0.helper) },
             daemonState: { await DaemonState.probe(client) },
-            unregisterLoginItem: { try? login.unregister() })
+            unregisterLoginItem: { try? login.unregister() },
+            commandLine: app.commandLine.tool)
     }
 }

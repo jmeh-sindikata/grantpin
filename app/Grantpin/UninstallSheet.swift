@@ -45,6 +45,9 @@ struct UninstallSheet: View {
                     .help(model.stopIsForced ? "The vault and its key are only deleted after the background service has stopped." : "")
                 Toggle(model.deleteVaultLabel, isOn: $model.deleteVault)
                 Toggle(UninstallModel.logsLabel, isOn: $model.deleteLogs)
+                if model.offersCommandLine {
+                    Toggle(UninstallModel.commandLineLabel, isOn: $model.removeCommandLine)
+                }
                 if model.offersKeychainItem {
                     Toggle(UninstallModel.keychainLabel, isOn: $model.deleteKeychainItem)
                 }

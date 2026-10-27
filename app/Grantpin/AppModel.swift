@@ -61,6 +61,8 @@ final class AppModel {
     let grants: GrantsViewModel
     let activity: ActivityViewModel
     let settings: SettingsModel
+    /// The `grantpin` command in `~/.local/bin` (Settings > General).
+    let commandLine: CommandLineToolModel
     let onboarding: OnboardingModel
     let serviceWatcher: ServiceWatcher
     let loginItem = SystemLoginItem()
@@ -121,6 +123,11 @@ final class AppModel {
         self.settings = SettingsModel(
             control: actions, loginItem: login, developmentSocket: devSocket, resolvedSocket: socket.path,
             location: location, onChanged: refresh)
+        // The link points at the helper of THIS bundle, never at the development override.
+        let bundledHelper = try? HelperLocator.resolve(bundleURL: Bundle.main.bundleURL)
+        self.commandLine = CommandLineToolModel(
+            tool: CommandLineTool(bundleURL: Bundle.main.bundleURL, helper: bundledHelper),
+            location: location, isDevelopment: socket.isDevelopment, shell: CommandLineToolModel.loginShell())
         self.onboarding = OnboardingModel(
             control: actions, loginItem: login, isDevelopment: socket.isDevelopment, location: location,
             onFinished: { UserDefaults.standard.set(true, forKey: AppModel.onboardingDoneKey) },

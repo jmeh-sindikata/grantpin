@@ -144,6 +144,17 @@
         }
       }
     },
+    "Adds a link to grantpin in ~/.local/bin" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Adds a link to grantpin in ~/.local/bin"
+          }
+        }
+      }
+    },
     "All my projects" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -360,6 +371,17 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Command"
+          }
+        }
+      }
+    },
+    "Command line tool" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Command line tool"
           }
         }
       }
@@ -760,6 +782,17 @@
         }
       }
     },
+    "Install" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Install"
+          }
+        }
+      }
+    },
     "Install Service" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -767,6 +800,17 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Install Service"
+          }
+        }
+      }
+    },
+    "Install the grantpin command" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Install the grantpin command"
           }
         }
       }
@@ -1178,6 +1222,17 @@
         }
       }
     },
+    "Remove the grantpin command" : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Remove the grantpin command"
+          }
+        }
+      }
+    },
     "Removes the background service, and optionally your vault, the logs and the Keychain item for weaker protection. Nothing is removed until you choose it on the next screen." : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -1185,6 +1240,17 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Removes the background service, and optionally your vault, the logs and the Keychain item for weaker protection. Nothing is removed until you choose it on the next screen."
+          }
+        }
+      }
+    },
+    "Removes the link from ~/.local/bin. The app is not changed." : {
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Removes the link from ~/.local/bin. The app is not changed."
           }
         }
       }
