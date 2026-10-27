@@ -104,6 +104,14 @@ struct StatusHeader: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if let restored = app.serviceRecovery.noticeText() {
+                Label {
+                    Text(verbatim: restored).fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                }
+                .font(.callout)
+            }
             if let note = line.note {
                 Text(verbatim: note)
                     .font(.caption)

@@ -27,7 +27,7 @@ struct MenuBarLabel: View {
                 if let request { openWindow(id: request.id) }
             }
             .task { await app.openOnboardingIfNeeded() }
-            .onChange(of: app.monitor.state, initial: true) { _, _ in app.serviceAskCheck() }
+            .onChange(of: app.monitor.state, initial: true) { _, _ in app.serviceRecoveryCheck() }
     }
 }
 

@@ -65,6 +65,8 @@ final class AppModel {
     let commandLine: CommandLineToolModel
     let onboarding: OnboardingModel
     let serviceWatcher: ServiceWatcher
+    /// Restores a service the person had installed, or asks about it.
+    let serviceRecovery: ServiceRecovery
     let loginItem = SystemLoginItem()
     /// Where the app runs from; outside an Applications folder the service and
     /// vault actions are off (docs/UI-SPEC.md 2.5).
@@ -91,8 +93,9 @@ final class AppModel {
     let importRunner: ImportRunner?
 
     @ObservationIgnored private var visibleSurfaces = Set<String>()
-    @ObservationIgnored private var serviceAsk = ServiceAskGate()
-    @ObservationIgnored private var serviceAskTask: Task<Void, Never>?
+    @ObservationIgnored private var recoveryTimer: Task<Void, Never>?
+    /// The Uninstall sheet is open: nothing is restored behind its back.
+    var uninstallActive = false
     @ObservationIgnored private var observers = [NSObjectProtocol]()
 
     init() {
@@ -135,7 +138,27 @@ final class AppModel {
             onFinished: { UserDefaults.standard.set(true, forKey: AppModel.onboardingDoneKey) },
             onActionFinished: refresh)
         // The service status is only looked at while the daemon is down, and never in development mode.
-        self.serviceWatcher = ServiceWatcher(control: socket.isDevelopment ? nil : actions)
+        let watcher = ServiceWatcher(control: socket.isDevelopment ? nil : actions)
+        self.serviceWatcher = watcher
+        let popoverModel = self.popover
+        let settingsModel = self.settings
+        let onboardingModel = self.onboarding
+        // Restores the service itself only when the person installed it before
+        // (the `service.wanted` marker); otherwise it asks (ServiceAskGate).
+        self.serviceRecovery = ServiceRecovery(
+            connection: { monitor.state }, location: location, isDevelopment: socket.isDevelopment,
+            onboardingPending: { !UserDefaults.standard.bool(forKey: AppModel.onboardingDoneKey) },
+            popoverOpen: { AppModel.current?.isPopoverOpen ?? false },
+            suspended: {
+                popoverModel.running != nil || settingsModel.isBusy || onboardingModel.running != nil
+                    || (AppModel.current?.uninstallActive ?? false)
+            },
+            diagnose: { await watcher.poll(); return watcher.diagnosis },
+            restore: {
+                // The same action as the Start button.
+                await popoverModel.perform(.startService)
+                return popoverModel.lastResult
+            })
 
         AppModel.current = self
         monitor.start()
@@ -231,24 +254,24 @@ final class AppModel {
     /// Whether the menu bar popover is the key window right now.
     var isPopoverOpen: Bool { visibleSurfaces.contains("popover") }
 
-    /// The visible ask: when the background service is missing or has stopped,
-    /// opens the "background service" window once (see `ServiceAskGate` for
-    /// when). Called on every connection change and again once the grace
-    /// period of a fresh outage has passed. The service is never installed
-    /// from here; the window only offers the Start button.
-    func serviceAskCheck() {
-        serviceAskTask?.cancel()
-        serviceAskTask = nil
-        let onboardingPending = !UserDefaults.standard.bool(forKey: Self.onboardingDoneKey)
-        let now = Date()
-        if serviceAsk.evaluate(monitor.state, now: now, onboardingPending: onboardingPending,
-                               isDevelopment: socket.isDevelopment, popoverOpen: isPopoverOpen) {
-            Task { await presentServiceAsk() }
-        } else if let wait = serviceAsk.waitTime(now: now) {
-            serviceAskTask = Task { [weak self] in
+    /// Brings the background service back by itself when the person had
+    /// installed it, and otherwise opens the "background service" window once
+    /// (see `ServiceRecovery`, `ServiceRestorePolicy` and `ServiceAskGate` for
+    /// when). Called on every connection change and again when the next
+    /// decision is due. The service is never installed here unless the marker
+    /// says the person installed it before.
+    func serviceRecoveryCheck() {
+        recoveryTimer?.cancel()
+        recoveryTimer = nil
+        Task { [weak self] in
+            guard let self else { return }
+            if await serviceRecovery.check() == .askNow { await presentServiceAsk() }
+            guard let wait = serviceRecovery.nextCheck() else { return }
+            recoveryTimer?.cancel()
+            recoveryTimer = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64((wait + 0.5) * 1_000_000_000))
                 guard !Task.isCancelled else { return }
-                self?.serviceAskCheck()
+                self?.serviceRecoveryCheck()
             }
         }
     }

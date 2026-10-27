@@ -270,7 +270,9 @@ The app is a client of the existing protocol, with these exceptions. Each is sma
 
 **Purpose.** Glanceable state and the three most common jumps.
 
-**Menu-bar icon** (template SF Symbol, `lock.shield`): plain when healthy; with a dot badge when something needs attention (daemon down, no vault, tampered grants). Tooltip carries the headline.
+**Menu-bar icon** (the `MenuBarIcon` asset glyph, not an SF Symbol): a plain template image when healthy, locked or checking (dimmed); with a coloured dot badge when something needs attention: red when the daemon is not running, orange for no vault or tampered grants. Badge states are a non-template image drawn in the bar's label colour (`MenuBarIconImage`). Tooltip and accessibility label carry the state ("grantpin", "grantpin: not running", ...).
+
+**Missing or stopped service.** The app never installs the service silently, except to restore one the person installed: the `grantpin` command writes an empty `service.wanted` file next to `vault.db` after `service install` and removes it on `service uninstall`. When the daemon has not answered for 10 seconds, `service status` says the job is not installed, the marker is a regular file (not a link), the vault exists, the app runs from an Applications folder, and neither onboarding nor development mode applies, the app runs what Start runs, once per launch, and shows "grantpin restored its background service." in the status header for ten minutes (Settings > General shows when). In every other case, and when that attempt fails, a small "grantpin background service" window opens once per outage with the status line and its Start, Repair or Restart button.
 
 **Popover** (`.window` style, 320 pt wide), top to bottom:
 

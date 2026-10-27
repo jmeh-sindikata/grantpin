@@ -123,6 +123,10 @@ private struct GeneralSettings: View {
                 LabeledContent("Status") {
                     Text(verbatim: s.running ? "Running" + (s.pid.map { " (pid \($0))" } ?? "") : (s.installed ? "Stopped" : "Not installed"))
                 }
+                if let restored = app.serviceRecovery.restoredAt {
+                    Text(verbatim: ServiceRecovery.restoredAtPrefix + restored.formatted(date: .abbreviated, time: .shortened))
+                        .foregroundStyle(.secondary)
+                }
                 if let p = s.plistPath { pathRow("Service file", p) }
                 if let e = s.exePath { pathRow("Program", e) }
                 if s.exeMissing {
@@ -350,6 +354,7 @@ private struct UninstallSettings: View {
         .sheet(item: $sheet) { model in
             UninstallSheet(model: model, app: app) { sheet = nil }
         }
+        .onChange(of: sheet != nil) { _, open in app.uninstallActive = open }
     }
 
     private func makeModel() -> UninstallModel {
