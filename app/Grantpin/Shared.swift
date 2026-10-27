@@ -28,6 +28,13 @@ struct MenuBarLabel: View {
             }
             .task { await app.openOnboardingIfNeeded() }
             .onChange(of: app.monitor.state, initial: true) { _, _ in app.serviceRecoveryCheck() }
+            // What the restore may do also changes with these: a service action
+            // ending (the Uninstall sheet closing, a Settings, popover or
+            // onboarding action finishing, the restore itself), onboarding
+            // finishing, and what `service status` says.
+            .onChange(of: app.serviceActivity.anyBusy) { _, busy in if !busy { app.serviceRecoveryCheck() } }
+            .onChange(of: app.onboarding.finished) { _, done in if done { app.serviceRecoveryCheck() } }
+            .onChange(of: app.serviceWatcher.diagnosis) { _, _ in app.serviceRecoveryCheck() }
     }
 }
 

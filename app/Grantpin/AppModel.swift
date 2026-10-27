@@ -304,9 +304,10 @@ final class AppModel {
     /// Brings the background service back by itself when the person had
     /// installed it, and otherwise opens the "background service" window once
     /// (see `ServiceRecovery`, `ServiceRestorePolicy` and `ServiceAskGate` for
-    /// when). Called on every connection change and again when the next
-    /// decision is due. The service is never installed here unless the marker
-    /// says the person installed it before.
+    /// when). Called on every connection change, when a service action ends,
+    /// when onboarding finishes, when `service status` changes (`MenuBarLabel`)
+    /// and again when the next decision is due. The service is never installed
+    /// here unless the marker says the person installed it before.
     func serviceRecoveryCheck() {
         recoveryTimer?.cancel()
         recoveryTimer = nil

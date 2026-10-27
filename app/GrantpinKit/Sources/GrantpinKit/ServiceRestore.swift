@@ -69,6 +69,11 @@ public struct ServiceRestorePolicy: Sendable {
     public private(set) var downSince: Date?
     /// The one attempt of this launch has been used.
     public private(set) var attempted = false
+    /// The ask window opened for the not-running period in progress: the
+    /// person has been shown the situation, so the service is not restored
+    /// behind their back later in the same period (the two are alternatives).
+    /// Cleared when the daemon answers.
+    public private(set) var asked = false
 
     public init() {}
 
@@ -80,12 +85,14 @@ public struct ServiceRestorePolicy: Sendable {
             if downSince == nil { downSince = now }
         } else {
             downSince = nil
+            asked = false
         }
     }
 
-    /// The daemon has been down for the grace period and the attempt is unused.
+    /// The daemon has been down for the grace period, the attempt is unused
+    /// and this period has not been asked about.
     public func isDue(now: Date) -> Bool {
-        guard !attempted, let since = downSince else { return false }
+        guard !attempted, !asked, let since = downSince else { return false }
         return now.timeIntervalSince(since) >= Self.grace
     }
 
@@ -97,17 +104,26 @@ public struct ServiceRestorePolicy: Sendable {
         return true
     }
 
-    /// Seconds until the grace period ends, nil when no attempt is pending.
+    /// The ask window opened for this period (see `asked`).
+    public mutating func noteAsked() { asked = true }
+
+    /// Seconds until the grace period ends, nil when nothing is pending: no
+    /// outage, the attempt used, the period asked about, or the grace already
+    /// over. Once it is over, time changes nothing more: a restore is due at
+    /// once or ruled out by a fact, and the caller re-checks when a fact
+    /// changes rather than on a timer.
     public func waitTime(now: Date) -> TimeInterval? {
-        guard !attempted, let since = downSince else { return nil }
-        return max(Self.grace - now.timeIntervalSince(since), 0)
+        guard !attempted, !asked, let since = downSince else { return nil }
+        let remaining = Self.grace - now.timeIntervalSince(since)
+        return remaining > 0 ? remaining : nil
     }
 }
 
 /// Restores the service when the policy says so, and otherwise hands over to
-/// the visible ask. The UI calls `check()` on every connection change and
-/// again after `nextCheck()` seconds, and opens the ask window when it
-/// answers `.askNow`.
+/// the visible ask. The UI calls `check()` on every connection change,
+/// whenever a fact the decision depends on changes (a service action ending,
+/// onboarding finishing, what `service status` says) and again after
+/// `nextCheck()` seconds, and opens the ask window when it answers `.askNow`.
 @Observable
 @MainActor
 public final class ServiceRecovery {
@@ -206,14 +222,18 @@ public final class ServiceRecovery {
         // "up" as soon as the daemon answers, so the next outage asks again.
         let ask = gate.evaluate(state, now: now(), onboardingPending: onboardingPending(),
                                 isDevelopment: isDevelopment, popoverOpen: popoverOpen())
+        // Asked and restored are alternatives: no silent restore later in this outage.
+        if ask { policy.noteAsked() }
         return ask ? .askNow : .nothing
     }
 
-    /// Seconds until `check()` should run again, nil when nothing is pending.
+    /// Seconds until `check()` should run again, nil when nothing time-based
+    /// is pending. Never zero: a decision that is due now was taken by the
+    /// `check()` just made, and only a later moment is worth a timer.
     public func nextCheck() -> TimeInterval? {
         guard !isRestoring else { return nil }
         let t = now()
-        return [gate.waitTime(now: t), policy.waitTime(now: t)].compactMap { $0 }.min()
+        return [gate.waitTime(now: t), policy.waitTime(now: t)].compactMap { $0 }.filter { $0 > 0 }.min()
     }
 
     /// "grantpin restored its background service." for a while after a restore.

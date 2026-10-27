@@ -101,6 +101,29 @@ final class ServiceRestorePolicyTests: XCTestCase {
         XCTAssertFalse(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(420)))
     }
 
+    func testOnceTheGraceIsOverNothingTimeBasedIsPending() {
+        var p = ServiceRestorePolicy()
+        p.observe(.notRunning, now: t0)
+        XCTAssertNil(p.waitTime(now: t0.addingTimeInterval(ServiceRestorePolicy.grace)), "due now, not in 0 seconds")
+        XCTAssertNil(p.waitTime(now: t0.addingTimeInterval(60)))
+        XCTAssertTrue(p.isDue(now: t0.addingTimeInterval(60)), "still due the moment a fact allows it")
+    }
+
+    func testOnceAskedNoRestoreInTheSameOutage() {
+        var p = ServiceRestorePolicy()
+        p.observe(.notRunning, now: t0)
+        p.noteAsked()
+        XCTAssertFalse(p.isDue(now: t0.addingTimeInterval(10)))
+        XCTAssertFalse(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(10)))
+        XCTAssertNil(p.waitTime(now: t0.addingTimeInterval(3)))
+        XCTAssertFalse(p.attempted, "the attempt is kept for a later outage")
+        // the daemon answers and goes down again: a new period
+        p.observe(.ready(StatusResult()), now: t0.addingTimeInterval(100))
+        XCTAssertFalse(p.asked)
+        p.observe(.notRunning, now: t0.addingTimeInterval(200))
+        XCTAssertTrue(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(210)))
+    }
+
     func testAnIneligibleLookDoesNotUseTheAttempt() {
         var p = ServiceRestorePolicy()
         p.observe(.notRunning, now: t0)
@@ -288,6 +311,64 @@ final class ServiceRecoveryTests: XCTestCase {
         w.advance(10)
         let later = await r.check()
         XCTAssertEqual(later, .askNow)
+    }
+
+    func testAnIneligibleLookLeavesNothingToWaitFor() async {
+        for (name, setup) in [
+            ("no marker", { (w: World) in w.marker = false }),
+            ("stopped job", { (w: World) in w.diagnosis = .notRunning }),
+            ("suspended", { (w: World) in w.suspended = true }),
+        ] as [(String, (World) -> Void)] {
+            let w = World(), r = recovery(w)
+            setup(w)
+            _ = await r.check()
+            XCTAssertEqual(r.nextCheck(), ServiceRestorePolicy.grace, name)
+            w.advance(10)
+            let verdict = await r.check()
+            XCTAssertEqual(verdict, .askNow, name)
+            XCTAssertNil(r.nextCheck(), "\(name): nothing time-based is left; a 0 would be a tight loop")
+            w.advance(30)
+            let again = await r.check()
+            XCTAssertEqual(again, .nothing, name)
+            XCTAssertNil(r.nextCheck(), name)
+            XCTAssertEqual(w.restores, 0, name)
+        }
+    }
+
+    func testOnceAskedNothingIsRestoredBehindThePersonsBackInTheSameOutage() async {
+        let w = World(), r = recovery(w)
+        w.suspended = true  // the Uninstall sheet is open when the grace ends
+        _ = await r.check(); w.advance(10)
+        let verdict = await r.check()
+        XCTAssertEqual(verdict, .askNow)
+        // the sheet is cancelled and the app looks again: nothing is installed
+        w.suspended = false
+        let after = await r.check()
+        XCTAssertEqual(after, .nothing)
+        XCTAssertEqual(w.restores, 0)
+        XCTAssertNil(r.nextCheck())
+        // the daemon answers and later goes away again: the attempt is still there
+        w.state = .ready(StatusResult()); _ = await r.check()
+        w.advance(120); w.state = .notRunning; _ = await r.check()
+        w.advance(10)
+        let later = await r.check()
+        XCTAssertEqual(later, .nothing)
+        XCTAssertEqual(w.restores, 1)
+    }
+
+    func testASuspensionThatEndsWithoutAnAskStillLetsTheRestoreHappen() async {
+        let w = World(), r = recovery(w)
+        w.suspended = true; w.popover = true  // the person pressed Start in the popover
+        _ = await r.check(); w.advance(10)
+        let during = await r.check()
+        XCTAssertEqual(during, .nothing, "no window while the person looks at the popover")
+        XCTAssertEqual(w.restores, 0)
+        XCTAssertNil(r.nextCheck(), "nothing time-based: the app looks again when the action ends")
+        // their Start did not bring the daemon back and the popover closed
+        w.suspended = false; w.popover = false
+        let after = await r.check()
+        XCTAssertEqual(after, .nothing)
+        XCTAssertEqual(w.restores, 1)
     }
 
     func testAnAnsweringDaemonDoesNothing() async {
