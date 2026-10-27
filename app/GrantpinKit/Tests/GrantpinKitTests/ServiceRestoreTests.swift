@@ -236,15 +236,58 @@ final class ServiceRecoveryTests: XCTestCase {
             setup(w)
             _ = await r.check(); w.advance(10); _ = await r.check()
             XCTAssertEqual(w.restores, 0, name)
+            XCTAssertEqual(w.diagnoses, 0, "\(name): a free fact already says no, so the helper is not asked")
         }
         let dev = World(), rd = recovery(dev, dev: true)
         _ = await rd.check(); dev.advance(10)
         let devVerdict = await rd.check()
         XCTAssertEqual(dev.restores, 0)
+        XCTAssertEqual(dev.diagnoses, 0)
         XCTAssertEqual(devVerdict, .nothing)
         let away = World(), ra = recovery(away, location: .elsewhere)
-        _ = await ra.check(); away.advance(10); _ = await ra.check()
+        _ = await ra.check(); away.advance(10)
+        let awayVerdict = await ra.check()
         XCTAssertEqual(away.restores, 0)
+        XCTAssertEqual(away.diagnoses, 0)
+        XCTAssertEqual(awayVerdict, .askNow, "the window shows where the app has to be moved to")
+    }
+
+    func testTheHelperIsAskedOnceAndOnlyWhenTheFreeFactsAllowARestore() async {
+        let w = World(), r = recovery(w)
+        _ = await r.check()
+        XCTAssertEqual(w.diagnoses, 0, "not due yet")
+        w.advance(10)
+        _ = await r.check()
+        XCTAssertEqual(w.diagnoses, 1)
+        XCTAssertEqual(w.restores, 1)
+    }
+
+    func testADaemonSeenAnsweringDuringTheRestoreStillAsksAboutALaterOutage() async {
+        let w = World()
+        var r: ServiceRecovery!
+        r = ServiceRecovery(
+            connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
+            markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            diagnose: { .notInstalled },
+            restore: {
+                // the socket answers before `service install` exits: the monitor's look comes first
+                w.state = .ready(StatusResult())
+                _ = await r.check()
+                return ActionResult(outcome: .succeeded, summary: "ok")
+            })
+        _ = await r.check(); w.advance(10)
+        let verdict = await r.check()
+        XCTAssertEqual(verdict, .nothing)
+        XCTAssertEqual(r.restoredAt, w.t)
+        XCTAssertNil(r.nextCheck())
+        // hours later the daemon dies: a new outage, asked about after the grace
+        w.advance(3600); w.state = .notRunning
+        let down = await r.check()
+        XCTAssertEqual(down, .nothing)
+        XCTAssertEqual(r.nextCheck(), ServiceAskGate.grace)
+        w.advance(10)
+        let later = await r.check()
+        XCTAssertEqual(later, .askNow)
     }
 
     func testAnAnsweringDaemonDoesNothing() async {

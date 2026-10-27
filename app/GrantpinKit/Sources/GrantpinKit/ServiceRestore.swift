@@ -57,10 +57,13 @@ public struct ServiceRestorePolicy: Sendable {
             self.isDevelopment = isDevelopment; self.location = location; self.vaultExists = vaultExists; self.suspended = suspended
         }
 
-        var allowsRestore: Bool {
-            markerPresent && diagnosis == .notInstalled && !onboardingPending && !isDevelopment
-                && location.isOK && vaultExists && !suspended
+        /// Everything but the diagnosis, which costs a helper run: when this
+        /// is false there is no point asking for one.
+        var allowsRestoreApartFromDiagnosis: Bool {
+            markerPresent && !onboardingPending && !isDevelopment && location.isOK && vaultExists && !suspended
         }
+
+        var allowsRestore: Bool { allowsRestoreApartFromDiagnosis && diagnosis == .notInstalled }
     }
 
     public private(set) var downSince: Date?
@@ -132,6 +135,10 @@ public final class ServiceRecovery {
     @ObservationIgnored private let vaultExists: () -> Bool
     @ObservationIgnored private let location: AppLocation
     @ObservationIgnored private let isDevelopment: Bool
+    /// Neither development mode nor where the app runs from rules a restore
+    /// out; both are fixed for this launch, so otherwise the policy is never
+    /// consulted.
+    @ObservationIgnored private let restorePossible: Bool
     @ObservationIgnored private let onboardingPending: @MainActor () -> Bool
     @ObservationIgnored private let popoverOpen: @MainActor () -> Bool
     @ObservationIgnored private let suspended: @MainActor () -> Bool
@@ -154,6 +161,7 @@ public final class ServiceRecovery {
         restore: @escaping @MainActor () async -> ActionResult?
     ) {
         self.connection = connection; self.location = location; self.isDevelopment = isDevelopment
+        self.restorePossible = !isDevelopment && location.isOK
         self.onboardingPending = onboardingPending; self.popoverOpen = popoverOpen; self.suspended = suspended
         self.markerPresent = markerPresent; self.vaultExists = vaultExists; self.now = now
         self.diagnose = diagnose; self.restore = restore
@@ -163,26 +171,40 @@ public final class ServiceRecovery {
     /// launch); when that fails, or does not apply, lets the ask decide.
     public func check() async -> Verdict {
         guard !isRestoring else { return .nothing }
-        policy.observe(connection(), now: now())
-        if policy.isDue(now: now()), markerPresent() {
-            let diagnosis = await diagnose()
-            let inputs = ServiceRestorePolicy.Inputs(
-                markerPresent: markerPresent(), diagnosis: diagnosis, onboardingPending: onboardingPending(),
-                isDevelopment: isDevelopment, location: location, vaultExists: vaultExists(), suspended: suspended())
-            if policy.evaluate(connection(), inputs, now: now()) {
-                isRestoring = true
-                let result = await restore()
-                isRestoring = false
-                if result?.outcome == .succeeded {
-                    restoredAt = now()
-                    gate.resolve()
-                    return .nothing
+        var state = connection()
+        if restorePossible {
+            policy.observe(state, now: now())
+            if policy.isDue(now: now()) {
+                // The free facts first; the helper is asked only when they leave a restore possible.
+                var inputs = ServiceRestorePolicy.Inputs(
+                    markerPresent: markerPresent(), diagnosis: nil, onboardingPending: onboardingPending(),
+                    isDevelopment: isDevelopment, location: location, vaultExists: vaultExists(), suspended: suspended())
+                if inputs.allowsRestoreApartFromDiagnosis {
+                    inputs.diagnosis = await diagnose()
+                    inputs.suspended = suspended()
+                    state = connection()
+                    if policy.evaluate(state, inputs, now: now()) {
+                        isRestoring = true
+                        let result = await restore()
+                        isRestoring = false
+                        // The monitor may have seen the daemon answer while the
+                        // restore ran; that look returned early above, so the
+                        // connection is read again before anything decides.
+                        state = connection()
+                        policy.observe(state, now: now())
+                        if result?.outcome == .succeeded {
+                            restoredAt = now()
+                            gate.resolve()
+                        }
+                    }
                 }
             }
         }
         // Another check may have started a restore while this one waited.
         guard !isRestoring else { return .nothing }
-        let ask = gate.evaluate(connection(), now: now(), onboardingPending: onboardingPending(),
+        // Every connection seen reaches the gate: after a restore it moves to
+        // "up" as soon as the daemon answers, so the next outage asks again.
+        let ask = gate.evaluate(state, now: now(), onboardingPending: onboardingPending(),
                                 isDevelopment: isDevelopment, popoverOpen: popoverOpen())
         return ask ? .askNow : .nothing
     }
