@@ -72,10 +72,11 @@ type Broker struct {
 	now    func() time.Time
 	askSem chan struct{} // capacity 1: serialises Approver.Ask
 
-	// inFlight counts the run requests between acceptance (handleRun entered)
-	// and completion (handleRun returned), whatever the outcome: a run waiting
-	// for the human, running its command, or about to be refused. Reported by
-	// status as in_flight_runs.
+	// inFlight counts the requests in progress that hold or may ask for an
+	// approval (AsksApproval: run, show, standing grant creation, update),
+	// from Handle's entry to its return, whatever the outcome: waiting for
+	// the human, running a command, or about to be refused. Reported by status
+	// as in_flight_runs.
 	inFlight atomic.Int64
 
 	// afterReleased, if set, runs right after a run's released audit row is
@@ -121,9 +122,31 @@ func (b *Broker) Register(r *daemon.Router) {
 	}
 }
 
+// AsksApproval reports whether a request of this shape may wait on the
+// approver, and so is counted in status as in flight: run, show, a standing
+// grant creation (`grants add`) and update (which asks when it lowers a
+// secret's protection level). The shape alone decides, before the request is
+// looked at, so the count covers the wait for the vault to open as well.
+func AsksApproval(req *proto.Request) bool {
+	switch req.Op {
+	case proto.OpRun, proto.OpShow, proto.OpUpdate:
+		return true
+	case proto.OpGrants:
+		return req.Action == proto.ActionAdd
+	}
+	return false
+}
+
 // Handle dispatches one request by op. It satisfies daemon.Handler's contract:
 // exactly one Finish.
 func (b *Broker) Handle(ctx context.Context, req *proto.Request, w daemon.ResponseWriter) {
+	if AsksApproval(req) {
+		// Counted from here to the return, so every exit path (refusal,
+		// denial, approver failure, timeout, cancel, completion) takes the
+		// request off again.
+		b.inFlight.Add(1)
+		defer b.inFlight.Add(-1)
+	}
 	switch req.Op {
 	case proto.OpRun:
 		b.handleRun(ctx, req, w)
@@ -150,8 +173,8 @@ func (b *Broker) Handle(ctx context.Context, req *proto.Request, w daemon.Respon
 	}
 }
 
-// InFlightRuns is the number of run requests this broker has accepted and not
-// finished yet (see Broker.inFlight).
+// InFlightRuns is the number of requests that hold or may ask for an approval
+// (AsksApproval) this broker has accepted and not finished yet.
 func (b *Broker) InFlightRuns() int { return int(b.inFlight.Load()) }
 
 // StatusFunc fills the vault/backend/grant parts of the status reply.

@@ -53,10 +53,6 @@ func (rc *runCtx) refuse(ctx context.Context, decision, category, reason, msg st
 }
 
 func (b *Broker) handleRun(ctx context.Context, req *proto.Request, w daemon.ResponseWriter) {
-	// Counted from here to the return, so every exit path (refusal, denial,
-	// approver failure, timeout, cancel, completion) takes the run off again.
-	b.inFlight.Add(1)
-	defer b.inFlight.Add(-1)
 	caller, callerOK := callerOf(req)
 	// The entry is built from the raw request, which is untrusted and may be
 	// megabytes (validateRun has not run yet): record capped copies, so that a

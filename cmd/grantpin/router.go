@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -88,6 +89,11 @@ type brokerHolder struct {
 	bg                     context.Context // ends the background retry (close)
 	stopBG                 context.CancelFunc
 	backoffMin, backoffMax time.Duration
+
+	// waitingForVault counts the requests that may ask for an approval
+	// (broker.AsksApproval) while they wait in get for the vault to open; the
+	// broker counts them from the moment it takes over, so status adds the two.
+	waitingForVault atomic.Int64
 }
 
 // Background retry schedule while the keystore is unavailable.
@@ -340,7 +346,14 @@ func (h *brokerHolder) close() {
 
 // handle serves one request, failing cleanly while the vault is unavailable.
 func (h *brokerHolder) handle(ctx context.Context, req *proto.Request, w daemon.ResponseWriter) {
+	counted := broker.AsksApproval(req)
+	if counted {
+		h.waitingForVault.Add(1)
+	}
 	b, err := h.get(ctx)
+	if counted {
+		h.waitingForVault.Add(-1)
+	}
 	var locked *errVaultLocked
 	switch {
 	case errors.As(err, &locked):
@@ -398,5 +411,7 @@ func (h *brokerHolder) statusFunc() daemon.StatusFunc {
 		} else if msg := h.lockedState(); msg != "" {
 			st.VaultLocked, st.VaultLockedError = true, msg
 		}
+		// The broker's count plus the requests still waiting for the vault to open.
+		st.InFlightRuns += int(h.waitingForVault.Load())
 	}
 }

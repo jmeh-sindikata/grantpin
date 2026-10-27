@@ -126,11 +126,14 @@ type StatusResult struct {
 	ActiveGrants     int                   `json:"active_grants"`
 	TamperedGrants   int                   `json:"tampered_grants,omitempty"` // grant rows that failed authentication
 	Socket           string                `json:"socket,omitempty"`          // path the daemon listens on
-	// InFlightRuns counts the run requests (CLI or MCP secret_run) between
-	// acceptance and completion, a run waiting on the approval dialog
-	// included. Always present (never omitted), so a reader can tell a daemon
-	// that reports it from one that predates it: the menu-bar app restarts the
-	// service after an update only when this is known to be zero.
+	// InFlightRuns counts the requests in progress that hold or may ask for an
+	// approval: run (CLI or MCP secret_run), show, standing grant creation
+	// (`grants add`) and update (which asks when it lowers a secret's
+	// protection level), from acceptance to completion, a request waiting on
+	// the approval dialog or for the vault to open included. Always present
+	// (never omitted), so a reader can tell a daemon that reports it from one
+	// that predates it: the menu-bar app restarts the service after an update
+	// only when this is known to be zero.
 	InFlightRuns int `json:"in_flight_runs"`
 }
 
