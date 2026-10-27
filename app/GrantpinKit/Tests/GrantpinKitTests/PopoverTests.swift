@@ -117,8 +117,12 @@ final class FakeActions: DaemonActions, @unchecked Sendable {
     var startResult = ActionResult(outcome: .succeeded, summary: "grantpin is running in the background.")
     var createResult = ActionResult(outcome: .succeeded, summary: "Vault created.")
     var delayNanos: UInt64 = 0
+    /// Runs when `startService` begins and may hold it; a test that needs to
+    /// act while Start is in flight waits for it, instead of guessing a delay.
+    var duringStart: (@Sendable () async -> Void)?
     func startService() async -> ActionResult {
         lock.withLock { started += 1 }
+        if let duringStart { await duringStart() }
         if delayNanos > 0 { try? await Task.sleep(nanoseconds: delayNanos) }
         return startResult
     }
@@ -170,12 +174,21 @@ final class PopoverModelTests: XCTestCase {
     func testStartRunsTheActionAndKeepsTheResult() async {
         let actions = FakeActions()
         var polled = 0
-        let m = PopoverModel(audit: FakeService(), actions: actions, onActionFinished: { polled += 1 })
+        var runningDuringPoll: StatusLine.Button?
+        var resultDuringPoll: ActionResult?
+        var m: PopoverModel!
+        m = PopoverModel(audit: FakeService(), actions: actions, onActionFinished: {
+            polled += 1
+            runningDuringPoll = m.running
+            resultDuringPoll = m.lastResult
+        })
         await m.start()
         XCTAssertEqual(actions.started, 1)
         XCTAssertEqual(m.lastResult?.summary, "grantpin is running in the background.")
         XCTAssertNil(m.running)
         XCTAssertEqual(polled, 1, "status is polled right away")
+        XCTAssertEqual(runningDuringPoll, .startService, "the buttons stay off until the new state is known")
+        XCTAssertEqual(resultDuringPoll?.summary, "grantpin is running in the background.")
         m.dismissResult()
         XCTAssertNil(m.lastResult)
     }
@@ -279,5 +292,54 @@ final class PopoverModelTests: XCTestCase {
         XCTAssertEqual(m.buttonsDisabledReason, "The helper inside this app could not be found.")
         await m.start()
         XCTAssertNil(m.lastResult)
+    }
+
+    func testTheButtonsWaitWhileSomethingElseChangesTheService() async {
+        var busy = true
+        let actions = FakeActions()
+        let m = PopoverModel(audit: FakeService(), actions: actions, externallyBusy: { busy })
+        XCTAssertEqual(m.buttonsDisabledReason, ServiceBusy.reason)
+        let refused = await m.perform(.startService)
+        XCTAssertNil(refused)
+        XCTAssertEqual(actions.started, 0)
+        busy = false
+        XCTAssertNil(m.buttonsDisabledReason)
+        await m.start()
+        XCTAssertEqual(actions.started, 1)
+    }
+
+    func testPerformAnswersWhatThisRunDidAndNilWhenNothingRan() async throws {
+        let actions = FakeActions()
+        let m = PopoverModel(audit: FakeService(), actions: actions)
+        let first = await m.perform(.startService)
+        XCTAssertEqual(first, actions.startResult)
+        XCTAssertEqual(m.lastResult, first)
+        // a button that only opens something: nothing ran, and the screen's result stays
+        let opened = await m.perform(.openLogs)
+        XCTAssertNil(opened)
+        XCTAssertEqual(m.lastResult, first)
+        // a second press while one runs: nil, not the other run's result
+        let (began, beganC) = AsyncStream.makeStream(of: Void.self)
+        let (gate, gateC) = AsyncStream.makeStream(of: Void.self)
+        actions.duringStart = {
+            beganC.yield()
+            for await _ in gate { break }
+        }
+        async let slow = m.perform(.startService)
+        for await _ in began { break }
+        XCTAssertEqual(m.running, .startService)
+        let refused = await m.perform(.restart)
+        XCTAssertNil(refused)
+        gateC.yield()
+        let slowResult = await slow
+        XCTAssertEqual(slowResult, actions.startResult)
+        XCTAssertEqual(actions.started, 2)
+        actions.duringStart = nil
+        // the buttons are off: nil, whatever lastResult says
+        let off = PopoverModel(audit: FakeService(), actions: actions, location: .elsewhere)
+        let offResult = await off.perform(.startService)
+        XCTAssertNil(offResult)
+        let noHelper = await PopoverModel(audit: FakeService(), actions: nil).perform(.startService)
+        XCTAssertNil(noHelper)
     }
 }

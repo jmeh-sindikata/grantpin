@@ -44,6 +44,7 @@ public final class OnboardingModel {
     @ObservationIgnored private let loginItem: LoginItemControl?
     @ObservationIgnored private let onFinished: @MainActor () -> Void
     @ObservationIgnored private let onActionFinished: @MainActor () async -> Void
+    @ObservationIgnored private let externallyBusy: @MainActor () -> Bool
     @ObservationIgnored private var positioned = false
 
     public static let welcomeLines = [
@@ -66,14 +67,18 @@ public final class OnboardingModel {
         confirmLabel: "Use Keychain")
     public static let loginLabel = "Start grantpin when I log in"
 
+    /// - Parameter externallyBusy: something else is changing the service
+    ///   right now (`ServiceBusy`); Install Service and Create Vault wait.
     public init(control: ServiceControl?, loginItem: LoginItemControl?, isDevelopment: Bool, location: AppLocation = .ok,
-                onFinished: @escaping @MainActor () -> Void = {}, onActionFinished: @escaping @MainActor () async -> Void = {}) {
+                onFinished: @escaping @MainActor () -> Void = {}, onActionFinished: @escaping @MainActor () async -> Void = {},
+                externallyBusy: @escaping @MainActor () -> Bool = { false }) {
         self.control = control
         self.loginItem = loginItem
         self.isDevelopment = isDevelopment
         self.location = location
         self.onFinished = onFinished
         self.onActionFinished = onActionFinished
+        self.externallyBusy = externallyBusy
     }
 
     // MARK: derived state
@@ -126,6 +131,7 @@ public final class OnboardingModel {
         if isDevelopment { return "In development mode the background service and the vault are not touched." }
         if control == nil { return "The helper inside this app could not be found." }
         if !location.isOK { return AppLocation.blockedMessage }
+        if externallyBusy() { return ServiceBusy.reason }
         return nil
     }
 

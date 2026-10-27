@@ -200,7 +200,8 @@ public final class PopoverModel {
     public private(set) var activityLoaded = false
     /// The six most recently updated secrets (docs/UI-SPEC.md 3.1), newest first.
     public private(set) var quickSecrets: [SecretInfo] = []
-    /// The button that is running now, if any.
+    /// The button that is running now, if any, through the status poll that
+    /// follows the action: the buttons stay off until the new state is known.
     public private(set) var running: StatusLine.Button?
     /// The result of the last button press, shown under the status line.
     public private(set) var lastResult: ActionResult?
@@ -216,6 +217,7 @@ public final class PopoverModel {
     @ObservationIgnored private let actions: DaemonActions?
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let onActionFinished: @MainActor () async -> Void
+    @ObservationIgnored private let externallyBusy: @MainActor () -> Bool
 
     /// How many rows to ask for; the pairing needs a few more than are shown.
     public nonisolated static let auditWindow = 12
@@ -224,9 +226,12 @@ public final class PopoverModel {
     ///   - actions: nil when no helper can be found (for example an unsigned
     ///     development build); the buttons then explain.
     ///   - onActionFinished: runs after Start or Create vault, to poll `status` at once.
+    ///   - externallyBusy: something else is changing the service right now
+    ///     (`ServiceBusy`); the buttons wait.
     public init(audit: AuditService, actions: DaemonActions?, developmentSocket: String? = nil,
                 secrets: SecretsListing? = nil, location: AppLocation = .ok,
-                now: @escaping () -> Date = Date.init, onActionFinished: @escaping @MainActor () async -> Void = {}) {
+                now: @escaping () -> Date = Date.init, onActionFinished: @escaping @MainActor () async -> Void = {},
+                externallyBusy: @escaping @MainActor () -> Bool = { false }) {
         self.audit = audit
         self.secretsList = secrets
         self.location = location
@@ -234,6 +239,7 @@ public final class PopoverModel {
         self.developmentSocket = developmentSocket
         self.now = now
         self.onActionFinished = onActionFinished
+        self.externallyBusy = externallyBusy
     }
 
     public var isDevelopment: Bool { developmentSocket != nil }
@@ -243,6 +249,7 @@ public final class PopoverModel {
         if isDevelopment { return "In development mode the background service and the vault are not touched." }
         if actions == nil { return "The helper inside this app could not be found." }
         if !location.isOK { return AppLocation.blockedMessage }
+        if externallyBusy() { return ServiceBusy.reason }
         return nil
     }
 
@@ -281,21 +288,25 @@ public final class PopoverModel {
     }
 
     /// The Start button: `service install` through the helper.
-    public func start() async { await run(.startService) }
+    public func start() async { _ = await run(.startService) }
 
     /// The Create vault button: `init` through the helper.
-    public func createVault() async { await run(.createVault) }
+    public func createVault() async { _ = await run(.createVault) }
 
     /// Any of the status line's buttons that run the helper (Start, Repair,
     /// Restart, Create vault). The others (Set Up, Review, Open Logs Folder)
-    /// only open a window or a folder and are handled by the view.
-    public func perform(_ button: StatusLine.Button) async { await run(button) }
+    /// only open a window or a folder and are handled by the view. Returns
+    /// what this run did, or nil when nothing ran (a button is already
+    /// running, the buttons are off, or the button does not run the helper);
+    /// `lastResult` is for the screen and may already have been dismissed.
+    @discardableResult
+    public func perform(_ button: StatusLine.Button) async -> ActionResult? { await run(button) }
 
-    private func run(_ button: StatusLine.Button) async {
-        guard running == nil else { return }
-        guard buttonsDisabledReason == nil, let actions else { return }
+    private func run(_ button: StatusLine.Button) async -> ActionResult? {
+        guard running == nil else { return nil }
+        guard buttonsDisabledReason == nil, let actions else { return nil }
         switch button {
-        case .setUp, .review, .openLogs: return
+        case .setUp, .review, .openLogs: return nil
         default: break
         }
         running = button
@@ -304,11 +315,12 @@ public final class PopoverModel {
         switch button {
         case .startService, .repair, .restart: result = await actions.startService()
         case .createVault: result = await actions.createVault()
-        case .setUp, .review, .openLogs: return
+        case .setUp, .review, .openLogs: return nil
         }
         lastResult = result
-        running = nil
         await onActionFinished()
+        running = nil
+        return result
     }
 
     public func dismissResult() { lastResult = nil }

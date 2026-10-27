@@ -16,17 +16,17 @@ final class UninstallModelTests: XCTestCase {
 
     func model(control: ServiceControl? = FakeServiceControl(), tier: Tier? = .hardware, dev: Bool = false,
                answering: @escaping @Sendable () async -> Bool = { false }, keychain: FakeKeychain = FakeKeychain(),
-               loginReset: @escaping @MainActor () -> Void = {}) -> UninstallModel {
+               loginReset: @escaping @MainActor () -> Void = {}, busy: @escaping @MainActor () -> Bool = { false }) -> UninstallModel {
         state(control: control, tier: tier, dev: dev, state: { await answering() ? .answering : .stopped },
-              keychain: keychain, loginReset: loginReset)
+              keychain: keychain, loginReset: loginReset, busy: busy)
     }
 
     func state(control: ServiceControl? = FakeServiceControl(), tier: Tier? = .hardware, dev: Bool = false,
                state: @escaping @Sendable () async -> DaemonState, keychain: FakeKeychain = FakeKeychain(),
-               loginReset: @escaping @MainActor () -> Void = {}) -> UninstallModel {
+               loginReset: @escaping @MainActor () -> Void = {}, busy: @escaping @MainActor () -> Bool = { false }) -> UninstallModel {
         UninstallModel(control: control, secrets: 3, grants: 1, keystoreTier: tier, isDevelopment: dev,
                        vaultFolder: vault, logsFolder: logs, keychain: keychain, daemonState: state,
-                       sleep: { _ in }, unregisterLoginItem: loginReset)
+                       sleep: { _ in }, unregisterLoginItem: loginReset, externallyBusy: busy)
     }
 
     func exists(_ u: URL) -> Bool { FileManager.default.fileExists(atPath: u.path) }
@@ -113,6 +113,22 @@ final class UninstallModelTests: XCTestCase {
         XCTAssertFalse(model(dev: true).canRemove)
         XCTAssertNotNil(model(dev: true).disabledReason)
         XCTAssertFalse(model(control: nil).canRemove)
+    }
+
+    func testRemoveWaitsWhileSomethingElseChangesTheService() async {
+        // the automatic restore (or the popover's Start) is running `service install`
+        var restoring = true
+        let c = FakeServiceControl()
+        let m = model(control: c, busy: { restoring })
+        XCTAssertEqual(m.disabledReason, ServiceBusy.reason)
+        XCTAssertEqual(ServiceBusy.reason, "grantpin is changing its background service right now. Wait a moment.")
+        XCTAssertFalse(m.canRemove)
+        await m.remove()
+        XCTAssertEqual(c.uninstalls, 0, "service uninstall must not race the install")
+        XCTAssertEqual(m.phase, .choosing)
+        restoring = false
+        XCTAssertNil(m.disabledReason)
+        XCTAssertTrue(m.canRemove)
     }
 
     func testStopOnlyKeepsEverythingElse() async {

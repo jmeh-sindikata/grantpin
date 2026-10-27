@@ -111,14 +111,18 @@ public final class SettingsModel {
     @ObservationIgnored private let loginItem: LoginItemControl?
     @ObservationIgnored private let pathDetector: PathDetector
     @ObservationIgnored private let onChanged: @MainActor () async -> Void
+    @ObservationIgnored private let externallyBusy: @MainActor () -> Bool
 
     public static let pathLabel = "Where grantpin looks for commands"
     public static let pathHelp = "Programs that agents run through grantpin can only find commands in these folders."
     public static let approvalNeeded = "Allow grantpin in System Settings > General > Login Items"
 
+    /// - Parameter externallyBusy: something else is changing the service
+    ///   right now (`ServiceBusy`); the service controls wait.
     public init(control: ServiceControl?, loginItem: LoginItemControl?, developmentSocket: String?, resolvedSocket: String,
                 location: AppLocation = .ok, pathDetector: PathDetector = PathDetector(),
-                onChanged: @escaping @MainActor () async -> Void = {}) {
+                onChanged: @escaping @MainActor () async -> Void = {},
+                externallyBusy: @escaping @MainActor () -> Bool = { false }) {
         self.control = control
         self.loginItem = loginItem
         self.developmentSocket = developmentSocket
@@ -126,6 +130,7 @@ public final class SettingsModel {
         self.location = location
         self.pathDetector = pathDetector
         self.onChanged = onChanged
+        self.externallyBusy = externallyBusy
         self.loginStatus = loginItem?.status ?? .notRegistered
     }
 
@@ -151,6 +156,15 @@ public final class SettingsModel {
     public var developmentBanner: String? {
         developmentSocket.map { "Development socket: " + DisplayText.sanitise($0) }
     }
+
+    /// Another part of the app, or the automatic restore, is changing the
+    /// service right now: the service controls wait and say so. Not one of the
+    /// fixed reasons above (the PATH field still loads).
+    public var busyElsewhereReason: String? { externallyBusy() ? ServiceBusy.reason : nil }
+
+    /// Start, Stop, Repair, Restart and Apply are off: a fixed reason, this
+    /// model's own action, or one running elsewhere.
+    public var serviceControlsDisabled: Bool { controlsDisabledReason != nil || isBusy || externallyBusy() }
 
     // MARK: service
 
@@ -197,7 +211,7 @@ public final class SettingsModel {
     /// Start (service off), Repair and Restart: `service install`, which is
     /// idempotent and restarts the job. `path` nil detects the shell's PATH.
     public func install(path: String? = nil) async {
-        guard controlsDisabledReason == nil, let control, !isBusy else { return }
+        guard controlsDisabledReason == nil, let control, !isBusy, !externallyBusy() else { return }
         isBusy = true
         lastResult = nil
         let r = await control.installService(path: path)
@@ -214,7 +228,7 @@ public final class SettingsModel {
 
     /// After the person confirmed `stopConfirmation`.
     public func stopService() async {
-        guard controlsDisabledReason == nil, let control, !isBusy else { return }
+        guard controlsDisabledReason == nil, let control, !isBusy, !externallyBusy() else { return }
         isBusy = true
         lastResult = nil
         let r = await control.uninstallService()

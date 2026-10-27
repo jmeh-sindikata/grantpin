@@ -101,6 +101,48 @@ final class ServiceRestorePolicyTests: XCTestCase {
         XCTAssertFalse(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(420)))
     }
 
+    func testOnceTheGraceIsOverNothingTimeBasedIsPending() {
+        var p = ServiceRestorePolicy()
+        p.observe(.notRunning, now: t0)
+        XCTAssertNil(p.waitTime(now: t0.addingTimeInterval(ServiceRestorePolicy.grace)), "due now, not in 0 seconds")
+        XCTAssertNil(p.waitTime(now: t0.addingTimeInterval(60)))
+        XCTAssertTrue(p.isDue(now: t0.addingTimeInterval(60)), "still due the moment a fact allows it")
+    }
+
+    func testOnceAskedNoRestoreInTheSameOutage() {
+        var p = ServiceRestorePolicy()
+        p.observe(.notRunning, now: t0)
+        p.noteAsked()
+        XCTAssertFalse(p.isDue(now: t0.addingTimeInterval(10)))
+        XCTAssertFalse(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(10)))
+        XCTAssertNil(p.waitTime(now: t0.addingTimeInterval(3)))
+        XCTAssertFalse(p.attempted, "the attempt is kept for a later outage")
+        // the daemon answers for a good while and goes down again: a new period
+        p.observe(.ready(StatusResult()), now: t0.addingTimeInterval(100))
+        p.observe(.notRunning, now: t0.addingTimeInterval(200))
+        XCTAssertFalse(p.asked)
+        XCTAssertTrue(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(210)))
+    }
+
+    func testAShortUpKeepsTheAskedPeriodAsTheGateDoes() {
+        var p = ServiceRestorePolicy()
+        p.observe(.notRunning, now: t0)
+        p.noteAsked()
+        // the person's own Start brings it up at 15 and it dies at 30: the gate calls that the same trouble
+        p.observe(.ready(StatusResult()), now: t0.addingTimeInterval(15))
+        XCTAssertTrue(p.asked)
+        p.observe(.notRunning, now: t0.addingTimeInterval(30))
+        XCTAssertTrue(p.asked)
+        XCTAssertFalse(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(40)), "no silent restore in an asked period")
+        XCTAssertNil(p.waitTime(now: t0.addingTimeInterval(35)))
+        // up for stableUp: the next down is a new period
+        p.observe(.ready(StatusResult()), now: t0.addingTimeInterval(50))
+        p.observe(.ready(StatusResult()), now: t0.addingTimeInterval(50 + ServiceAskGate.stableUp))
+        XCTAssertFalse(p.asked)
+        p.observe(.notRunning, now: t0.addingTimeInterval(200))
+        XCTAssertTrue(p.evaluate(.notRunning, ok, now: t0.addingTimeInterval(210)))
+    }
+
     func testAnIneligibleLookDoesNotUseTheAttempt() {
         var p = ServiceRestorePolicy()
         p.observe(.notRunning, now: t0)
@@ -146,26 +188,100 @@ final class ServiceRecoveryTests: XCTestCase {
             restore: { w.restores += 1; return w.restoreResult })
     }
 
-    func testSuccessRestoresOnceShowsTheNoticeAndResolvesThePeriod() async {
+    func testSuccessRestoresOnceAndCountsWhenTheDaemonIsSeenAnswering() async {
         let w = World(), r = recovery(w)
         let first = await r.check()
         XCTAssertEqual(first, .nothing)
         XCTAssertEqual(r.nextCheck(), ServiceRestorePolicy.grace)
-        XCTAssertNil(r.noticeText())
+        XCTAssertNil(r.noticeText)
         w.advance(10)
         let second = await r.check()
         XCTAssertEqual(second, .nothing, "restored: no ask window")
         XCTAssertEqual(w.restores, 1)
-        XCTAssertEqual(r.restoredAt, w.t)
-        XCTAssertEqual(r.noticeText(), "grantpin restored its background service.")
+        XCTAssertNil(r.restoredAt, "not until the monitor has seen the daemon")
+        XCTAssertNil(r.noticeText, "not under a red headline")
+        XCTAssertEqual(r.nextCheck(), ServiceRestorePolicy.grace, "a fresh grace for the daemon to answer")
         // the monitor has not caught up yet: the ask must stay quiet
-        w.advance(30)
+        w.advance(4)
         let third = await r.check()
         XCTAssertEqual(third, .nothing)
         XCTAssertEqual(w.restores, 1)
+        XCTAssertEqual(r.nextCheck(), ServiceRestorePolicy.grace - 4)
+        // the daemon answers: the restore is recorded and the notice shows
+        w.advance(2); w.state = .ready(StatusResult())
+        _ = await r.check()
+        XCTAssertEqual(r.restoredAt, w.t)
+        XCTAssertEqual(r.noticeText, "grantpin restored its background service.")
+        XCTAssertEqual(ServiceRecovery.restoredNotice, "grantpin restored its background service.")
         XCTAssertNil(r.nextCheck())
-        // the notice goes after a while
-        XCTAssertNil(r.noticeText(at: w.t.addingTimeInterval(ServiceRecovery.noticeDuration + 1)))
+    }
+
+    func testARestoredDaemonThatDiesAgainSoonIsAskedAbout() async {
+        let w = World(), r = recovery(w)
+        _ = await r.check(); w.advance(10); _ = await r.check()
+        w.advance(2); w.state = .ready(StatusResult()); _ = await r.check()
+        XCTAssertEqual(r.restoredAt, w.t)
+        // down again 30 seconds later: the person saw no window for the restore, so this one asks
+        w.advance(30); w.state = .notRunning
+        let down = await r.check()
+        XCTAssertEqual(down, .nothing)
+        XCTAssertNil(r.noticeText)
+        XCTAssertEqual(r.nextCheck(), ServiceAskGate.grace)
+        w.advance(10)
+        let later = await r.check()
+        XCTAssertEqual(later, .askNow, "a service that keeps stopping right after its restore gets the window")
+        XCTAssertEqual(w.restores, 1)
+    }
+
+    func testASuccessNeverSeenAnsweringEndsInTheAsk() async {
+        let w = World(), r = recovery(w)
+        _ = await r.check(); w.advance(10)
+        let restored = await r.check()
+        XCTAssertEqual(restored, .nothing)
+        XCTAssertEqual(w.restores, 1)
+        w.advance(ServiceRestorePolicy.grace)
+        let verdict = await r.check()
+        XCTAssertEqual(verdict, .askNow, "service install said yes, but the job died before the monitor saw it")
+        XCTAssertNil(r.restoredAt)
+        XCTAssertNil(r.noticeText)
+        XCTAssertNil(r.nextCheck())
+    }
+
+    func testTheNoticeGoesWhenTheRestoredDaemonStopsAgain() async {
+        let w = World(), r = recovery(w)
+        _ = await r.check(); w.advance(10); _ = await r.check()
+        w.state = .ready(StatusResult()); _ = await r.check()
+        XCTAssertEqual(r.noticeText, ServiceRecovery.restoredNotice)
+        w.advance(30); w.state = .notRunning
+        _ = await r.check()
+        XCTAssertNil(r.noticeText, "a red headline with a green 'restored' line under it would lie")
+        XCTAssertEqual(r.restoredAt, w.t.addingTimeInterval(-30), "Settings still says when")
+        // answering again does not bring it back
+        w.state = .ready(StatusResult()); _ = await r.check()
+        XCTAssertNil(r.noticeText)
+    }
+
+    func testTheNoticeExpiresByItselfAfterTenMinutes() async throws {
+        let w = World()
+        let rec = SleepRecorder(), release = ManagedFlag()
+        let r = ServiceRecovery(
+            connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
+            markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            sleep: { seconds in
+                try await rec.sleep(seconds)
+                while !release.value { try await Task.sleep(nanoseconds: 1_000_000) }
+            },
+            diagnose: { .notInstalled }, restore: { ActionResult(outcome: .succeeded, summary: "ok") })
+        _ = await r.check(); w.advance(10); _ = await r.check()
+        w.state = .ready(StatusResult()); _ = await r.check()
+        XCTAssertEqual(r.noticeText, ServiceRecovery.restoredNotice)
+        for _ in 0..<200 where rec.count < 1 { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertEqual(rec.delays, [ServiceRecovery.noticeDuration])
+        XCTAssertEqual(r.noticeText, ServiceRecovery.restoredNotice, "still there while the ten minutes run")
+        release.set()
+        for _ in 0..<200 where r.noticeText != nil { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertNil(r.noticeText)
+        XCTAssertNotNil(r.restoredAt, "Settings still says when")
     }
 
     func testFailureFallsBackToTheAskWindowExactlyOnce() async {
@@ -177,7 +293,7 @@ final class ServiceRecoveryTests: XCTestCase {
         XCTAssertEqual(failed, .askNow)
         XCTAssertEqual(w.restores, 1)
         XCTAssertNil(r.restoredAt)
-        XCTAssertNil(r.noticeText())
+        XCTAssertNil(r.noticeText)
         w.advance(30)
         for _ in 0..<3 {
             let again = await r.check()
@@ -187,13 +303,79 @@ final class ServiceRecoveryTests: XCTestCase {
         XCTAssertEqual(w.restores, 1)
     }
 
-    func testStartedButNotAnsweringIsNotARestore() async {
+    func testStartedButNotAnsweringWaitsAndIsARestoreOnceTheDaemonAnswers() async {
         let w = World(), r = recovery(w)
         w.restoreResult = ActionResult(outcome: .startedNotAnswering, summary: "started")
         _ = await r.check(); w.advance(10)
         let verdict = await r.check()
+        XCTAssertEqual(verdict, .nothing, "launchd has the job: no window for a service the app just started")
+        XCTAssertEqual(w.restores, 1)
+        XCTAssertNil(r.restoredAt)
+        XCTAssertEqual(r.nextCheck(), ServiceRestorePolicy.grace, "a fresh grace")
+        w.advance(4)
+        let still = await r.check()
+        XCTAssertEqual(still, .nothing)
+        XCTAssertEqual(r.nextCheck(), ServiceRestorePolicy.grace - 4)
+        w.advance(2); w.state = .ready(StatusResult())
+        let up = await r.check()
+        XCTAssertEqual(up, .nothing)
+        XCTAssertEqual(r.restoredAt, w.t)
+        XCTAssertNil(r.nextCheck())
+        // a later outage asks as usual; the one attempt is used
+        w.advance(120); w.state = .notRunning; _ = await r.check(); w.advance(10)
+        let later = await r.check()
+        XCTAssertEqual(later, .askNow)
+        XCTAssertEqual(w.restores, 1)
+    }
+
+    func testTheMonitorIsPolledBeforeAPendingRestoreIsGivenUp() async {
+        let w = World()
+        var refreshes = 0
+        let r = ServiceRecovery(
+            connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
+            markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            refresh: { refreshes += 1; w.state = .ready(StatusResult()) },
+            diagnose: { .notInstalled }, restore: { ActionResult(outcome: .startedNotAnswering, summary: "started") })
+        _ = await r.check(); w.advance(10); _ = await r.check()
+        XCTAssertEqual(refreshes, 0, "within the grace the monitor's own polls are enough")
+        // the background poll is 15 s apart: the state is still the one from before the install
+        w.advance(ServiceRestorePolicy.grace)
+        let verdict = await r.check()
+        XCTAssertEqual(verdict, .nothing, "the daemon answers when asked: restored, no window")
+        XCTAssertEqual(refreshes, 1)
+        XCTAssertEqual(r.restoredAt, w.t)
+        XCTAssertEqual(r.noticeText, ServiceRecovery.restoredNotice)
+        XCTAssertNil(r.nextCheck())
+    }
+
+    func testAPendingRestoreStillDownAfterThePollIsAsked() async {
+        let w = World()
+        var refreshes = 0
+        let r = ServiceRecovery(
+            connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
+            markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            refresh: { refreshes += 1 },
+            diagnose: { .notInstalled }, restore: { ActionResult(outcome: .succeeded, summary: "ok") })
+        _ = await r.check(); w.advance(10); _ = await r.check()
+        w.advance(ServiceRestorePolicy.grace)
+        let verdict = await r.check()
+        XCTAssertEqual(verdict, .askNow)
+        XCTAssertEqual(refreshes, 1)
+        XCTAssertNil(r.restoredAt)
+        XCTAssertNil(r.noticeText)
+    }
+
+    func testStartedButNotAnsweringAsksOnceTheFreshGraceIsOver() async {
+        let w = World(), r = recovery(w)
+        w.restoreResult = ActionResult(outcome: .startedNotAnswering, summary: "started")
+        _ = await r.check(); w.advance(10)
+        _ = await r.check()
+        w.advance(ServiceRestorePolicy.grace)
+        let verdict = await r.check()
         XCTAssertEqual(verdict, .askNow)
         XCTAssertNil(r.restoredAt)
+        XCTAssertNil(r.nextCheck())
+        XCTAssertEqual(w.restores, 1)
     }
 
     func testNothingRanIsAFailureToo() async {
@@ -236,15 +418,127 @@ final class ServiceRecoveryTests: XCTestCase {
             setup(w)
             _ = await r.check(); w.advance(10); _ = await r.check()
             XCTAssertEqual(w.restores, 0, name)
+            XCTAssertEqual(w.diagnoses, 0, "\(name): a free fact already says no, so the helper is not asked")
         }
         let dev = World(), rd = recovery(dev, dev: true)
         _ = await rd.check(); dev.advance(10)
         let devVerdict = await rd.check()
         XCTAssertEqual(dev.restores, 0)
+        XCTAssertEqual(dev.diagnoses, 0)
         XCTAssertEqual(devVerdict, .nothing)
         let away = World(), ra = recovery(away, location: .elsewhere)
-        _ = await ra.check(); away.advance(10); _ = await ra.check()
+        _ = await ra.check(); away.advance(10)
+        let awayVerdict = await ra.check()
         XCTAssertEqual(away.restores, 0)
+        XCTAssertEqual(away.diagnoses, 0)
+        XCTAssertEqual(awayVerdict, .askNow, "the window shows where the app has to be moved to")
+    }
+
+    func testTheHelperIsAskedOnceAndOnlyWhenTheFreeFactsAllowARestore() async {
+        let w = World(), r = recovery(w)
+        _ = await r.check()
+        XCTAssertEqual(w.diagnoses, 0, "not due yet")
+        w.advance(10)
+        _ = await r.check()
+        XCTAssertEqual(w.diagnoses, 1)
+        XCTAssertEqual(w.restores, 1)
+    }
+
+    func testADaemonSeenAnsweringDuringTheRestoreStillAsksAboutALaterOutage() async {
+        let w = World()
+        var r: ServiceRecovery!
+        r = ServiceRecovery(
+            connection: { w.state }, location: .ok, isDevelopment: false, onboardingPending: { false },
+            markerPresent: { true }, vaultExists: { true }, now: { w.t },
+            diagnose: { .notInstalled },
+            restore: {
+                // the socket answers before `service install` exits: the monitor's look comes first
+                w.state = .ready(StatusResult())
+                _ = await r.check()
+                return ActionResult(outcome: .succeeded, summary: "ok")
+            })
+        _ = await r.check(); w.advance(10)
+        let verdict = await r.check()
+        XCTAssertEqual(verdict, .nothing)
+        XCTAssertEqual(r.restoredAt, w.t)
+        XCTAssertNil(r.nextCheck())
+        // hours later the daemon dies: a new outage, asked about after the grace
+        w.advance(3600); w.state = .notRunning
+        let down = await r.check()
+        XCTAssertEqual(down, .nothing)
+        XCTAssertEqual(r.nextCheck(), ServiceAskGate.grace)
+        w.advance(10)
+        let later = await r.check()
+        XCTAssertEqual(later, .askNow)
+    }
+
+    func testAnIneligibleLookLeavesNothingToWaitFor() async {
+        for (name, setup) in [
+            ("no marker", { (w: World) in w.marker = false }),
+            ("stopped job", { (w: World) in w.diagnosis = .notRunning }),
+        ] as [(String, (World) -> Void)] {
+            let w = World(), r = recovery(w)
+            setup(w)
+            _ = await r.check()
+            XCTAssertEqual(r.nextCheck(), ServiceRestorePolicy.grace, name)
+            w.advance(10)
+            let verdict = await r.check()
+            XCTAssertEqual(verdict, .askNow, name)
+            XCTAssertNil(r.nextCheck(), "\(name): nothing time-based is left; a 0 would be a tight loop")
+            w.advance(30)
+            let again = await r.check()
+            XCTAssertEqual(again, .nothing, name)
+            XCTAssertNil(r.nextCheck(), name)
+            XCTAssertEqual(w.restores, 0, name)
+        }
+    }
+
+    func testOnceAskedNothingIsRestoredBehindThePersonsBackInTheSameOutage() async {
+        let w = World(), r = recovery(w)
+        w.diagnosis = .notRunning  // the job is there but stopped when the grace ends
+        _ = await r.check(); w.advance(10)
+        let verdict = await r.check()
+        XCTAssertEqual(verdict, .askNow)
+        // the job goes missing while the window is up and the app looks again: nothing is installed
+        w.diagnosis = .notInstalled
+        let after = await r.check()
+        XCTAssertEqual(after, .nothing)
+        XCTAssertEqual(w.restores, 0)
+        XCTAssertNil(r.nextCheck())
+        // the daemon answers and later goes away again: the attempt is still there
+        w.state = .ready(StatusResult()); _ = await r.check()
+        w.advance(120); w.state = .notRunning; _ = await r.check()
+        w.advance(10)
+        let later = await r.check()
+        XCTAssertEqual(later, .nothing)
+        XCTAssertEqual(w.restores, 1)
+    }
+
+    func testWhileSomethingElseChangesTheServiceNothingIsDecided() async {
+        // the Uninstall sheet is open when the grace ends: no restore, and no window over the sheet
+        let w = World(), r = recovery(w)
+        w.suspended = true
+        _ = await r.check(); w.advance(10)
+        let during = await r.check()
+        XCTAssertEqual(during, .nothing)
+        XCTAssertEqual(w.restores, 0)
+        XCTAssertEqual(w.diagnoses, 0)
+        XCTAssertNil(r.nextCheck(), "nothing time-based: the app looks again when the action ends")
+        // the sheet is cancelled: the restore goes ahead
+        w.suspended = false
+        let after = await r.check()
+        XCTAssertEqual(after, .nothing)
+        XCTAssertEqual(w.restores, 1)
+        // without a marker the window opens then instead
+        let bare = World(), rb = recovery(bare)
+        bare.marker = false; bare.suspended = true
+        _ = await rb.check(); bare.advance(10)
+        let bareDuring = await rb.check()
+        XCTAssertEqual(bareDuring, .nothing)
+        bare.suspended = false
+        let bareAfter = await rb.check()
+        XCTAssertEqual(bareAfter, .askNow)
+        XCTAssertEqual(bare.restores, 0)
     }
 
     func testAnAnsweringDaemonDoesNothing() async {

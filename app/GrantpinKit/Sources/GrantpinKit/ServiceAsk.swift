@@ -88,34 +88,44 @@ public struct ServiceAskGate: Sendable {
 
     public init() {}
 
+    /// Follows the connection without deciding anything: the phase keeps up
+    /// with the daemon while no decision may be made (something else is
+    /// changing the service), so that the decision made afterwards counts the
+    /// outage from when it began. `evaluate` does this first.
+    public mutating func observe(_ state: ConnectionState?, now: Date) {
+        guard let state else { return }
+        guard case .notRunning = state else {
+            if case .up = phase {} else { phase = .up(since: now) }
+            return
+        }
+        switch phase {
+        case .unknown: phase = .down(since: now, handled: false)
+        case .up(let since): phase = .down(since: now, handled: now.timeIntervalSince(since) < Self.stableUp)
+        case .down: break
+        }
+    }
+
     /// Call on every connection change and again when `waitTime` has passed.
     /// Returns true exactly when the window should open now.
     public mutating func evaluate(
         _ state: ConnectionState?, now: Date, onboardingPending: Bool, isDevelopment: Bool, popoverOpen: Bool
     ) -> Bool {
         guard !isDevelopment, let state else { return false }
-        guard case .notRunning = state else {
-            if case .up = phase {} else { phase = .up(since: now) }
+        observe(state, now: now)
+        guard case .notRunning = state, case .down(let since, false) = phase, now.timeIntervalSince(since) >= Self.grace else {
             return false
         }
-        switch phase {
-        case .unknown:
-            phase = .down(since: now, handled: false)
-            return false
-        case .up(let since):
-            phase = .down(since: now, handled: now.timeIntervalSince(since) < Self.stableUp)
-            return false
-        case .down(let since, let handled):
-            guard !handled, now.timeIntervalSince(since) >= Self.grace else { return false }
-            phase = .down(since: since, handled: true)
-            return !onboardingPending && !popoverOpen
-        }
+        phase = .down(since: since, handled: true)
+        return !onboardingPending && !popoverOpen
     }
 
-    /// The not-running period in progress is dealt with (the service was
-    /// restored): it is not asked about. A later outage asks again.
-    public mutating func resolve() {
-        if case .down(let since, _) = phase { phase = .down(since: since, handled: true) }
+    /// The app restored the service itself and the daemon answers: the next
+    /// trouble must ask. The person saw no window for the automatic restore,
+    /// so the usual rule that a daemon down again within `stableUp` is the
+    /// same trouble would hide a service that keeps stopping right after its
+    /// restore. The up phase therefore starts `stableUp` ago.
+    public mutating func restoredNow(now: Date) {
+        phase = .up(since: now.addingTimeInterval(-Self.stableUp))
     }
 
     /// How long until `evaluate` should be called again for a decision, nil

@@ -145,6 +145,7 @@ public final class UninstallModel {
     @ObservationIgnored private let sleep: @Sendable (TimeInterval) async -> Void
     @ObservationIgnored private let unregisterLoginItem: @MainActor () -> Void
     @ObservationIgnored private let commandLine: CommandLineTool?
+    @ObservationIgnored private let externallyBusy: @MainActor () -> Bool
 
     public static let vaultFiles = ["vault.db", "vault.db-wal", "vault.db-shm", "grantpin.sock"]
     public static let logFiles = ["daemon.err.log", "daemon.out.log"]
@@ -182,8 +183,10 @@ public final class UninstallModel {
                 daemonState: @escaping @Sendable () async -> DaemonState,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
                 unregisterLoginItem: @escaping @MainActor () -> Void = {},
-                commandLine: CommandLineTool? = nil) {
+                commandLine: CommandLineTool? = nil,
+                externallyBusy: @escaping @MainActor () -> Bool = { false }) {
         self.commandLine = commandLine
+        self.externallyBusy = externallyBusy
         self.control = control
         self.secrets = secrets
         self.grants = grants
@@ -237,9 +240,14 @@ public final class UninstallModel {
     public var showsKeyWarning: Bool { willDeleteKey }
     public var confirmationMatches: Bool { confirmationText == Self.confirmationWord }
 
+    /// Why Remove is off, or nil. The last reason is temporary: something
+    /// else (the popover's Start, a Settings action, onboarding, the
+    /// automatic restore) is changing the service, and `service uninstall`
+    /// must not race it (`ServiceBusy`).
     public var disabledReason: String? {
         if isDevelopment { return "In development mode nothing is removed." }
         if control == nil { return "The helper inside this app could not be found." }
+        if externallyBusy() { return ServiceBusy.reason }
         return nil
     }
 

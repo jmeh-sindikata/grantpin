@@ -25,6 +25,12 @@ struct UninstallSheet: View {
         .frame(width: 520)
         .frame(minHeight: 340)
         .interactiveDismissDisabled(isRunning)
+        // While the sheet is up nothing else changes the service (ServiceActivity).
+        // The sheet reports itself: a parent's onChange could miss the close if
+        // the parent left the hierarchy first, and a stuck flag would disable
+        // the service controls everywhere.
+        .onAppear { app.serviceActivity.uninstallOpen = true }
+        .onDisappear { app.serviceActivity.uninstallOpen = false }
     }
 
     private var isRunning: Bool {

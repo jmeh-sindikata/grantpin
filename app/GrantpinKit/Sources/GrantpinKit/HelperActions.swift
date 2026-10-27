@@ -167,6 +167,15 @@ public protocol ServiceControl: Sendable {
     func initVault(keychainFallback: Bool) async -> ActionResult
 }
 
+/// One service action at a time (docs/UI-SPEC.md 3.1). The app tells each
+/// screen's model whether something else is changing the background service
+/// right now (their `externallyBusy`): the popover's Start, a Settings action,
+/// onboarding's Install, the open Uninstall sheet or the automatic restore.
+/// The model then refuses its own action and shows this reason.
+public enum ServiceBusy {
+    public static let reason = "grantpin is changing its background service right now. Wait a moment."
+}
+
 /// Runs the signed helper bundled in the app.
 ///
 /// **This is the only way the app starts the daemon** (docs/UI-SPEC.md 2.2):

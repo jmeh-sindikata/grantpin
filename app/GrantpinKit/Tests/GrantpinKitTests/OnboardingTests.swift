@@ -5,8 +5,10 @@ import XCTest
 @MainActor
 final class OnboardingModelTests: XCTestCase {
     func model(control: ServiceControl? = FakeServiceControl(), login: LoginItemControl? = FakeLoginItem(), dev: Bool = false,
-               location: AppLocation = .ok, finished: @escaping @MainActor () -> Void = {}) -> OnboardingModel {
-        OnboardingModel(control: control, loginItem: login, isDevelopment: dev, location: location, onFinished: finished)
+               location: AppLocation = .ok, finished: @escaping @MainActor () -> Void = {},
+               busy: @escaping @MainActor () -> Bool = { false }) -> OnboardingModel {
+        OnboardingModel(control: control, loginItem: login, isDevelopment: dev, location: location, onFinished: finished,
+                        externallyBusy: busy)
     }
 
     let ready1 = ConnectionState.ready(StatusResult(vaultInitialized: true, keystoreTier: .hardware, secrets: 1))
@@ -109,6 +111,20 @@ final class OnboardingModelTests: XCTestCase {
         XCTAssertEqual(c.installs.count, 1)
         XCTAssertEqual(m.lastResult?.outcome, .succeeded)
         XCTAssertNil(m.running)
+    }
+
+    func testInstallWaitsWhileSomethingElseChangesTheService() async {
+        var busy = true
+        let c = FakeServiceControl()
+        let m = model(control: c, busy: { busy })
+        m.go(to: .service)
+        XCTAssertEqual(m.actionsDisabledReason, ServiceBusy.reason)
+        await m.installService()
+        XCTAssertEqual(c.installs.count, 0)
+        busy = false
+        XCTAssertNil(m.actionsDisabledReason)
+        await m.installService()
+        XCTAssertEqual(c.installs.count, 1)
     }
 
     func testCreateVault() async {
