@@ -355,7 +355,6 @@ private struct UninstallSettings: View {
         .sheet(item: $sheet) { model in
             UninstallSheet(model: model, app: app) { sheet = nil }
         }
-        .onChange(of: sheet != nil) { _, open in app.serviceActivity.uninstallOpen = open }
     }
 
     private func makeModel() -> UninstallModel {
