@@ -236,20 +236,23 @@ final class AppModel {
     }
 
     /// "Move to Applications and Relaunch": copies the app next to the others,
-    /// starts the copy and quits this one. The original is left alone.
+    /// then quits this one and lets a detached helper open the copy. The
+    /// original is left alone.
+    ///
+    /// The copy is not started from here: with `LSMultipleInstancesProhibited`
+    /// the system cannot start a second instance while this one is running.
+    /// The helper waits for this process to exit and then opens the copy by its
+    /// exact path (see `RelaunchCommand`). If the helper cannot be started this
+    /// app keeps running, so the person is never left with nothing open.
     func moveToApplicationsAndRelaunch() -> String? {
         do {
             let target = try AppLocation.copyToApplications(bundleURL: Bundle.main.bundleURL)
-            let config = NSWorkspace.OpenConfiguration()
-            config.createsNewApplicationInstance = true
-            // Quit only when a different process was started: with
-            // LSMultipleInstancesProhibited the system may hand back this very
-            // instance (or fail), and quitting then would leave nothing running.
-            let ownPID = ProcessInfo.processInfo.processIdentifier
-            NSWorkspace.shared.openApplication(at: target, configuration: config) { launched, error in
-                guard error == nil, let launched, launched.processIdentifier != ownPID else { return }
-                DispatchQueue.main.async { NSApp.terminate(nil) }
+            do {
+                try RelaunchCommand(pid: ProcessInfo.processInfo.processIdentifier, target: target).start()
+            } catch {
+                return "grantpin was copied to \(DisplayText.sanitise(target.path, limit: 120)), but could not be opened. Open it from there."
             }
+            NSApp.terminate(nil)
             return nil
         } catch AppLocation.MoveError.alreadyThere(let path) {
             return "grantpin is already in \(DisplayText.sanitise(path, limit: 120)). Open that one instead."
