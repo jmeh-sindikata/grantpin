@@ -117,8 +117,12 @@ final class FakeActions: DaemonActions, @unchecked Sendable {
     var startResult = ActionResult(outcome: .succeeded, summary: "grantpin is running in the background.")
     var createResult = ActionResult(outcome: .succeeded, summary: "Vault created.")
     var delayNanos: UInt64 = 0
+    /// Runs when `startService` begins and may hold it; a test that needs to
+    /// act while Start is in flight waits for it, instead of guessing a delay.
+    var duringStart: (@Sendable () async -> Void)?
     func startService() async -> ActionResult {
         lock.withLock { started += 1 }
+        if let duringStart { await duringStart() }
         if delayNanos > 0 { try? await Task.sleep(nanoseconds: delayNanos) }
         return startResult
     }
@@ -306,14 +310,22 @@ final class PopoverModelTests: XCTestCase {
         XCTAssertNil(opened)
         XCTAssertEqual(m.lastResult, first)
         // a second press while one runs: nil, not the other run's result
-        actions.delayNanos = 100_000_000
+        let (began, beganC) = AsyncStream.makeStream(of: Void.self)
+        let (gate, gateC) = AsyncStream.makeStream(of: Void.self)
+        actions.duringStart = {
+            beganC.yield()
+            for await _ in gate { break }
+        }
         async let slow = m.perform(.startService)
-        try await Task.sleep(nanoseconds: 20_000_000)
+        for await _ in began { break }
+        XCTAssertEqual(m.running, .startService)
         let refused = await m.perform(.restart)
         XCTAssertNil(refused)
+        gateC.yield()
         let slowResult = await slow
         XCTAssertEqual(slowResult, actions.startResult)
         XCTAssertEqual(actions.started, 2)
+        actions.duringStart = nil
         // the buttons are off: nil, whatever lastResult says
         let off = PopoverModel(audit: FakeService(), actions: actions, location: .elsewhere)
         let offResult = await off.perform(.startService)
