@@ -126,6 +126,12 @@ type StatusResult struct {
 	ActiveGrants     int                   `json:"active_grants"`
 	TamperedGrants   int                   `json:"tampered_grants,omitempty"` // grant rows that failed authentication
 	Socket           string                `json:"socket,omitempty"`          // path the daemon listens on
+	// InFlightRuns counts the run requests (CLI or MCP secret_run) between
+	// acceptance and completion, a run waiting on the approval dialog
+	// included. Always present (never omitted), so a reader can tell a daemon
+	// that reports it from one that predates it: the menu-bar app restarts the
+	// service after an update only when this is known to be zero.
+	InFlightRuns int `json:"in_flight_runs"`
 }
 
 // NewResult marshals v into a Response.Result payload.

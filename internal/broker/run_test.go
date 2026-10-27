@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1029,5 +1030,68 @@ func TestRefusedOversizeRequestDoesNotPoisonTheAudit(t *testing.T) {
 	}
 	if !found {
 		t.Error("no capped argv row with a (truncated) marker")
+	}
+}
+
+// inFlight reads the count the status reply would carry.
+func (e *env) inFlight() int {
+	var st proto.StatusResult
+	e.b.StatusFunc()(context.Background(), &st)
+	return st.InFlightRuns
+}
+
+func TestRunIsInFlightWhileItWaitsForApproval(t *testing.T) {
+	e := newEnv(t)
+	if e.inFlight() != 0 {
+		t.Fatalf("in flight before any run = %d", e.inFlight())
+	}
+	e.ap.block = make(chan struct{})
+	done := make(chan *recWriter, 1)
+	go func() { done <- e.do(e.run([]string{"API_KEY"}, "true")) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for e.ap.calls() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if e.ap.calls() != 1 {
+		t.Fatal("the approver was not asked")
+	}
+	if got := e.inFlight(); got != 1 {
+		t.Errorf("in flight while the dialog is up = %d, want 1", got)
+	}
+	close(e.ap.block)
+	w := <-done
+	wantOK(t, w)
+	if got := e.inFlight(); got != 0 {
+		t.Errorf("in flight after completion = %d, want 0", got)
+	}
+}
+
+func TestRunLeavesNothingInFlightOnEveryExit(t *testing.T) {
+	e := newEnv(t)
+	// Refused before any approval (bad request), denied by the human, approver
+	// failure, policy refusal, a missing secret, a timed-out wait for approval
+	// and a command that fails to start: each run must take itself off again.
+	bad := e.run([]string{"API_KEY"})
+	wantFail(t, e.do(bad), proto.ErrBadRequest, proto.ReasonBadRequest)
+	e.ap.allow = false
+	wantFail(t, e.do(e.run([]string{"API_KEY"}, "true")), proto.ErrDenied, proto.ReasonUserDenied)
+	e.ap.allow = true
+	e.ap.err = errors.New("no dialog")
+	wantFail(t, e.do(e.run([]string{"API_KEY"}, "true")), proto.ErrDenied, proto.ReasonApproverUnavailable)
+	e.ap.err = nil
+	wantFail(t, e.do(e.run([]string{"NOPE"}, "true")), proto.ErrNotFound, proto.ReasonSecretNotFound)
+	e.ap.block = make(chan struct{})
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	wantFail(t, e.doCtx(ctx, e.run([]string{"API_KEY"}, "true")), proto.ErrFailed, proto.ReasonTimeout)
+	cancel()
+	close(e.ap.block)
+	e.ap.block = nil
+	if w := e.do(e.run([]string{"API_KEY"}, "/no/such/command-xyz")); w.final.ExitCode == nil || *w.final.ExitCode != 127 {
+		t.Fatalf("command not found = %+v", w.final)
+	}
+	w := e.do(e.run([]string{"API_KEY"}, "true"))
+	wantOK(t, w)
+	if got := e.inFlight(); got != 0 {
+		t.Errorf("in flight after seven finished runs = %d, want 0", got)
 	}
 }

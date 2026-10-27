@@ -51,6 +51,11 @@ func TestStatusRoundTrip(t *testing.T) {
 	if !st.VaultInitialized || st.Secrets != 7 {
 		t.Errorf("StatusFunc not applied: %+v", st)
 	}
+	// in_flight_runs is never omitted: its absence is how a reader tells a
+	// daemon that predates the field.
+	if !strings.Contains(string(resp.Result), `"in_flight_runs":0`) {
+		t.Errorf("status lacks in_flight_runs: %s", resp.Result)
+	}
 }
 
 func TestStatusWithoutStatusFuncAndDefaultVersion(t *testing.T) {

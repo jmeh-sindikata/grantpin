@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -70,6 +71,12 @@ type Broker struct {
 	log    *slog.Logger
 	now    func() time.Time
 	askSem chan struct{} // capacity 1: serialises Approver.Ask
+
+	// inFlight counts the run requests between acceptance (handleRun entered)
+	// and completion (handleRun returned), whatever the outcome: a run waiting
+	// for the human, running its command, or about to be refused. Reported by
+	// status as in_flight_runs.
+	inFlight atomic.Int64
 
 	// afterReleased, if set, runs right after a run's released audit row is
 	// written (tests use it to interleave a concurrent change).
@@ -143,12 +150,17 @@ func (b *Broker) Handle(ctx context.Context, req *proto.Request, w daemon.Respon
 	}
 }
 
+// InFlightRuns is the number of run requests this broker has accepted and not
+// finished yet (see Broker.inFlight).
+func (b *Broker) InFlightRuns() int { return int(b.inFlight.Load()) }
+
 // StatusFunc fills the vault/backend/grant parts of the status reply.
 func (b *Broker) StatusFunc() daemon.StatusFunc {
 	return func(ctx context.Context, st *proto.StatusResult) {
 		st.VaultInitialized = true
 		st.KeyStoreTier = b.d.KeyStoreTier
 		st.ApproverTier = b.d.Approver.Tier()
+		st.InFlightRuns = b.InFlightRuns()
 		if metas, err := b.d.Vault.List(ctx); err == nil {
 			st.Secrets = len(metas)
 		}

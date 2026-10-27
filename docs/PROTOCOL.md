@@ -128,10 +128,10 @@ For `run`, zero or more frames arrive before the final response:
 Request: `{"v":1,"op":"status"}`. Works without a vault. Result:
 
 ```json
-{"ok":true,"result":{"version":"dev","proto_v":1,"pid":8683,"started_at":"2026-10-25T14:15:46.228625+01:00","vault_initialized":true,"keystore_tier":"none","approver_tier":"none","secrets":2,"active_grants":0,"socket":"/tmp/gdd-8677.sock"}}
+{"ok":true,"result":{"version":"dev","proto_v":1,"pid":8683,"started_at":"2026-10-25T14:15:46.228625+01:00","vault_initialized":true,"keystore_tier":"none","approver_tier":"none","secrets":2,"active_grants":0,"socket":"/tmp/gdd-8677.sock","in_flight_runs":0}}
 ```
 
-`keystore_tier` and `approver_tier` are `none`, `dialog` or `hardware`. `tampered_grants` (omitted when 0) counts grant rows that failed authentication.
+`keystore_tier` and `approver_tier` are `none`, `dialog` or `hardware`. `tampered_grants` (omitted when 0) counts grant rows that failed authentication. `in_flight_runs` counts the `run` requests (from the CLI or the MCP server's `secret_run`) the daemon has accepted and not answered yet, a run that is waiting on the approval dialog included; it is always present, also when 0, so a client can tell a daemon that reports it from one that predates it (a daemon from before this field omits the key). The menu-bar app restarts the service after an update only when the count is known to be 0, and asks instead when the key is missing. It carries no information about which secrets or commands are involved.
 
 ### `list`
 
