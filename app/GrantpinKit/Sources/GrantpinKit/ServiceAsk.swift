@@ -112,6 +112,12 @@ public struct ServiceAskGate: Sendable {
         }
     }
 
+    /// The not-running period in progress is dealt with (the service was
+    /// restored): it is not asked about. A later outage asks again.
+    public mutating func resolve() {
+        if case .down(let since, _) = phase { phase = .down(since: since, handled: true) }
+    }
+
     /// How long until `evaluate` should be called again for a decision, nil
     /// when nothing is pending.
     public func waitTime(now: Date) -> TimeInterval? {
