@@ -230,6 +230,81 @@ func TestCLIImport(t *testing.T) {
 	}
 }
 
+func TestCLIImportNamespace(t *testing.T) {
+	startTestDaemon(t, true)
+	file := writeFile(t, ".env", "STRIPE_KEY=sk-test-aaaaaaaaaaaa\nDB_URL=\"postgres-bbbbbbbbbbbb\"\nEMPTY=\n")
+
+	for _, ns := range []string{"shop", "acme/shop", "shop-1.v2_x"} {
+		out := mustCLI(t, "", "import", file, "--namespace", ns, "--dry-run")
+		want := "(dry run) would be added: 2 (" + ns + "/STRIPE_KEY, " + ns + "/DB_URL)"
+		if !strings.Contains(out, want) || !strings.Contains(out, ns+"/EMPTY") {
+			t.Errorf("dry run with %q = %q", ns, out)
+		}
+	}
+	if o := mustCLI(t, "", "list"); strings.Contains(o, "STRIPE_KEY") {
+		t.Errorf("dry run wrote: %q", o)
+	}
+
+	long := strings.Repeat("n", 250)
+	for name, ns := range map[string]string{
+		"empty":          "",
+		"leading slash":  "/shop",
+		"trailing slash": "shop/",
+		"double slash":   "a//b",
+		"space":          "my shop",
+		"glob":           "shop*",
+		"dotdot":         "a/../b",
+		"dot segment":    "a/./b",
+		"too long":       long,
+	} {
+		out, _, err := cli(t, "", "import", file, "--namespace", ns)
+		if err == nil {
+			t.Errorf("%s: namespace %q accepted (out %q)", name, ns, out)
+		}
+	}
+	if o := mustCLI(t, "", "list"); strings.Contains(o, "STRIPE_KEY") {
+		t.Errorf("rejected namespaces wrote: %q", o)
+	}
+
+	out := mustCLI(t, "", "import", file, "--namespace", "shop")
+	if !strings.Contains(out, "added: 2 (shop/STRIPE_KEY, shop/DB_URL)") || strings.Contains(out, "aaaaaaaaaaaa") {
+		t.Errorf("import = %q", out)
+	}
+	if o := mustCLI(t, "", "masked", "shop/STRIPE_KEY"); o != "****aaaa\n" {
+		t.Errorf("masked = %q", o)
+	}
+	if _, _, err := cli(t, "", "masked", "STRIPE_KEY"); err == nil {
+		t.Error("bare name was stored")
+	}
+
+	// --on-conflict looks at the final names
+	if _, _, err := cli(t, "", "import", file, "--namespace", "shop"); err == nil || !strings.Contains(err.Error(), "shop/STRIPE_KEY") {
+		t.Errorf("conflict err = %v", err)
+	}
+	if o := mustCLI(t, "", "import", file, "--namespace", "other"); !strings.Contains(o, "added: 2 (other/STRIPE_KEY, other/DB_URL)") {
+		t.Errorf("a different namespace conflicted: %q", o)
+	}
+	if o := mustCLI(t, "", "import", file, "--namespace", "shop", "--on-conflict", "skip"); !strings.Contains(o, "skipped (exists): 2 (shop/STRIPE_KEY, shop/DB_URL)") {
+		t.Errorf("skip = %q", o)
+	}
+	file2 := writeFile(t, ".env", "STRIPE_KEY=sk-test-zzzzzzzz9999\nNEW_KEY=cccccccccccc\n")
+	o := mustCLI(t, "", "import", file2, "--namespace", "shop", "--on-conflict", "overwrite")
+	if !strings.Contains(o, "overwritten: 1 (shop/STRIPE_KEY)") || !strings.Contains(o, "added: 1 (shop/NEW_KEY)") {
+		t.Errorf("overwrite = %q", o)
+	}
+	if o := mustCLI(t, "", "masked", "shop/STRIPE_KEY"); o != "****9999\n" {
+		t.Errorf("overwrite did not apply: %q", o)
+	}
+
+	// a key that is fine alone but makes the final name too long
+	longKey := strings.Repeat("K", 200)
+	f3 := writeFile(t, ".env", longKey+"=dddddddddddd\n")
+	mustCLI(t, "", "import", f3, "--dry-run")
+	if _, _, err := cli(t, "", "import", f3, "--namespace", strings.Repeat("n", 100)); err == nil {
+		t.Error("over-long final name accepted")
+	}
+}
+
 func TestDaemonPicksUpVaultCreatedAfterStart(t *testing.T) {
 	startTestDaemon(t, false)
 	_, _, err := cli(t, "", "list")

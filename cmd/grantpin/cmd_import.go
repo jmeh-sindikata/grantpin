@@ -22,7 +22,14 @@ func newImportCmd() *cobra.Command {
 			"becomes a secret with default metadata. The file is parsed here; values go " +
 			"to the daemon one `set` at a time. Names are validated and conflicts " +
 			"detected before anything is written, but a daemon error midway can leave " +
-			"a partial import.",
+			"a partial import.\n\n" +
+			"With --namespace NAME each key is stored as NAME/KEY (for example " +
+			"--namespace shop turns STRIPE_KEY into shop/STRIPE_KEY). NAME must be " +
+			"a valid secret name: only A-Z a-z 0-9 _ / . -, not starting or ending " +
+			"with /, no //, no .. and no . segment. --dry-run and --on-conflict " +
+			"work on the final names.",
+		Example: "  grantpin import .env\n" +
+			"  grantpin import .env --namespace shop --dry-run",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dry, _ := cmd.Flags().GetBool("dry-run")
@@ -30,6 +37,12 @@ func newImportCmd() *cobra.Command {
 			mode, err := vault.ParseConflictMode(modeS)
 			if err != nil {
 				return err
+			}
+			ns, _ := cmd.Flags().GetString("namespace")
+			if cmd.Flags().Changed("namespace") {
+				if err := validateNamespace(ns); err != nil {
+					return err
+				}
 			}
 			var r io.Reader = cmd.InOrStdin()
 			if args[0] != "-" {
@@ -49,28 +62,44 @@ func newImportCmd() *cobra.Command {
 					vault.Zero(kv.Value)
 				}
 			}()
-			return importKVs(cmd, socket, kvs, mode, dry)
+			return importKVs(cmd, socket, kvs, ns, mode, dry)
 		},
 	}
 	c.Flags().Bool("dry-run", false, "show what would be imported without writing")
+	c.Flags().String("namespace", "", "store each key as NAME/KEY (NAME: A-Z a-z 0-9 _ / . -, no leading or trailing /, no //)")
 	c.Flags().String("on-conflict", "error", "when a name already exists: skip, overwrite or error")
 	addSocketFlag(c, &socket)
 	return c
 }
 
-func importKVs(cmd *cobra.Command, socket string, kvs []vault.KV, mode vault.ConflictMode, dry bool) error {
+// validateNamespace checks the --namespace value. A namespace is the part of
+// a secret name before the last "/", so it must itself be a valid secret name
+// (which already rules out a leading or trailing "/", "//", ".." and a "."
+// segment); NAME/KEY is validated again in full for each key.
+func validateNamespace(ns string) error {
+	if err := vault.ValidateName(ns); err != nil {
+		return fmt.Errorf("--namespace: %w", err)
+	}
+	return nil
+}
+
+func importKVs(cmd *cobra.Command, socket string, kvs []vault.KV, namespace string, mode vault.ConflictMode, dry bool) error {
 	ctx := cmd.Context()
 	// Duplicates: the last one wins (same as vault.Import).
 	last := map[string][]byte{}
 	var order []string
 	for _, kv := range kvs {
-		if err := vault.ValidateName(kv.Key); err != nil {
+		name := kv.Key
+		if namespace != "" {
+			name = namespace + "/" + kv.Key
+		}
+		if err := vault.ValidateName(name); err != nil {
 			return fmt.Errorf("key %q: %w", kv.Key, err)
 		}
-		if _, seen := last[kv.Key]; !seen {
-			order = append(order, kv.Key)
+		if _, seen := last[name]; !seen {
+			order = append(order, name)
 		}
-		last[kv.Key] = kv.Value
+		last[name] = kv.Value
 	}
 	for _, k := range order {
 		if err := vault.ValidateValue(k, last[k]); err != nil {
