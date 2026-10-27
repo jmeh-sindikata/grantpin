@@ -121,6 +121,8 @@ public final class UninstallModel {
     public var deleteLogs = false
     public var deleteKeychainItem = false
     public var deleteHardwareKey = false
+    /// Ticked by default when `~/.local/bin/grantpin` is a link into this app.
+    public var removeCommandLine = true
     public var confirmationText = ""
     public private(set) var phase: Phase = .choosing
 
@@ -142,6 +144,7 @@ public final class UninstallModel {
     @ObservationIgnored private let daemonState: @Sendable () async -> DaemonState
     @ObservationIgnored private let sleep: @Sendable (TimeInterval) async -> Void
     @ObservationIgnored private let unregisterLoginItem: @MainActor () -> Void
+    @ObservationIgnored private let commandLine: CommandLineTool?
 
     public static let vaultFiles = ["vault.db", "vault.db-wal", "vault.db-shm", "grantpin.sock"]
     public static let logFiles = ["daemon.err.log", "daemon.out.log"]
@@ -167,6 +170,7 @@ public final class UninstallModel {
         "The vault's key may still be in your Keychain. It is useless without the vault file."
     public static let keychainItemNote =
         "The Keychain item for weaker protection stays. It is useless without the vault file."
+    public static let commandLineLabel = "Remove the grantpin command from \(CommandLineTool.folderDisplay)"
     public static let disconnectText = "To disconnect Claude Code, run:"
     public static let disconnectCommand = ConnectSnippets.removeCommand
     public static let trashText = "To finish, drag grantpin to the Trash."
@@ -177,7 +181,9 @@ public final class UninstallModel {
                 keychain: KeychainItemRemoval? = nil,
                 daemonState: @escaping @Sendable () async -> DaemonState,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
-                unregisterLoginItem: @escaping @MainActor () -> Void = {}) {
+                unregisterLoginItem: @escaping @MainActor () -> Void = {},
+                commandLine: CommandLineTool? = nil) {
+        self.commandLine = commandLine
         self.control = control
         self.secrets = secrets
         self.grants = grants
@@ -198,6 +204,12 @@ public final class UninstallModel {
         guard let secrets, let grants else { return "Delete my vault: all its secrets, grants and the audit log" }
         return "Delete my vault: \(secrets) \(secrets == 1 ? "secret" : "secrets"), \(grants) \(grants == 1 ? "grant" : "grants") and the audit log"
     }
+
+    /// The command-line checkbox appears only when `~/.local/bin/grantpin` is a
+    /// symlink into this app. A file, or a link that points elsewhere, is never
+    /// offered and never touched.
+    public var offersCommandLine: Bool { commandLine?.linkState().pointsIntoThisApp == true }
+    public var willRemoveCommandLine: Bool { removeCommandLine && offersCommandLine }
 
     /// The Keychain checkbox appears only for a vault protected by the Keychain.
     public var offersKeychainItem: Bool { keystoreTier?.rank == 1 }
@@ -233,7 +245,7 @@ public final class UninstallModel {
 
     public var canRemove: Bool {
         guard disabledReason == nil, phase == .choosing else { return false }
-        guard willStopService || deleteLogs else { return false }
+        guard willStopService || deleteLogs || willRemoveCommandLine else { return false }
         return !needsTypedConfirmation || confirmationMatches
     }
 
@@ -310,6 +322,15 @@ public final class UninstallModel {
             if let line = r.done { done.append(line) }
             if let line = r.notice { notices.append(line) }
             problem = r.problem
+        }
+
+        if problem == nil, willRemoveCommandLine, let commandLine {
+            phase = .running("Removing the grantpin command…")
+            switch commandLine.remove() {
+            case .removed(let p): done.append("The grantpin command was removed from \(DisplayText.sanitise(p, limit: 200)).")
+            case .nothingToRemove: break
+            case let other: problem = other.message
+            }
         }
 
         var remains = [String]()
