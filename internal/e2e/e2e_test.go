@@ -916,3 +916,39 @@ func TestUpdateOverTheWire(t *testing.T) {
 		t.Fatalf("audit chain broken after update: %+v", v)
 	}
 }
+
+// status counts a run from the moment the daemon accepts it: while the dev
+// approver is still "thinking" (the dialog is up) in_flight_runs is 1, and it
+// is 0 again once the run has answered. The menu-bar app restarts the service
+// after an update only when this is known to be zero.
+func TestStatusCountsARunWaitingForApproval(t *testing.T) {
+	r := newRig(t)
+	r.set("API_KEY", apiKey)
+	if st := result[proto.StatusResult](t, r.call(&proto.Request{Op: proto.OpStatus})); st.InFlightRuns != 0 {
+		t.Fatalf("in_flight_runs before any run = %d", st.InFlightRuns)
+	}
+	if !strings.Contains(string(r.call(&proto.Request{Op: proto.OpStatus}).resp.Result), `"in_flight_runs":0`) {
+		t.Fatal("in_flight_runs is omitted when zero")
+	}
+	r.slow.delay.Store(int64(3 * time.Second))
+	done := make(chan reply, 1)
+	go func() { done <- r.run([]string{"API_KEY"}, "sh", "-c", "exit 0") }()
+	seen := 0
+	deadline := time.Now().Add(2 * time.Second)
+	for seen == 0 && time.Now().Before(deadline) {
+		seen = result[proto.StatusResult](t, r.call(&proto.Request{Op: proto.OpStatus})).InFlightRuns
+		if seen == 0 {
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("in_flight_runs while the approver is asked = %d, want 1", seen)
+	}
+	rep := <-done
+	if !rep.resp.OK {
+		t.Fatalf("run = %+v", rep.resp)
+	}
+	if st := result[proto.StatusResult](t, r.call(&proto.Request{Op: proto.OpStatus})); st.InFlightRuns != 0 {
+		t.Errorf("in_flight_runs after the run = %d, want 0", st.InFlightRuns)
+	}
+}

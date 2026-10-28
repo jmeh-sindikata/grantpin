@@ -61,6 +61,30 @@ final class StatusLineTests: XCTestCase {
         XCTAssertEqual(k.level, .warning)
         XCTAssertTrue(k.detail!.contains("Keychain"))
     }
+
+    func testAnUpdatedDaemonAsksForARestart() {
+        let old = ConnectionState.ready(StatusResult(version: "0.2.4", keystoreTier: .hardware))
+        let l = StatusLine.from(old, helperVersion: "0.2.5")
+        XCTAssertEqual(l.level, .warning)
+        XCTAssertEqual(l.headline, "grantpin was updated")
+        XCTAssertEqual(l.detail, "grantpin was updated. Restart the background service to finish.")
+        XCTAssertEqual(l.button, .restart)
+        XCTAssertEqual(l.dismissTitle, "Later", "the window's second button")
+        XCTAssertEqual(StatusLine.from(old, helperVersion: "0.2.4").level, .ok, "same version: nothing to do")
+        XCTAssertEqual(StatusLine.from(old, helperVersion: nil).level, .ok, "helper version unknown: no mismatch can be seen")
+        // the protocol mismatch comes first, with Repair
+        XCTAssertEqual(StatusLine.from(.ready(StatusResult(version: "0.2.4", protoV: 2)), helperVersion: "0.2.5").button, .repair)
+        // and the mismatch comes before tampered grants and the Keychain-only warning
+        XCTAssertEqual(StatusLine.from(.ready(StatusResult(version: "0.2.4", keystoreTier: .dialog, tamperedGrants: 1)), helperVersion: "0.2.5").button, .restart)
+    }
+
+    func testTheDismissTitleFollowsTheLine() {
+        XCTAssertEqual(StatusLine.from(.ready(StatusResult())).dismissTitle, "Close")
+        XCTAssertEqual(StatusLine.from(.notRunning).dismissTitle, "Not Now")
+        XCTAssertEqual(StatusLine.from(.notRunning, service: .notAnswering(pid: 4)).dismissTitle, "Not Now", "a Restart for a service that does not answer is not the update")
+        XCTAssertEqual(StatusLine.from(.notInitialized).dismissTitle, "Not Now")
+        XCTAssertEqual(StatusLine.from(nil).dismissTitle, "Not Now")
+    }
 }
 
 final class MenuBarIconTests: XCTestCase {
@@ -83,6 +107,61 @@ final class MenuBarIconTests: XCTestCase {
             XCTAssertEqual(i.subdued, subdued, name)
             XCTAssertEqual(i.label, label, name)
         }
+    }
+
+    func testAnUpdatedDaemonGetsTheOrangeDotInTheOrderOfTheStatusLine() {
+        let old = ConnectionState.ready(StatusResult(version: "0.2.4", keystoreTier: .hardware))
+        let i = MenuBarIcon.from(old, helperVersion: "0.2.5")
+        XCTAssertEqual(i, MenuBarIcon(subdued: false, badge: .warning, label: "grantpin: updated, restart needed"))
+        XCTAssertEqual(MenuBarIcon.updatedLabel, "grantpin: updated, restart needed")
+        XCTAssertFalse(i.usesTemplateImage)
+        XCTAssertEqual(MenuBarIcon.from(old, helperVersion: "0.2.4"), MenuBarIcon(subdued: false, badge: .none, label: "grantpin"))
+        XCTAssertEqual(MenuBarIcon.from(old, helperVersion: nil).badge, .none, "unknown helper version: no mismatch")
+        // before tampered grants, as the status line puts it
+        XCTAssertEqual(MenuBarIcon.from(.ready(StatusResult(version: "0.2.4", tamperedGrants: 1)), helperVersion: "0.2.5").label, MenuBarIcon.updatedLabel)
+        // after the protocol mismatch, which keeps the plain icon it had
+        XCTAssertEqual(MenuBarIcon.from(.ready(StatusResult(version: "0.2.4", protoV: 2)), helperVersion: "0.2.5").badge, .none)
+        XCTAssertEqual(MenuBarIcon.from(.notRunning, helperVersion: "0.2.5").badge, .error, "a daemon that is down is down, whatever its version was")
+    }
+
+    /// The icon and the status line are two renderings of one `DaemonCondition`:
+    /// for every combination of state and helper version they must agree.
+    func testTheIconAndTheStatusLineAgreeForEveryState() {
+        let states: [ConnectionState?] = [
+            nil, .notRunning, .locked(lastError: nil), .locked(lastError: "x"), .notInitialized,
+            .ready(StatusResult(version: "0.2.5", keystoreTier: .hardware)),
+            .ready(StatusResult(version: "0.2.4", keystoreTier: .hardware)),
+            .ready(StatusResult(version: "0.2.4", protoV: 2)),
+            .ready(StatusResult(version: "0.2.4", keystoreTier: .dialog)),
+            .ready(StatusResult(version: "0.2.4", tamperedGrants: 2)),
+            .ready(StatusResult(version: "0.2.4", keystoreTier: .dialog, tamperedGrants: 1)),
+            .ready(StatusResult(version: "0.2.5", tamperedGrants: 1)),
+            .ready(StatusResult(version: "0.2.5", keystoreTier: .dialog)),
+        ]
+        var updatedSeen = 0
+        for state in states {
+            for helper in [nil, "0.2.5", "0.2.4"] {
+                let name = "\(String(describing: state)) helper=\(String(describing: helper))"
+                let line = StatusLine.from(state, helperVersion: helper)
+                let icon = MenuBarIcon.from(state, helperVersion: helper)
+                let condition = DaemonCondition.of(state, helperVersion: helper)
+                let lineSaysUpdated = line.headline == StatusLine.updatedHeadline
+                let iconSaysUpdated = icon.label == MenuBarIcon.updatedLabel
+                XCTAssertEqual(lineSaysUpdated, iconSaysUpdated, name)
+                XCTAssertEqual(lineSaysUpdated, condition == .updated, name)
+                if iconSaysUpdated {
+                    updatedSeen += 1
+                    XCTAssertEqual(icon.badge, .warning, name)
+                    XCTAssertEqual(line.button, .restart, name)
+                    XCTAssertEqual(line.dismissTitle, "Later", name)
+                }
+                // a badge is never shown over a green line, and a red line always has the red dot
+                if line.level == .ok { XCTAssertEqual(icon.badge, .none, name) }
+                XCTAssertEqual(icon.badge == .error, line.level == .error, name)
+                XCTAssertEqual(condition == .notRunning, line.level == .error, name)
+            }
+        }
+        XCTAssertGreaterThan(updatedSeen, 0)
     }
 
     func testOnlyAHealthyDaemonLooksPlain() {

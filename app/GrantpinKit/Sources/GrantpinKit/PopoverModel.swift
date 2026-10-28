@@ -1,6 +1,45 @@
 import Foundation
 import Observation
 
+/// The one thing the status header and the menu-bar icon say about the daemon,
+/// in the order of docs/UI-SPEC.md 3.1 (first match wins). Both derive from
+/// this, so the icon can never show a state the popover does not.
+public enum DaemonCondition: Equatable, Sendable, CaseIterable {
+    /// No poll has finished yet.
+    case checking
+    case notRunning
+    /// The daemon answers, the vault's key store does not (screen locked).
+    case locked
+    /// The daemon answers and there is no vault yet.
+    case noVault
+    /// `proto_v` is not the one this app speaks.
+    case outOfStep
+    /// `status.version` differs from the helper's `--version`: the old daemon
+    /// kept running through an update and needs a restart.
+    case updated
+    case tamperedGrants
+    /// The vault key is in the Keychain only (`keystore_tier` dialog).
+    case keychainOnly
+    case healthy
+
+    /// `helperVersion` is the helper's `--version` (nil while unknown: then no
+    /// mismatch can be seen).
+    public static func of(_ state: ConnectionState?, helperVersion: String? = nil) -> DaemonCondition {
+        switch state {
+        case nil: return .checking
+        case .notRunning?: return .notRunning
+        case .locked?: return .locked
+        case .notInitialized?: return .noVault
+        case .ready(let s)?:
+            if s.protoV != 1 { return .outOfStep }
+            if let h = helperVersion, h != s.version { return .updated }
+            if s.tamperedGrants > 0 { return .tamperedGrants }
+            if s.keystoreTier == .dialog { return .keychainOnly }
+            return .healthy
+        }
+    }
+}
+
 /// What the status line at the top of the popover says (docs/UI-SPEC.md 3.1).
 public struct StatusLine: Equatable, Sendable {
     public enum Level: Equatable, Sendable {
@@ -100,25 +139,45 @@ public struct StatusLine: Equatable, Sendable {
                               detail: "Create a vault to start storing secrets.", button: .setUp)
         case .ready(let s)?:
             var line = StatusLine(level: .ok, headline: "grantpin is running", secrets: s.secrets, activeGrants: s.activeGrants)
-            if s.protoV != 1 {
+            switch DaemonCondition.of(state, helperVersion: helperVersion) {
+            case .outOfStep:
                 line.level = .warning
                 line.headline = "grantpin is out of step"
                 line.detail = "This app and the background service are out of step."
                 line.button = .repair
-            } else if let h = helperVersion, h != s.version {
+            case .updated:
                 line.level = .warning
-                line.headline = "grantpin was updated"
-                line.detail = "grantpin was updated. Restart the background service to finish."
+                line.headline = Self.updatedHeadline
+                line.detail = Self.updatedDetail
                 line.button = .restart
-            } else if s.tamperedGrants > 0 {
+            case .tamperedGrants:
                 line.level = .warning
                 line.button = .review
-            } else if s.keystoreTier == .dialog {
+            case .keychainOnly:
                 line.level = .warning
                 line.detail = "The vault key is protected by the Keychain only. That is weaker than the Secure Enclave."
+            case .checking, .notRunning, .locked, .noVault, .healthy:
+                break
             }
             if s.tamperedGrants > 0 { line.tamperedGrants = s.tamperedGrants }
             return line
+        }
+    }
+
+    /// The headline and the sentence of the updated state (docs/UI-SPEC.md
+    /// 3.1); the "background service" window shows the same line.
+    public static let updatedHeadline = "grantpin was updated"
+    public static let updatedDetail = "grantpin was updated. Restart the background service to finish."
+
+    /// The title of the button that closes the "background service" window
+    /// without acting: "Later" when the line asks for the restart after an
+    /// update (the app may still restart the service by itself once nothing
+    /// runs through it), "Close" once all is well, "Not Now" otherwise.
+    public var dismissTitle: String {
+        switch (level, button) {
+        case (.ok, _): return "Close"
+        case (.warning, .restart?): return "Later"
+        default: return "Not Now"
         }
     }
 
@@ -135,15 +194,17 @@ public struct StatusLine: Equatable, Sendable {
 /// plain when healthy, dimmed while the vault is locked or being checked, and
 /// with a badge when something needs attention. The badge is what makes a
 /// daemon that is not running visible at a glance: a red dot (error) when the
-/// daemon does not answer, an orange one (warning) when there is no vault yet
-/// or grants failed verification.
+/// daemon does not answer, an orange one (warning) when there is no vault yet,
+/// when the service needs a restart after an update or when grants failed
+/// verification. It is derived from the same `DaemonCondition` as the status
+/// line, in the same order.
 ///
 /// This type only decides what to show. The app draws it: a state without a
 /// badge is a template image (the menu bar tints it for light, dark and the
 /// wallpaper-tinted bar); a badge needs colour, so those states are drawn as a
 /// non-template composite that tints the glyph itself to the bar's appearance.
-public struct MenuBarIcon: Equatable, Sendable {
-    public enum Badge: Equatable, Sendable {
+public struct MenuBarIcon: Hashable, Sendable {
+    public enum Badge: Hashable, Sendable {
         case none
         /// Orange dot: needs attention, nothing is down.
         case warning
@@ -160,20 +221,25 @@ public struct MenuBarIcon: Equatable, Sendable {
     /// Plain states stay template images; a badge needs a coloured image.
     public var usesTemplateImage: Bool { badge == .none }
 
-    public static func from(_ state: ConnectionState?) -> MenuBarIcon {
-        switch state {
-        case nil:
+    /// The tooltip and accessibility label of the updated state.
+    public static let updatedLabel = "grantpin: updated, restart needed"
+
+    /// `helperVersion` is the helper's `--version`, as for `StatusLine.from`.
+    public static func from(_ state: ConnectionState?, helperVersion: String? = nil) -> MenuBarIcon {
+        switch DaemonCondition.of(state, helperVersion: helperVersion) {
+        case .checking:
             return MenuBarIcon(subdued: true, badge: .none, label: "grantpin: checking")
-        case .notRunning?:
+        case .notRunning:
             return MenuBarIcon(subdued: true, badge: .error, label: "grantpin: not running")
-        case .notInitialized?:
+        case .noVault:
             return MenuBarIcon(subdued: false, badge: .warning, label: "grantpin: no vault yet")
-        case .locked?:
+        case .locked:
             return MenuBarIcon(subdued: true, badge: .none, label: "grantpin: vault locked")
-        case .ready(let s)?:
-            if s.tamperedGrants > 0 {
-                return MenuBarIcon(subdued: false, badge: .warning, label: "grantpin: grants failed verification")
-            }
+        case .updated:
+            return MenuBarIcon(subdued: false, badge: .warning, label: Self.updatedLabel)
+        case .tamperedGrants:
+            return MenuBarIcon(subdued: false, badge: .warning, label: "grantpin: grants failed verification")
+        case .outOfStep, .keychainOnly, .healthy:
             return MenuBarIcon(subdued: false, badge: .none, label: "grantpin")
         }
     }

@@ -128,10 +128,10 @@ For `run`, zero or more frames arrive before the final response:
 Request: `{"v":1,"op":"status"}`. Works without a vault. Result:
 
 ```json
-{"ok":true,"result":{"version":"dev","proto_v":1,"pid":8683,"started_at":"2026-10-25T14:15:46.228625+01:00","vault_initialized":true,"keystore_tier":"none","approver_tier":"none","secrets":2,"active_grants":0,"socket":"/tmp/gdd-8677.sock"}}
+{"ok":true,"result":{"version":"dev","proto_v":1,"pid":8683,"started_at":"2026-10-25T14:15:46.228625+01:00","vault_initialized":true,"keystore_tier":"none","approver_tier":"none","secrets":2,"active_grants":0,"socket":"/tmp/gdd-8677.sock","in_flight_runs":0}}
 ```
 
-`keystore_tier` and `approver_tier` are `none`, `dialog` or `hardware`. `tampered_grants` (omitted when 0) counts grant rows that failed authentication.
+`keystore_tier` and `approver_tier` are `none`, `dialog` or `hardware`. `tampered_grants` (omitted when 0) counts grant rows that failed authentication. `in_flight_runs` counts the requests in progress that hold or may ask for an approval: `run` (from the CLI or the MCP server's `secret_run`), `show`, a standing grant creation (`grants` `add`) and `update` (which asks when it lowers a secret's protection level). A request is counted from the moment the daemon accepts it until it has answered, so one waiting on the approval dialog, or for the vault to open, is in the count, and one that ends in a refusal, denial or timeout leaves it again. Other ops (`list`, `exists`, `masked`, `set`, `delete`, `grants` `list`/`revoke`, `audit`) never count. The key is always present, also when 0, so a client can tell a daemon that reports it from one that predates it (a daemon from before 0.2.5 omits the key, which means "unknown", not 0; `grantpin status` prints `runs: unknown (daemon predates 0.2.5)` then). The menu-bar app restarts the service after an update only when the count is known to be 0, and asks instead when the key is missing. It carries no information about which secrets or commands are involved.
 
 ### `list`
 

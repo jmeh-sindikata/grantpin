@@ -46,9 +46,10 @@ final class SystemLoginItem: LoginItemControl {
 /// Who may be changing the background service right now, so that only one
 /// thing does at a time (docs/UI-SPEC.md 3.1): the popover's Start, a
 /// Settings action, onboarding's Install, the open Uninstall sheet or the
-/// automatic restore. Each model asks whether anyone else is and refuses its
-/// own action meanwhile (`ServiceBusy`); the automatic restore does not start
-/// while anyone is. The models are created one after another and each one's
+/// automatic restore or restart (both `ServiceRecovery`, the `.restore` part).
+/// Each model asks whether anyone else is and refuses its own action meanwhile
+/// (`ServiceBusy`); the automatic restore and restart do not start while
+/// anyone is. The models are created one after another and each one's
 /// closure has to see the others, so this exists first and they are attached
 /// once they all exist.
 @MainActor
@@ -117,6 +118,13 @@ final class AppModel {
     let location: AppLocation
     /// The helper's `--version`, checked once per launch.
     private(set) var helperVersion: String?
+    /// What the menu-bar icon shows (`MenuBarIcon.from`, the one derivation).
+    /// Kept as a value and written only when it differs, by the Observation
+    /// loop that already reads the connection and the helper's version
+    /// (`recoveryTriggersChanged`): the label reads this and nothing else, so
+    /// a status answer that differs only in its counts or its runs in flight
+    /// does not re-evaluate the label.
+    private(set) var menuBarIcon = MenuBarIcon.from(nil)
     /// The helper as a service controller; nil without a helper.
     let serviceControl: HelperActions?
 
@@ -139,6 +147,8 @@ final class AppModel {
     @ObservationIgnored private var visibleSurfaces = Set<String>()
     @ObservationIgnored private var recoveryTimer: Task<Void, Never>?
     @ObservationIgnored private var observers = [NSObjectProtocol]()
+    /// The facts the recovery decision was last told about (`watchRecoveryTriggers`).
+    @ObservationIgnored private var lastRecoveryTriggers: RecoveryTriggers?
 
     init() {
         let socket = self.socket
@@ -191,6 +201,8 @@ final class AppModel {
         let popoverModel = self.popover
         // Restores the service itself only when the person installed it before
         // (the `service.wanted` marker); otherwise it asks (ServiceAskGate).
+        // Restarts it after an update while nothing runs through it
+        // (ServiceRestartPolicy); otherwise it asks as well.
         self.serviceRecovery = ServiceRecovery(
             connection: { monitor.state }, location: location, isDevelopment: socket.isDevelopment,
             onboardingPending: { !UserDefaults.standard.bool(forKey: AppModel.onboardingDoneKey) },
@@ -202,7 +214,11 @@ final class AppModel {
                 // The same action as the Start button; what this run did, not
                 // the screen's `lastResult`, which may be dismissed meanwhile.
                 await popoverModel.perform(.startService)
-            })
+            },
+            // The helper's version as the popover knows it, determined once per launch below.
+            helperVersion: { AppModel.current?.helperVersion },
+            // The same action as the Restart button.
+            restart: { await popoverModel.perform(.restart) })
         serviceActivity.popover = popoverModel
         serviceActivity.settings = self.settings
         serviceActivity.onboarding = self.onboarding
@@ -224,9 +240,84 @@ final class AppModel {
             forName: NSWindow.willCloseNotification, object: nil, queue: .main
         ) { [weak self] note in
             guard let window = note.object as? NSWindow, window.styleMask.contains(.titled) else { return }
-            Task { @MainActor in self?.windowDidClose(closing: window) }
+            // Not for the popover's own window: `closePopover()` runs right
+            // before a window opens, and going back to accessory mode in
+            // between would knock the app out of the activation
+            // `prepareToShowWindow()` just asked for. Decided here, on the main
+            // queue, not in the task below: closing may detach the popover's
+            // view and drop the weak `popoverWindow` before the task runs.
+            let isPopover = MainActor.assumeIsolated { window === self?.popoverWindow }
+            guard !isPopover else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                self.windowDidClose(closing: window)
+            }
         }
         observers.append(closed)
+        // The recovery decision follows these facts for the app's lifetime,
+        // starting with one look now (the first state is not in yet, so this
+        // is the "checking" look; the first poll brings the next).
+        watchRecoveryTriggers()
+        serviceRecoveryCheck()
+    }
+
+    // MARK: the recovery decision's triggers
+
+    /// What `serviceRecoveryCheck()` is driven by: the connection, whether a
+    /// service action is running (`ServiceActivity`), onboarding being done,
+    /// what `service status` says and the helper's version.
+    private struct RecoveryTriggers: Equatable {
+        var state: ConnectionState?
+        var anyBusy: Bool
+        var onboardingFinished: Bool
+        var diagnosis: ServiceDiagnosis?
+        var helperVersion: String?
+    }
+
+    /// Reads the triggers; inside `withObservationTracking` that also records
+    /// which observable properties they depend on.
+    private func currentRecoveryTriggers() -> RecoveryTriggers {
+        RecoveryTriggers(state: monitor.state, anyBusy: serviceActivity.anyBusy, onboardingFinished: onboarding.finished,
+                         diagnosis: serviceWatcher.diagnosis, helperVersion: helperVersion)
+    }
+
+    /// Watches the triggers with the Observation framework instead of
+    /// `onChange` modifiers on the menu-bar label: the label must depend only
+    /// on what the icon shows, because a `.window`-style `MenuBarExtra` whose
+    /// label re-evaluates while the popover is open, or at the moment a popover
+    /// row hands over to a new window, can leave the popover standing (the
+    /// 0.2.4 regression). `withObservationTracking` fires once, before the
+    /// change is applied, so the work is deferred to the main actor's next
+    /// turn, compared with the facts last seen and re-armed.
+    private func watchRecoveryTriggers() {
+        let seen = withObservationTracking {
+            currentRecoveryTriggers()
+        } onChange: {
+            // Called before the change lands, from any thread, and not Sendable
+            // safe for `self`: the running instance is reached as the delegate does.
+            Task { @MainActor in AppModel.current?.recoveryTriggersChanged() }
+        }
+        if lastRecoveryTriggers == nil { lastRecoveryTriggers = seen }
+    }
+
+    /// The same rules the label's `onChange` modifiers had: every change of
+    /// the connection, of `service status` or of the helper's version looks
+    /// again; a service action ending (busy going false) and onboarding
+    /// finishing (finished going true) do too; nothing else does.
+    private func recoveryTriggersChanged() {
+        let previous = lastRecoveryTriggers
+        watchRecoveryTriggers()  // re-arm first: a change made by the check itself must be seen
+        let now = currentRecoveryTriggers()
+        lastRecoveryTriggers = now
+        guard let previous, previous != now else { return }  // a write of the same value
+        // The icon is derived here, from the same facts, and written only when
+        // it differs, so the label is not re-evaluated for a change it does not show.
+        let icon = MenuBarIcon.from(now.state, helperVersion: now.helperVersion)
+        if icon != menuBarIcon { menuBarIcon = icon }
+        var due = previous.state != now.state || previous.diagnosis != now.diagnosis || previous.helperVersion != now.helperVersion
+        if previous.anyBusy && !now.anyBusy { due = true }
+        if !previous.onboardingFinished && now.onboardingFinished { due = true }
+        if due { serviceRecoveryCheck() }
     }
 
     /// While the daemon does not answer, asks the helper what the service is
@@ -302,11 +393,30 @@ final class AppModel {
     /// Whether the menu bar popover is the key window right now.
     var isPopoverOpen: Bool { visibleSurfaces.contains("popover") }
 
+    /// The window that hosts the popover's content, handed over by the
+    /// popover's `WindowKeyObserver` while it is in one.
+    @ObservationIgnored weak var popoverWindow: NSWindow?
+
+    /// Closes the popover (docs/UI-SPEC.md 3.1): a row or button that opens a
+    /// window or Finder calls this first, so the new window becomes key
+    /// instead of appearing behind the popover. SwiftUI offers no way to
+    /// dismiss a `.window`-style `MenuBarExtra` from its content, so this goes
+    /// to the hosting `NSWindow`. Nothing happens when the popover is not
+    /// showing. The key observer's `didResignKey`/`willClose` notifications
+    /// still report the popover as gone (`surfaceDisappeared`).
+    func closePopover() {
+        guard let window = popoverWindow, window.isVisible else { return }
+        window.close()
+        if window.isVisible { window.orderOut(nil) }
+    }
+
     /// Brings the background service back by itself when the person had
-    /// installed it, and otherwise opens the "background service" window once
-    /// (see `ServiceRecovery`, `ServiceRestorePolicy` and `ServiceAskGate` for
-    /// when). Called on every connection change, when a service action ends,
-    /// when onboarding finishes, when `service status` changes (`MenuBarLabel`)
+    /// installed it, restarts it after an update while nothing runs through
+    /// it, and otherwise opens the "background service" window once (see
+    /// `ServiceRecovery`, `ServiceRestorePolicy`, `ServiceRestartPolicy` and
+    /// `ServiceAskGate` for when). Called on every connection change, when a
+    /// service action ends, when onboarding finishes, when `service status`
+    /// changes, when the helper's version becomes known (`watchRecoveryTriggers`)
     /// and again when the next decision is due. The service is never installed
     /// here unless the marker says the person installed it before.
     func serviceRecoveryCheck() {
@@ -314,7 +424,11 @@ final class AppModel {
         recoveryTimer = nil
         Task { [weak self] in
             guard let self else { return }
-            if await serviceRecovery.check() == .askNow { await presentServiceAsk() }
+            switch await serviceRecovery.check() {
+            case .askNow: await presentServiceAsk()
+            case .askRestart: presentRestartAsk()
+            case .nothing: break
+            }
             guard let wait = serviceRecovery.nextCheck() else { return }
             recoveryTimer?.cancel()
             recoveryTimer = Task { [weak self] in
@@ -329,6 +443,14 @@ final class AppModel {
         // Know which of "not set up" and "stopped" is true before the window shows.
         await serviceWatcher.poll()
         guard case .notRunning? = monitor.state, !isPopoverOpen else { return }
+        requestWindow(WindowID.serviceAsk)
+    }
+
+    /// The same window, with the "grantpin was updated" line and its Restart
+    /// button (the closing button reads "Later"); only while that is still
+    /// what the daemon's answer says.
+    private func presentRestartAsk() {
+        guard ServiceRestartPolicy.isMismatch(monitor.state, helperVersion: helperVersion), !isPopoverOpen else { return }
         requestWindow(WindowID.serviceAsk)
     }
 
@@ -388,16 +510,24 @@ struct SystemPasteboard: PasteboardAccess {
 /// activity refresh depend on whether the person is looking (docs/UI-SPEC.md 2.4).
 struct WindowKeyObserver: NSViewRepresentable {
     let onChange: (Bool) -> Void
+    /// Also hands over the hosting window itself (nil when the view leaves
+    /// it); the popover uses it to close itself (`AppModel.closePopover`).
+    var onWindow: ((NSWindow?) -> Void)? = nil
 
-    func makeNSView(context: Context) -> NSView { Tracker(onChange: onChange) }
-    func updateNSView(_ nsView: NSView, context: Context) { (nsView as? Tracker)?.onChange = onChange }
+    func makeNSView(context: Context) -> NSView { Tracker(onChange: onChange, onWindow: onWindow) }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? Tracker)?.onChange = onChange
+        (nsView as? Tracker)?.onWindow = onWindow
+    }
 
     final class Tracker: NSView {
         var onChange: (Bool) -> Void
+        var onWindow: ((NSWindow?) -> Void)?
         private var observers = [NSObjectProtocol]()
 
-        init(onChange: @escaping (Bool) -> Void) {
+        init(onChange: @escaping (Bool) -> Void, onWindow: ((NSWindow?) -> Void)?) {
             self.onChange = onChange
+            self.onWindow = onWindow
             super.init(frame: .zero)
         }
         required init?(coder: NSCoder) { nil }
@@ -407,6 +537,7 @@ struct WindowKeyObserver: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             observers.forEach(NotificationCenter.default.removeObserver)
             observers = []
+            onWindow?(window)
             guard let window else { onChange(false); return }
             let center = NotificationCenter.default
             observers.append(center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in

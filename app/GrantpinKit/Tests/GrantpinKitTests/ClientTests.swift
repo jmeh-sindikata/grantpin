@@ -22,6 +22,7 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(s.activeGrants, 2)
         XCTAssertEqual(s.tamperedGrants, 0)  // absent decodes to 0
         XCTAssertEqual(s.socket, "/x/grantpin.sock")
+        XCTAssertNil(s.inFlightRuns, "a daemon from before the field: unknown, not zero")
         XCTAssertNotNil(s.startedAt)
         // the request is exactly one line, with the protocol version, op and caller
         XCTAssertEqual(server.requests.count, 1)
@@ -454,6 +455,19 @@ final class ClientTests: XCTestCase {
         XCTAssertTrue(s.vaultLocked)
         XCTAssertEqual(s.vaultLockedError, "keychain: user interaction is not allowed")
         XCTAssertEqual(ConnectionState.from(s), .locked(lastError: "keychain: user interaction is not allowed"))
+    }
+
+    func testStatusInFlightRunsDecodesAndTellsTheStatesApart() async throws {
+        let base = #"{"version":"v","proto_v":1,"pid":1,"vault_initialized":true,"keystore_tier":"hardware","approver_tier":"hardware""#
+        let idle = try FakeServer(answer: #"{"ok":true,"result":"# + base + #","in_flight_runs":0}}"#)
+        let idleStatus = try await idle.client.status()
+        XCTAssertEqual(idleStatus.inFlightRuns, 0)
+        let busy = try FakeServer(answer: #"{"ok":true,"result":"# + base + #","in_flight_runs":2}}"#)
+        let busyStatus = try await busy.client.status()
+        XCTAssertEqual(busyStatus.inFlightRuns, 2)
+        // A change in the count is a change of state: the monitor publishes it and the recovery looks again.
+        XCTAssertNotEqual(ConnectionState.from(idleStatus), ConnectionState.from(busyStatus))
+        XCTAssertNotEqual(StatusResult(inFlightRuns: 0), StatusResult(inFlightRuns: nil))
     }
 
     func testGrantAddResultDecodesFromTheResponse() async throws {

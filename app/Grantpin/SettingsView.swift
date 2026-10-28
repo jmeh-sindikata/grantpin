@@ -128,6 +128,10 @@ private struct GeneralSettings: View {
                     Text(verbatim: ServiceRecovery.restoredAtPrefix + restored.formatted(date: .abbreviated, time: .shortened))
                         .foregroundStyle(.secondary)
                 }
+                if let restarted = app.serviceRecovery.restartedAt {
+                    Text(verbatim: ServiceRecovery.restartedAtPrefix + restarted.formatted(date: .abbreviated, time: .shortened))
+                        .foregroundStyle(.secondary)
+                }
                 if let p = s.plistPath { pathRow("Service file", p) }
                 if let e = s.exePath { pathRow("Program", e) }
                 if s.exeMissing {

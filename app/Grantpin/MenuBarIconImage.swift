@@ -11,12 +11,20 @@ import GrantpinKit
 /// drawn with (AppKit runs the handler again when the appearance changes), a
 /// transparent ring cut around the dot so it reads on any bar, and the dot in
 /// the system red or orange.
+@MainActor
 enum MenuBarIconImage {
     static let size = NSSize(width: 18, height: 18)
 
+    /// One image per badged state, made once: the label's body must hand the
+    /// status item the same image for the same state, not a new one on every
+    /// evaluation. The drawing handler still runs per appearance.
+    private static var cache = [MenuBarIcon: NSImage]()
+
     /// The badge image; nil for a state that stays a template.
     static func badged(_ icon: MenuBarIcon) -> NSImage? {
-        guard !icon.usesTemplateImage, let glyph = NSImage(named: "MenuBarIcon") else { return nil }
+        guard !icon.usesTemplateImage else { return nil }
+        if let cached = cache[icon] { return cached }
+        guard let glyph = NSImage(named: "MenuBarIcon") else { return nil }
         let image = NSImage(size: size, flipped: false) { rect in
             glyph.draw(in: rect)
             NSColor.labelColor.withAlphaComponent(icon.subdued ? 0.55 : 1).set()
@@ -37,12 +45,14 @@ enum MenuBarIconImage {
         }
         image.isTemplate = false
         image.accessibilityDescription = icon.label
+        cache[icon] = image
         return image
     }
 }
 
-/// The label of the `MenuBarExtra`.
-struct MenuBarIconView: View {
+/// The label of the `MenuBarExtra`. Equatable, so an evaluation of the label
+/// for the same state does not rebuild it.
+struct MenuBarIconView: View, Equatable {
     let icon: MenuBarIcon
 
     var body: some View {

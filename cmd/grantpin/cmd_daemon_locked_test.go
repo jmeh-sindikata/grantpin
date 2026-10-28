@@ -204,3 +204,52 @@ func TestDaemonRefusesToStartOnPermanentKeystoreError(t *testing.T) {
 		t.Fatalf("runDaemon = %v, want fail-fast with the keystore error", err)
 	}
 }
+
+// heldKS is testKS whose Unwrap waits until released (or the context ends),
+// standing in for a keystore call that blocks on the OS.
+type heldKS struct {
+	testKS
+	release chan struct{}
+}
+
+func (k *heldKS) Unwrap(ctx context.Context, w []byte) ([]byte, error) {
+	select {
+	case <-k.release:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return k.testKS.Unwrap(ctx, w)
+}
+
+// A run that waits for the vault to open is already in flight for status: the
+// broker does not exist yet, so the holder counts it.
+func TestStatusCountsARunWaitingForTheVaultToOpen(t *testing.T) {
+	ks := &heldKS{release: make(chan struct{})}
+	logs := &logBuf{}
+	sock, _ := startWithKS(t, ks, logs)
+	st := waitStatus(t, sock, func(st *proto.StatusResult) bool { return st.VaultLocked })
+	if st.InFlightRuns != 0 {
+		t.Fatalf("in flight before any request = %d", st.InFlightRuns)
+	}
+	done := make(chan *proto.Response, 1)
+	go func() {
+		cwd := t.TempDir()
+		resp, _ := client.Call(context.Background(), sock, &proto.Request{
+			V: proto.Version, Op: proto.OpRun, Caller: "test", Cwd: cwd, Argv: []string{"true"}, Secrets: []string{"nope"},
+		}, nil)
+		done <- resp
+	}()
+	// The request waits in the holder (openWait) for the start-up open, which
+	// is held: status must count it meanwhile.
+	waitStatus(t, sock, func(st *proto.StatusResult) bool { return st.InFlightRuns == 1 })
+	close(ks.release)
+	select {
+	case resp := <-done:
+		if resp == nil {
+			t.Fatal("no response")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the run never answered")
+	}
+	waitStatus(t, sock, func(st *proto.StatusResult) bool { return st.InFlightRuns == 0 && st.VaultInitialized && !st.VaultLocked })
+}

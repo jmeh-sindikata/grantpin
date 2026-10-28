@@ -3,6 +3,7 @@ package broker
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1029,5 +1030,131 @@ func TestRefusedOversizeRequestDoesNotPoisonTheAudit(t *testing.T) {
 	}
 	if !found {
 		t.Error("no capped argv row with a (truncated) marker")
+	}
+}
+
+// inFlight reads the count the status reply would carry.
+func (e *env) inFlight() int {
+	var st proto.StatusResult
+	e.b.StatusFunc()(context.Background(), &st)
+	return st.InFlightRuns
+}
+
+func TestRunIsInFlightWhileItWaitsForApproval(t *testing.T) {
+	e := newEnv(t)
+	if e.inFlight() != 0 {
+		t.Fatalf("in flight before any run = %d", e.inFlight())
+	}
+	e.ap.block = make(chan struct{})
+	done := make(chan *recWriter, 1)
+	go func() { done <- e.do(e.run([]string{"API_KEY"}, "true")) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for e.ap.calls() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if e.ap.calls() != 1 {
+		t.Fatal("the approver was not asked")
+	}
+	if got := e.inFlight(); got != 1 {
+		t.Errorf("in flight while the dialog is up = %d, want 1", got)
+	}
+	close(e.ap.block)
+	w := <-done
+	wantOK(t, w)
+	if got := e.inFlight(); got != 0 {
+		t.Errorf("in flight after completion = %d, want 0", got)
+	}
+}
+
+func TestRunLeavesNothingInFlightOnEveryExit(t *testing.T) {
+	e := newEnv(t)
+	// Refused before any approval (bad request), denied by the human, approver
+	// failure, policy refusal, a missing secret, a timed-out wait for approval
+	// and a command that fails to start: each run must take itself off again.
+	bad := e.run([]string{"API_KEY"})
+	wantFail(t, e.do(bad), proto.ErrBadRequest, proto.ReasonBadRequest)
+	e.ap.allow = false
+	wantFail(t, e.do(e.run([]string{"API_KEY"}, "true")), proto.ErrDenied, proto.ReasonUserDenied)
+	e.ap.allow = true
+	e.ap.err = errors.New("no dialog")
+	wantFail(t, e.do(e.run([]string{"API_KEY"}, "true")), proto.ErrDenied, proto.ReasonApproverUnavailable)
+	e.ap.err = nil
+	wantFail(t, e.do(e.run([]string{"NOPE"}, "true")), proto.ErrNotFound, proto.ReasonSecretNotFound)
+	e.ap.block = make(chan struct{})
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	wantFail(t, e.doCtx(ctx, e.run([]string{"API_KEY"}, "true")), proto.ErrFailed, proto.ReasonTimeout)
+	cancel()
+	close(e.ap.block)
+	e.ap.block = nil
+	if w := e.do(e.run([]string{"API_KEY"}, "/no/such/command-xyz")); w.final.ExitCode == nil || *w.final.ExitCode != 127 {
+		t.Fatalf("command not found = %+v", w.final)
+	}
+	w := e.do(e.run([]string{"API_KEY"}, "true"))
+	wantOK(t, w)
+	if got := e.inFlight(); got != 0 {
+		t.Errorf("in flight after seven finished runs = %d, want 0", got)
+	}
+}
+
+// blockedOnApprover sends req in the background, waits until the approver has
+// been asked, reads the in-flight count, releases the approver and waits for
+// the answer.
+func (e *env) blockedOnApprover(t *testing.T, req *proto.Request) (during, after int, w *recWriter) {
+	t.Helper()
+	e.ap.block = make(chan struct{})
+	done := make(chan *recWriter, 1)
+	go func() { done <- e.do(req) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for e.ap.calls() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if e.ap.calls() != 1 {
+		t.Fatal("the approver was not asked")
+	}
+	during = e.inFlight()
+	close(e.ap.block)
+	w = <-done
+	e.ap.block = nil
+	e.ap.reqs = nil
+	return during, e.inFlight(), w
+}
+
+func TestEveryRequestThatAsksApprovalIsInFlightWhileItWaits(t *testing.T) {
+	e := newEnv(t)
+	hw, dialog := presence.TierHardware, presence.TierDialog
+	wantOK(t, e.do(&proto.Request{Op: proto.OpSet, Name: "k", Value: "value-0123456789-ABCD", MinTier: &hw}))
+	for _, tc := range []struct {
+		name string
+		req  *proto.Request
+	}{
+		{"show", showReq(e)},
+		{"standing grant add", e.add([]string{"API_KEY"}, time.Hour, "true")},
+		{"update lowering the tier", &proto.Request{Op: proto.OpUpdate, Name: "k", MinTier: &dialog}},
+	} {
+		during, after, w := e.blockedOnApprover(t, tc.req)
+		wantOK(t, w)
+		if during != 1 || after != 0 {
+			t.Errorf("%s: in flight while the dialog is up = %d, after = %d; want 1 and 0", tc.name, during, after)
+		}
+	}
+	// Requests that never ask are not counted.
+	for _, req := range []*proto.Request{
+		{Op: proto.OpList}, {Op: proto.OpExists, Name: "API_KEY"}, {Op: proto.OpMasked, Name: "API_KEY"},
+		{Op: proto.OpGrants, Action: proto.ActionList}, {Op: proto.OpAudit, Action: proto.ActionList},
+		{Op: proto.OpSet, Name: "x", Value: "value-0123456789-ABCD"},
+	} {
+		if AsksApproval(req) {
+			t.Errorf("%s/%s counted as asking approval", req.Op, req.Action)
+		}
+	}
+	for _, req := range []*proto.Request{
+		{Op: proto.OpRun}, {Op: proto.OpShow}, {Op: proto.OpUpdate}, {Op: proto.OpGrants, Action: proto.ActionAdd},
+	} {
+		if !AsksApproval(req) {
+			t.Errorf("%s/%s not counted as asking approval", req.Op, req.Action)
+		}
+	}
+	if e.inFlight() != 0 {
+		t.Errorf("in flight at the end = %d", e.inFlight())
 	}
 }

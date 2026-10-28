@@ -33,7 +33,7 @@ struct ServiceAskWindow: View {
             }
             HStack {
                 Spacer()
-                Button(line.level == .ok ? "Close" : "Not Now") { dismissWindow(id: WindowID.serviceAsk) }
+                Button(line.dismissTitle) { dismissWindow(id: WindowID.serviceAsk) }
                     .keyboardShortcut(.cancelAction)
             }
         }
